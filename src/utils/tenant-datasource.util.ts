@@ -1,6 +1,6 @@
 import {DataSource} from 'typeorm';
-import {User} from '../tenants/users/entities/user.entity';
-import {Product} from '../tenants/products/entities/product.entity';
+import {User} from '../tenants/users/entities';
+import {Product} from '../tenants/products/entities';
 
 export const tenantConnections: Record<string, DataSource> = {};
 
