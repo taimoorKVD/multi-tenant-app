@@ -19,7 +19,9 @@ import { ProductsModule } from './tenants/products/products.module';
             database: process.env.MASTER_DB_NAME,
             entities: [Tenant],
             synchronize: true,
-            ssl: true,
+            ssl: {
+                rejectUnauthorized: false,
+            },
             extra: {
                 ssl: {
                     rejectUnauthorized: false,
