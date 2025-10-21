@@ -1,6 +1,6 @@
 import {Injectable, NestMiddleware} from '@nestjs/common';
 import {NextFunction, Request, Response} from 'express';
-import { DataSource } from 'typeorm';
+import {DataSource} from 'typeorm';
 import {Tenant} from '../../master/tenants/entities';
 import {getTenantDataSource} from '../../utils';
 
@@ -16,41 +16,39 @@ export class TenantMiddleware implements NestMiddleware {
                 return next();
             }
 
-            const tenantRepo = this.dataSource.getRepository(Tenant);
-            let tenantKey = req.headers['x-tenant-id'] as string | undefined;
-            let tenant: Tenant | null = null;
-
-            if (!tenantKey && req.path.startsWith('/tenant/')) {
-                tenantKey = req.path.split('/')[2];
-            }
-
-            if (tenantKey) {
-                tenant = await tenantRepo.findOne({
-                    where: [{ name: tenantKey }, { subdomain: tenantKey }],
+            if (!req.path.startsWith('/tenant/')) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid tenant route. Use /tenant/:tenantId/... path structure.',
                 });
             }
 
-            if (!tenant && req.hostname) {
-                const host = req.hostname.toLowerCase();
-                const baseDomain = process.env.BASE_DOMAIN?.toLowerCase() || '';
-                if (host.endsWith(baseDomain) && host !== baseDomain) {
-                    const subdomain = host.replace(`.${baseDomain}`, '');
-                    tenant = await tenantRepo.findOneBy({ subdomain });
-                } else {
-                    tenant = await tenantRepo.findOneBy({ customDomain: host });
-                }
+            const parts = req.path.split('/');
+            const tenantKey = parts[2];
+
+            if (!tenantKey) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Tenant ID missing in path (expected /tenant/:tenantId/...)',
+                });
             }
+
+            const tenantRepo = this.dataSource.getRepository(Tenant);
+            const tenant = await tenantRepo.findOne({
+                where: [{name: tenantKey}, {subdomain: tenantKey}],
+            });
 
             if (!tenant) {
                 return res.status(404).json({
                     success: false,
-                    message: 'Tenant not found. Ensure valid path (/tenant/:tenantId), header, or domain.',
+                    message: `Tenant '${tenantKey}' not found in master database.`,
                 });
             }
 
             req['tenantConnection'] = await getTenantDataSource(tenant.dbName);
             req['tenant'] = tenant;
-            next();
+
+            return next();
         } catch (err) {
             console.error('❌ Tenant middleware error:', err);
             return res.status(500).json({
