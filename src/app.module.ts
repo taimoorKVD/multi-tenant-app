@@ -3,7 +3,7 @@ import {Module} from '@nestjs/common';
 import {TypeOrmModule} from '@nestjs/typeorm';
 import {ConfigModule} from '@nestjs/config';
 import {TenantsModule} from './master/tenants/tenants.module';
-import {Tenant} from "./master/tenants/entities/tenant.entity";
+import {Tenant} from "./master/tenants/entities";
 import {UsersModule} from './tenants/users/users.module';
 import { ProductsModule } from './tenants/products/products.module';
 
@@ -19,6 +19,12 @@ import { ProductsModule } from './tenants/products/products.module';
             database: process.env.MASTER_DB_NAME,
             entities: [Tenant],
             synchronize: true,
+            ssl: true,
+            extra: {
+                ssl: {
+                    rejectUnauthorized: false,
+                },
+            },
         }),
         TenantsModule,
         UsersModule,

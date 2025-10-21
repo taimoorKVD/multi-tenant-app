@@ -13,8 +13,8 @@ export class TenantsController {
     }
 
     @Post()
-    async create(@Body() body: { name: string }) {
-        return this.tenantsService.create(body.name);
+    async create(@Body('name') name: string, @Body('customDomain') customDomain?: string) {
+        return this.tenantsService.create(name, customDomain);
     }
 
     @Delete(':id')

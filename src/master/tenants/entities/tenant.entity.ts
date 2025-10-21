@@ -1,6 +1,6 @@
 import {Column, CreateDateColumn, Entity, PrimaryGeneratedColumn} from 'typeorm';
 
-@Entity()
+@Entity('tenants')
 export class Tenant {
     @PrimaryGeneratedColumn()
     id: number;
@@ -10,6 +10,12 @@ export class Tenant {
 
     @Column({unique: true})
     dbName: string;
+
+    @Column({unique: true})
+    subdomain: string;
+
+    @Column({ type: 'varchar', unique: false, nullable: true })
+    customDomain?: string | null;
 
     @CreateDateColumn()
     createdAt: Date;

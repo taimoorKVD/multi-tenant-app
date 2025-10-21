@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {DataSource, Repository} from 'typeorm';
-import {getTenantDataSource, tenantConnections, toDbNameSlug, withUniqueSuffix} from '../../utils';
+import {getTenantDataSource, tenantConnections, toDbNameSlug, toSubdomainSlug, withUniqueSuffix} from '../../utils';
 import {Tenant} from './entities';
 
 @Injectable()
@@ -38,6 +38,8 @@ export class TenantsService {
                     id: t.id,
                     name: t.name,
                     dbName: t.dbName,
+                    subDomain: t.subdomain,
+                    customDomain: t.customDomain,
                     createdAt: t.createdAt,
                 })),
             };
@@ -50,12 +52,20 @@ export class TenantsService {
         }
     }
 
-    async create(name: string) {
+    async create(name: string, customDomain?: string) {
         const raw = name?.trim();
 
         try {
             if (!raw) {
                 throw new BadRequestException('Tenant name is required');
+            }
+
+            const baseSubdomain = toSubdomainSlug(raw);
+            let subdomain = baseSubdomain;
+            let counter = 1;
+            while (await this.tenantRepo.exists({where: {subdomain}})) {
+                counter++;
+                subdomain = `${baseSubdomain}-${counter}`;
             }
 
             let baseDbName = toDbNameSlug(raw, 'tenant_');
@@ -73,6 +83,8 @@ export class TenantsService {
             const tenant = this.tenantRepo.create({
                 name: raw,
                 dbName,
+                subdomain,
+                customDomain: customDomain || null,
             });
             await this.tenantRepo.save(tenant);
             this.logger.log(`🟢 Tenant metadata saved: ${raw} -> db=${dbName}`);
@@ -92,6 +104,10 @@ export class TenantsService {
                 data: {
                     tenantName: raw,
                     database: dbName,
+                    subdomain,
+                    customDomain,
+                    subdomainUrl: `https://${subdomain}.${process.env.BASE_DOMAIN}`,
+                    customDomainUrl: customDomain ? `https://${customDomain}` : null,
                 },
             };
         } catch (error) {
