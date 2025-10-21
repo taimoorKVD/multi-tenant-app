@@ -1,98 +1,188 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🏗️ NestJS Multi-Tenancy Application (PostgreSQL – Database per Tenant)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A scalable multi-tenant architecture built with NestJS and TypeORM, supporting one PostgreSQL database per tenant, alongside a central master database managing tenants, subscriptions, and authentication.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🚀 Features
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Multi-Tenancy (Database-per-Tenant)**  
+  Each tenant has a fully isolated PostgreSQL database for data security and scalability.
 
-## Project setup
+- **Master Database Control**  
+  Stores tenant metadata (name, domain, DB credentials), subscription packages, user accounts, and roles.
 
-```bash
-$ npm install
-```
+- **Dynamic Database Connections**  
+  Runtime creation and caching of TypeORM connections per tenant domain/ID.
 
-## Compile and run the project
+- **JWT-based Authentication**  
+  Secure user authentication via HTTP-only cookies, validated against the master database.
 
-```bash
-# development
-$ npm run start
+- **RESTful API Architecture**  
+  Modular and scalable, following NestJS best practices.
 
-# watch mode
-$ npm run start:dev
+---
 
-# production mode
-$ npm run start:prod
-```
+## 🧩 Tech Stack
 
-## Run tests
+| Layer           | Technology                           |
+| --------------- | ---------------------------------- |
+| Backend Framework | NestJS                             |
+| ORM              | TypeORM                            |
+| Database         | PostgreSQL (Master + Tenant DBs)  |
+| Authentication  | JWT (HTTP-only cookies)            |
+| API Docs         | Swagger (@nestjs/swagger)           |
 
-```bash
-# unit tests
-$ npm run test
+---
 
-# e2e tests
-$ npm run test:e2e
+## 🗂️ Folder Structure
 
-# test coverage
-$ npm run test:cov
-```
+src/
+├── master/
+│ ├── entities/
+│ ├── modules/
+│ └── services/
+├── tenants/
+│ ├── entities/
+│ ├── modules/
+│ └── services/
+├── common/
+│ ├── decorators/
+│ ├── interceptors/
+│ ├── middleware/
+│ └── utils/
+├── database/
+│ ├── tenant-connection.provider.ts
+│ ├── tenant.middleware.ts
+│ └── tenant.decorator.ts
+├── auth/
+│ ├── auth.module.ts
+│ ├── jwt.strategy.ts
+│ └── guards/
+└── main.ts
 
-## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+---
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## ⚙️ Environment Variables
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+Create a `.env` file in the root:
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+MASTER_DB_HOST=localhost
+MASTER_DB_PORT=5432
+MASTER_DB_USER=postgres
+MASTER_DB_PASS=yourpassword
+MASTER_DB_NAME=masterdb
 
-## Resources
+TENANT_DB_HOST=localhost
+TENANT_DB_PORT=5432
+TENANT_DB_USER=postgres
+TENANT_DB_PASS=yourpassword
 
-Check out a few resources that may come in handy when working with NestJS:
+JWT_SECRET=your_jwt_secret
+JWT_EXPIRY=1d
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+PORT=3333
+NODE_ENV=development
 
-## Support
+---
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## 🏗️ Master Database Schema
 
-## Stay in touch
+| Table          | Description                              |
+| -------------- | ------------------------------------   |
+| tenants        | Tenant metadata (name, domain, DB info)|
+| users          | Global users and roles                  |
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Example record in `tenants`:
 
-## License
+| id | name     | domain           | db_name    | db_user | db_pass  | db_host   | created_at  |
+|----|----------|------------------|------------|---------|----------|-----------|-------------|
+| 1  | Tenant A | tenantA.app.com  | tenant_a_db| tenant_a| secret123| localhost | 2025-10-21  |
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+---
+
+## 🔌 How Multi-Tenancy Works
+
+1. **Request Identification:** Tenant identified by domain, subdomain, or `x-tenant-id` header.
+
+2. **Connection Resolution:** Tenant info fetched from master DB. New TypeORM connection created if not cached.
+
+3. **Scoped Queries:** ORM queries run on the tenant database connection.
+
+4. **Isolation:** Each tenant has a separate DB/schema preventing cross-tenant data leakage.
+
+---
+
+## 🧠 Example API Endpoints
+
+### Auth Routes
+| Method | Endpoint       | Description                |
+|--------|----------------|----------------------------|
+| POST   | `/auth/register` | Register new user          |
+| POST   | `/auth/login`    | Authenticate and set JWT cookie |
+| GET    | `/auth/profile`  | Get current user profile   |
+
+### Master Routes
+| Method | Endpoint          | Description               |
+|--------|-------------------|---------------------------|
+| POST   | `/tenants/create` | Create new tenant and DB  |
+| GET    | `/tenants`        | List all tenants          |
+| GET    | `/tenants/:id`    | Fetch tenant details      |
+
+### Tenant Routes
+| Method | Endpoint         | Description               |
+|--------|------------------|---------------------------|
+| GET    | `/dashboard`     | Tenant dashboard data     |
+| GET    | `/users`         | Tenant users list         |
+| POST   | `/users`         | Add user to tenant DB     |
+
+---
+
+## 🧪 Running the Application
+
+npm install
+npm run typeorm migration:run
+npm run start:dev
+
+
+- Access API: `http://localhost:4000`
+- Swagger Docs: `http://localhost:4000/api`
+
+---
+
+## 🧱 Roadmap (Planned Features)
+
+| Feature                | Description                                |
+|------------------------|--------------------------------------------|
+| Tenant Setup Wizard     | Automated DB provisioning for new tenants |
+| Tenant Schema Sync      | Auto-migrate models to tenant DBs          |
+| Subscription Module    | Billing & renewal management per tenant    |
+| Custom Domains          | Dynamic tenant subdomains and SSL           |
+
+---
+
+## 🧰 Scripts
+
+| Command             | Description               |
+|---------------------|---------------------------|
+| `npm run start:dev`   | Run server in dev mode     |
+| `npm run start:prod`  | Run compiled app          |
+| `npm run build`       | Compile TypeScript        |
+| `npm run test`        | Run tests                 |
+| `npm run lint`        | Lint codebase             |
+
+---
+
+## 🛡️ Security
+
+- HTTP-only JWT cookies for authentication
+- CSRF-safe API design
+- Encrypted tenant credentials in master DB
+- Rate limiting and tenant-scoped access control
+
+---
+
+## 📖 License
+
+MIT © 2025 — Maintained by Kingdom Vision
