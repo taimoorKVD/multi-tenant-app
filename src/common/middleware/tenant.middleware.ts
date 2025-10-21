@@ -8,7 +8,6 @@ import {getTenantDataSource} from '../../utils';
 export class TenantMiddleware implements NestMiddleware {
     async use(req: Request, res: Response, next: NextFunction) {
         try {
-
             const skipPaths = ['/tenants', '/auth'];
             if (skipPaths.some((p) => req.path.startsWith(p))) {
                 return next();
@@ -17,6 +16,11 @@ export class TenantMiddleware implements NestMiddleware {
             const tenantRepo = MasterDataSource.getRepository(Tenant);
             let tenantKey = req.headers['x-tenant-id'] as string | undefined;
             let tenant: Tenant | null = null;
+
+            if (!tenantKey && req.path.startsWith('/tenant/')) {
+                const parts = req.path.split('/');
+                tenantKey = parts[2];
+            }
 
             if (tenantKey) {
                 tenant = await tenantRepo.findOne({
@@ -39,7 +43,8 @@ export class TenantMiddleware implements NestMiddleware {
             if (!tenant) {
                 return res.status(404).json({
                     success: false,
-                    message: 'Tenant not found. Ensure valid subdomain, custom domain, or header.',
+                    message:
+                        'Tenant not found. Ensure valid path (/tenant/:tenantId), header, or domain.',
                 });
             }
 
