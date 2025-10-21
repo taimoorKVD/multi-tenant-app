@@ -5,7 +5,7 @@ import {ConfigModule} from '@nestjs/config';
 import {TenantsModule} from './master/tenants/tenants.module';
 import {Tenant} from "./master/tenants/entities";
 import {UsersModule} from './tenants/users/users.module';
-import { ProductsModule } from './tenants/products/products.module';
+import {ProductsModule} from './tenants/products/products.module';
 
 @Module({
     imports: [
@@ -19,13 +19,9 @@ import { ProductsModule } from './tenants/products/products.module';
             database: process.env.MASTER_DB_NAME,
             entities: [Tenant],
             synchronize: true,
-            ssl: {
-                rejectUnauthorized: false,
-            },
+            ssl: false,
             extra: {
-                ssl: {
-                    rejectUnauthorized: false,
-                },
+                ssl: false,
             },
         }),
         TenantsModule,
