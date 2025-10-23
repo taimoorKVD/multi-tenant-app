@@ -12,27 +12,18 @@ export class TenantMiddleware implements NestMiddleware {
     async use(req: Request, res: Response, next: NextFunction) {
         try {
             const skipPaths = ['/tenants', '/auth'];
-            if (skipPaths.some((p) => req.path.startsWith(p))) {
-                return next();
-            }
+            if (skipPaths.some((p) => req.originalUrl.startsWith(p))) return next();
 
-            if (!req.path.startsWith('/tenant/')) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid tenant route. Use /tenant/:tenantId/... path structure.',
-                });
-            }
-
-            const parts = req.path.split('/');
-            const tenantKey = parts[2];
-
-            if (!tenantKey) {
+            const urlParts = req.originalUrl.split('/');
+            const tenantIndex = urlParts.indexOf('tenant');
+            if (tenantIndex === -1 || !urlParts[tenantIndex + 1]) {
                 return res.status(400).json({
                     success: false,
                     message: 'Tenant ID missing in path (expected /tenant/:tenantId/...)',
                 });
             }
 
+            const tenantKey = urlParts[tenantIndex + 1];
             const tenantRepo = this.dataSource.getRepository(Tenant);
             const tenant = await tenantRepo.findOne({
                 where: [{name: tenantKey}, {subdomain: tenantKey}],
