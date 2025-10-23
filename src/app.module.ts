@@ -7,6 +7,7 @@ import {Tenant} from "./master/tenants/entities";
 import {UsersModule} from './tenants/users/users.module';
 import {ProductsModule} from './tenants/products/products.module';
 import {TenantMiddleware} from "./common/middleware";
+import {AppController} from "./app.controller";
 
 @Module({
     imports: [
@@ -37,7 +38,7 @@ import {TenantMiddleware} from "./common/middleware";
         UsersModule,
         ProductsModule,
     ],
-    controllers: [],
+    controllers: [AppController],
     providers: [],
 })
 
