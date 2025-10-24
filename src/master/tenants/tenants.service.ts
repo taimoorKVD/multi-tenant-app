@@ -8,8 +8,14 @@ import {
 } from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {DataSource, Repository} from 'typeorm';
-import {getTenantDataSource, tenantConnections, toDbNameSlug, toSubdomainSlug, withUniqueSuffix} from '../../utils';
+import {getTenantDataSource, tenantConnections, toDbNameSlug, toSubdomainSlug} from '../../utils';
 import {Tenant} from './entities';
+import {User} from "../../tenants/users/entities";
+import * as argon2 from 'argon2';
+import {Role} from "../../tenants/role/entities";
+import {CreateTenantDto} from "./dto";
+import {IAdminSetup, ITenantResponse} from "./interfaces";
+import {Permission} from "../../tenants/permission/entities";
 
 @Injectable()
 export class TenantsService {
@@ -52,77 +58,172 @@ export class TenantsService {
         }
     }
 
-    async create(name: string, customDomain?: string) {
-        const raw = name?.trim();
+    /**
+     * Create a new tenant with rollback on error.
+     */
+    async create(dto: CreateTenantDto): Promise<ITenantResponse> {
+        const {name, customDomain} = dto;
+        const tenantName = name?.trim();
+        if (!tenantName) throw new BadRequestException('Tenant name is required');
+
+        let dbName = '';
+        let tenantRecord: Tenant | null = null;
+        let tenantConnection: DataSource | null = null;
 
         try {
-            if (!raw) {
-                throw new BadRequestException('Tenant name is required');
-            }
+            const {subdomain} = await this.ensureUniqueTenant(tenantName);
+            dbName = toDbNameSlug(tenantName, 'tenant_');
 
-            const baseSubdomain = toSubdomainSlug(raw);
-            let subdomain = baseSubdomain;
-            let counter = 1;
-            while (await this.tenantRepo.exists({where: {subdomain}})) {
-                counter++;
-                subdomain = `${baseSubdomain}-${counter}`;
-            }
-
-            let baseDbName = toDbNameSlug(raw, 'tenant_');
-            let dbName = baseDbName;
-            let i = 1;
-            while (await this.tenantRepo.exists({where: {dbName}})) {
-                i += 1;
-                dbName = withUniqueSuffix(baseDbName, i);
-            }
-
-            if (await this.tenantRepo.exists({where: {name: raw}})) {
-                throw new ConflictException(`Tenant "${raw}" already exists`);
-            }
-
-            const tenant = this.tenantRepo.create({
-                name: raw,
+            tenantRecord = this.tenantRepo.create({
+                name: tenantName,
                 dbName,
                 subdomain,
                 customDomain: customDomain || null,
             });
-            await this.tenantRepo.save(tenant);
-            this.logger.log(`🟢 Tenant metadata saved: ${raw} -> db=${dbName}`);
+            await this.tenantRepo.save(tenantRecord);
+            this.logger.log(`🟢 Tenant metadata saved: ${tenantName} -> ${dbName}`);
 
-            // 6) Create DB + sync schema
-            await this.dataSource.query(`CREATE DATABASE "${dbName}"`);
-            this.logger.log(`🗄️ Database created: ${dbName}`);
+            await this.createDatabase(dbName);
 
-            const tenantConnection = await getTenantDataSource(dbName);
+            tenantConnection = await getTenantDataSource(dbName);
             await tenantConnection.synchronize();
-            this.logger.log(`✅ Tenant DB synchronised: ${dbName}`);
 
-            // 7) Response
-            return {
-                success: true,
-                message: `Tenant "${raw}" created successfully`,
-                data: {
-                    tenantName: raw,
-                    database: dbName,
-                    subdomain,
-                    customDomain,
-                    subdomainUrl: `https://${subdomain}.${process.env.BASE_DOMAIN}`,
-                    customDomainUrl: customDomain ? `https://${customDomain}` : null,
-                },
-            };
+            const adminSetup = await this.bootstrapAdmin(tenantConnection, subdomain);
+
+            return this.buildResponse(tenantName, dbName, subdomain, customDomain, adminSetup);
         } catch (error) {
-            this.logger.error(`❌ Failed to create tenant "${raw}": ${error.message}`, error.stack);
+            this.logger.error(`❌ Tenant creation failed for "${tenantName}": ${error.message}`);
 
-            // Optional cleanup: drop partially created DB if the failure happened after DB creation.
-            // (You can detect by checking error context and attempting DROP DATABASE here.)
-
-            if (error instanceof BadRequestException || error instanceof ConflictException) {
-                throw error;
-            }
+            await this.rollbackTenantCreation(tenantName, dbName, tenantRecord);
             throw new InternalServerErrorException(
-                `An unexpected error occurred while creating tenant "${raw}".`,
+                `Tenant creation failed. All changes have been rolled back.`,
             );
         }
+    }
+
+    private async ensureUniqueTenant(name: string): Promise<{ subdomain: string }> {
+        const baseSubdomain = toSubdomainSlug(name);
+        let subdomain = baseSubdomain;
+        let counter = 1;
+
+        while (await this.tenantRepo.exists({where: {subdomain}})) {
+            subdomain = `${baseSubdomain}-${counter++}`;
+        }
+
+        if (await this.tenantRepo.exists({where: {name}})) {
+            throw new ConflictException(`Tenant "${name}" already exists`);
+        }
+
+        return {subdomain};
+    }
+
+    private async createDatabase(dbName: string) {
+        await this.dataSource.query(`CREATE DATABASE "${dbName}"`);
+        this.logger.log(`🗄️ Database created: ${dbName}`);
+    }
+
+    private async rollbackTenantCreation(
+        tenantName: string,
+        dbName: string,
+        tenantRecord: Tenant | null,
+    ) {
+        try {
+            if (dbName) {
+                await this.dataSource.query(`DROP DATABASE IF EXISTS "${dbName}"`);
+                this.logger.warn(`⚠️ Rolled back database: ${dbName}`);
+            }
+
+            if (tenantRecord) {
+                await this.tenantRepo.delete({id: tenantRecord.id});
+                this.logger.warn(`⚠️ Rolled back tenant metadata: ${tenantName}`);
+            }
+        } catch (rollbackError) {
+            this.logger.error(
+                `❌ Rollback failed for tenant "${tenantName}": ${rollbackError.message}`,
+            );
+        }
+    }
+
+    private async bootstrapAdmin(connection: DataSource, subdomain: string): Promise<IAdminSetup> {
+        const userRepo = connection.getRepository(User);
+        const roleRepo = connection.getRepository(Role);
+        const permissionRepo = connection.getRepository(Permission);
+
+        const defaultPermissions = ['create-user', 'edit-user', 'view-user', 'delete-user'];
+
+        const permissions = await Promise.all(
+            defaultPermissions.map(async (permName) => {
+                let perm = await permissionRepo.findOne({where: {name: permName}});
+                if (!perm) {
+                    perm = permissionRepo.create({name: permName});
+                    await permissionRepo.save(perm);
+                }
+                return perm;
+            }),
+        );
+
+        let adminRole = await roleRepo.findOne({where: {name: 'Admin'}, relations: ['permissions']});
+        if (!adminRole) {
+            adminRole = roleRepo.create({name: 'Admin', permissions});
+            await roleRepo.save(adminRole);
+            this.logger.log(`🔑 Admin role created with default permissions`);
+        }
+
+        const adminEmail = `admin@${subdomain}.com`;
+        const defaultPassword = 'Admin@123';
+        const hashed = await argon2.hash(defaultPassword);
+
+        const adminUser = userRepo.create({
+            name: 'Administrator',
+            email: adminEmail,
+            password: hashed,
+            role: adminRole,
+        });
+        await userRepo.save(adminUser);
+
+        this.logger.log(`👤 Admin user created: ${adminEmail}`);
+
+        return {role: adminRole, user: adminUser};
+    }
+
+    protected buildResponse(
+        tenantName: string,
+        dbName: string,
+        subdomain: string,
+        customDomain?: string,
+        adminSetup?: IAdminSetup,
+    ): ITenantResponse {
+        if (!adminSetup) {
+            throw new InternalServerErrorException('Admin setup missing.');
+        }
+
+        const {user, role} = adminSetup;
+
+        return {
+            success: true,
+            message: `Tenant "${tenantName}" created successfully`,
+            data: {
+                tenantName,
+                database: dbName,
+                subdomain,
+                customDomain: customDomain || null,
+                //subdomainUrl: `https://${subdomain}.${process.env.BASE_DOMAIN}`,
+                subdomainUrl: `https://${subdomain}.com`,
+                customDomainUrl: customDomain ? `https://${customDomain}` : null,
+                admin: {
+                    email: user.email,
+                    password: 'Admin@123',
+                    role: {
+                        id: role.id,
+                        name: role.name,
+                        permissions: role.permissions.map((p) => ({
+                            id: p.id,
+                            name: p.name,
+                        })),
+                    },
+                },
+            },
+        };
     }
 
     async remove(id: number) {

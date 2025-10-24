@@ -1,6 +1,7 @@
 import {Body, Controller, Delete, Get, Param, Post, Put} from '@nestjs/common';
 import {TenantsService} from './tenants.service';
 import {Tenant} from "./entities";
+import {CreateTenantDto} from "./dto";
 
 @Controller('tenants')
 export class TenantsController {
@@ -13,8 +14,8 @@ export class TenantsController {
     }
 
     @Post()
-    async create(@Body('name') name: string, @Body('customDomain') customDomain?: string) {
-        return this.tenantsService.create(name, customDomain);
+    async create(@Body() dto: CreateTenantDto) {
+        return this.tenantsService.create(dto);
     }
 
     @Delete(':id')
