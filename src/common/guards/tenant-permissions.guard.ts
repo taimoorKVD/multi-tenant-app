@@ -8,30 +8,27 @@ export class TenantPermissionsGuard implements CanActivate {
     }
 
     canActivate(context: ExecutionContext): boolean {
-        const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
-            PERMISSIONS_KEY,
-            [context.getHandler(), context.getClass()],
-        );
-        if (!requiredPermissions?.length) return true;
+        const requiredPermissions =
+            this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+                context.getHandler(),
+                context.getClass(),
+            ]) || [];
 
         const request = context.switchToHttp().getRequest();
-        if (!request.tenantConnection) {
-            return true;
-        }
+        const {user, tenantConnection} = request;
 
-        const user = request.user;
-        if (!user) {
-            throw new ForbiddenException('User not authenticated for this tenant');
-        }
+        if (!tenantConnection) return true;
+        if (!user) throw new ForbiddenException('User not authenticated for this tenant');
+        if (!requiredPermissions.length) return true;
 
-        const userPerms = user.role?.permissions?.map((p) => p.name) || [];
-
-        const hasPermission = requiredPermissions.every((perm) =>
-            userPerms.includes(perm),
-        );
-        if (!hasPermission) {
+        const userPermissions =
+            user.permissions ||
+            user.role?.permissions?.map((p) => (typeof p === 'string' ? p : p.name)) ||
+            [];
+        const missing = requiredPermissions.filter((p) => !userPermissions.includes(p));
+        if (missing.length) {
             throw new ForbiddenException(
-                `You do not have permission to access this tenant resource`,
+                `You do not have permission for this resource: ${missing.join(', ')}`,
             );
         }
 
