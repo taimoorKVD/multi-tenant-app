@@ -59,7 +59,7 @@ src/
 │ ├── auth.module.ts
 │ ├── jwt.strategy.ts
 │ └── guards/
-└── main.ts
+└── seed.ts
 
 
 ---

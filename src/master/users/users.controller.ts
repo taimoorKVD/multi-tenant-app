@@ -1,37 +1,38 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { MasterAccess } from '../../common/decorators';
+import {Body, Controller, Delete, Get, Param, Post, Put, Query} from '@nestjs/common';
+import {UsersService} from './users.service';
+import {MasterAccess} from '../../common/decorators';
 
-@Controller('master/users')
+@Controller('users')
 export class UsersController {
-    constructor(private readonly usersService: UsersService) {}
+    constructor(private readonly usersService: UsersService) {
+    }
 
     @Get()
-    @MasterAccess('view-users')
+    @MasterAccess('view-user')
     async all(@Query('page') page: number = 1) {
         return this.usersService.paginate(page);
     }
 
     @Post()
-    @MasterAccess('manage-tenants')
+    @MasterAccess('create-user')
     async create(@Body() body: any) {
         return this.usersService.create(body);
     }
 
     @Get(':id')
-    @MasterAccess('view-users')
+    @MasterAccess('view-user')
     async findOne(@Param('id') id: number) {
         return this.usersService.findOne(id);
     }
 
     @Put(':id')
-    @MasterAccess('manage-tenants')
+    @MasterAccess('edit-user')
     async update(@Param('id') id: number, @Body() body: any) {
         return this.usersService.update(id, body);
     }
 
     @Delete(':id')
-    @MasterAccess('manage-tenants')
+    @MasterAccess('delete-user')
     async delete(@Param('id') id: number) {
         return this.usersService.delete(id);
     }

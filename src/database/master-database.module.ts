@@ -4,22 +4,12 @@ import {Tenant} from '../master/tenants/entities';
 import {User} from '../master/users/entities';
 import {Role} from '../master/role/entities';
 import {Permission} from '../master/permission/entities';
+import {masterDatabaseConfig} from "../config/master-database.config";
 
 @Global()
 @Module({
     imports: [
-        TypeOrmModule.forRoot({
-            type: 'postgres',
-            url: process.env.DATABASE_URL,
-            entities: [Tenant, User, Role, Permission],
-            synchronize: true,
-            ssl: {
-                rejectUnauthorized: false,
-            },
-            extra: {
-                ssl: {rejectUnauthorized: false},
-            },
-        }),
+        TypeOrmModule.forRoot(masterDatabaseConfig()),
         TypeOrmModule.forFeature([Tenant, User, Role, Permission]),
     ],
     exports: [TypeOrmModule],

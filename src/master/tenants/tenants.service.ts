@@ -9,7 +9,7 @@ import {
 import {InjectRepository} from '@nestjs/typeorm';
 import {DataSource, Repository} from 'typeorm';
 import {toDbNameSlug, toSubdomainSlug} from '../../utils';
-import {getTenantDataSource, tenantConnections} from "../../database";
+import {getTenantDataSource, tenantConnections} from "../../database/datasource";
 import {Tenant} from './entities';
 import {User} from "../../tenants/users/entities";
 import * as argon2 from 'argon2';
