@@ -2,7 +2,7 @@ import {BadRequestException, Injectable, InternalServerErrorException, NotFoundE
 import {DataSource, DeepPartial, ObjectLiteral, Repository,} from 'typeorm';
 
 @Injectable()
-export abstract class AbstractService<T extends ObjectLiteral> {
+export abstract class TenantAbstractService<T extends ObjectLiteral> {
   protected paginateLimit = 15;
   protected pageDefault = 1;
 

@@ -1,10 +1,10 @@
 import {Injectable} from '@nestjs/common';
 import {DataSource} from 'typeorm';
 import {User} from "./entities";
-import {AbstractService} from "../../common/abstract.service";
+import {TenantAbstractService} from "../../common/abstract";
 
 @Injectable()
-export class UsersService extends AbstractService<User> {
+export class UsersService extends TenantAbstractService<User> {
     constructor(private readonly dataSource: DataSource) {
         super(dataSource.getRepository(User));
     }

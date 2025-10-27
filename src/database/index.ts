@@ -1,1 +1,2 @@
-export * from './master.datasource';
+export * from './master-database.module';
+export * from './tenant-datasource';

@@ -7,7 +7,7 @@ export class ProductsService {
     /**
      * Utility to get the tenant's Product repository safely
      */
-    private getRepo(req: any): Repository<Product> {
+    protected getRepo(req: any): Repository<Product> {
         const tenantConnection: DataSource = req?.tenantConnection;
         if (!tenantConnection) {
             throw new BadRequestException('Tenant connection not found. Ensure x-tenant-id header is provided.');

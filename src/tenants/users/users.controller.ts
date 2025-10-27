@@ -14,7 +14,7 @@ export class UsersController {
         return this.usersService.create(req, body);
     }
 
-    @TenantAccess('view-user1')
+    @TenantAccess('view-user')
     @Get()
     findAll(@Req() req) {
         return this.usersService.findAll(req);

@@ -2,7 +2,7 @@ import {Injectable, NestMiddleware} from '@nestjs/common';
 import {NextFunction, Request, Response} from 'express';
 import {DataSource} from 'typeorm';
 import {Tenant} from '../../master/tenants/entities';
-import {getTenantDataSource} from '../../utils';
+import {getTenantDataSource} from '../../database';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
