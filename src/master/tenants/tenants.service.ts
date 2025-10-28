@@ -150,7 +150,7 @@ export class TenantsService {
         const roleRepo = connection.getRepository(Role);
         const permissionRepo = connection.getRepository(Permission);
 
-        const defaultPermissions = ['create-user', 'edit-user', 'view-user', 'delete-user'];
+        const defaultPermissions = ['create-user', 'edit-user', 'view-user', 'delete-user', 'create-role', 'edit-role', 'view-role', 'delete-role'];
 
         const permissions = await Promise.all(
             defaultPermissions.map(async (permName) => {

@@ -12,6 +12,7 @@ import {
   Req,
 } from '@nestjs/common';
 import {RoleService} from './role.service';
+import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 
 @Controller('roles')
 export class RoleController {
@@ -22,6 +23,7 @@ export class RoleController {
    * Get paginated roles
    */
   @Get()
+  @TenantAccess('view-role')
   async all(@Req() req, @Query('page') page: number = 1) {
     try {
       return await this.roleService.paginate(req, +page, ['permissions']);
@@ -35,6 +37,7 @@ export class RoleController {
    * Create new role
    */
   @Post()
+  @TenantAccess('create-role')
   async create(
       @Req() req,
       @Body('name') name: string,
@@ -61,6 +64,7 @@ export class RoleController {
    * Get single role by ID
    */
   @Get(':id')
+  @TenantAccess('view-role')
   async get(@Req() req, @Param('id') id: number) {
     try {
       const result = await this.roleService.findOne(req, +id, ['permissions']);
@@ -78,6 +82,7 @@ export class RoleController {
    * Update existing role
    */
   @Put(':id')
+  @TenantAccess('edit-role')
   async update(
       @Req() req,
       @Param('id') id: number,
@@ -113,6 +118,7 @@ export class RoleController {
    * Delete role by ID
    */
   @Delete(':id')
+  @TenantAccess('delete-role')
   async delete(@Req() req, @Param('id') id: number) {
     try {
       return await this.roleService.delete(req, +id);

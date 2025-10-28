@@ -1,7 +1,7 @@
 import {DataSourceOptions} from 'typeorm';
-import {User} from '../master/users/entities';
-import {Role} from '../master/role/entities';
-import {Permission} from '../master/permission/entities';
+import {User} from '../tenants/users/entities';
+import {Role} from '../tenants/role/entities';
+import {Permission} from '../tenants/permission/entities';
 import {Product} from "../tenants/products/entities";
 
 export const tenantDatabaseConfig = (dbName): DataSourceOptions => ({
