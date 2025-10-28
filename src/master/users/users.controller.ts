@@ -2,7 +2,7 @@ import {Body, Controller, Delete, Get, Param, Post, Put, Query} from '@nestjs/co
 import {UsersService} from './users.service';
 import {MasterAccess} from '../../common/decorators';
 
-@Controller('users')
+@Controller('master/users')
 export class UsersController {
     constructor(private readonly usersService: UsersService) {
     }
