@@ -3,14 +3,20 @@ import 'dotenv/config';
 import {SeederRunner} from '../helpers/seeder-runner';
 import {PermissionSeeder, RoleSeeder, UserSeeder} from '../seeders';
 
-async function runMasterSeed() {
+(async () => {
     const runner = new SeederRunner([
         new PermissionSeeder(),
         new RoleSeeder(),
         new UserSeeder(),
     ]);
 
-    await runner.run();
-}
+    const shouldReset =
+        process.argv.includes('--reset') || process.argv.includes('reset');
 
-runMasterSeed();
+    if (shouldReset) {
+        console.log('⚙️  Reset mode enabled: truncating and reseeding...');
+        await runner.truncateAll();
+    }
+
+    await runner.run();
+})();

@@ -1,6 +1,7 @@
 import {Body, Controller, Delete, Get, Param, Post, Put, Query} from '@nestjs/common';
 import {UsersService} from './users.service';
 import {MasterAccess} from '../../common/decorators';
+import {CreateUserDto, UpdateUserDto} from "./dto";
 
 @Controller('master/users')
 export class UsersController {
@@ -15,7 +16,7 @@ export class UsersController {
 
     @Post()
     @MasterAccess('create-user')
-    async create(@Body() body: any) {
+    async create(@Body() body: CreateUserDto) {
         return this.usersService.create(body);
     }
 
@@ -27,7 +28,7 @@ export class UsersController {
 
     @Put(':id')
     @MasterAccess('edit-user')
-    async update(@Param('id') id: number, @Body() body: any) {
+    async update(@Param('id') id: number, @Body() body: UpdateUserDto) {
         return this.usersService.update(id, body);
     }
 

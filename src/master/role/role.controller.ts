@@ -8,31 +8,31 @@ export class RoleController {
   }
 
   @Get()
-  @MasterAccess('view-users')
+  @MasterAccess('view-role')
   async all(@Query('page') page: number = 1) {
     return this.roleService.paginate(page, ['permissions']);
   }
 
   @Post()
-  @MasterAccess('manage-tenants')
+  @MasterAccess('create-role')
   async create(@Body() data: any) {
     return this.roleService.create(data);
   }
 
   @Get(':id')
-  @MasterAccess('view-users')
+  @MasterAccess('view-role')
   async get(@Param('id') id: number) {
     return this.roleService.findOne(id, ['permissions']);
   }
 
   @Put(':id')
-  @MasterAccess('manage-tenants')
+  @MasterAccess('edit-role')
   async update(@Param('id') id: number, @Body() body: any) {
     return this.roleService.update(id, body);
   }
 
   @Delete(':id')
-  @MasterAccess('manage-tenants')
+  @MasterAccess('delete-role')
   async delete(@Param('id') id: number) {
     return this.roleService.delete(id);
   }

@@ -8,7 +8,7 @@ export class PermissionController {
   }
 
   @Get()
-  @MasterAccess('view-users')
+  @MasterAccess('view-permission')
   async all() {
     return this.permissionService.all();
   }

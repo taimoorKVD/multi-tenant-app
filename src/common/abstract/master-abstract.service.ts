@@ -42,7 +42,18 @@ export abstract class MasterAbstractService<T extends ObjectLiteral> {
 
     async create(data: DeepPartial<T>): Promise<any> {
         try {
-            const record = this.repository.create(data);
+            const mappedData: any = {...data};
+
+            // automatically map *_id keys into relations
+            for (const key of Object.keys(data)) {
+                if (key.endsWith('_id')) {
+                    const relationKey = key.replace('_id', '');
+                    mappedData[relationKey] = {id: data[key]};
+                    delete mappedData[key];
+                }
+            }
+
+            const record = this.repository.create(mappedData);
             await this.repository.save(record);
             return {
                 success: true,
@@ -50,7 +61,7 @@ export abstract class MasterAbstractService<T extends ObjectLiteral> {
                 data: record,
             };
         } catch (error) {
-            throw new BadRequestException('Failed to create record');
+            throw new BadRequestException(`Failed to create record: ${error}`);
         }
     }
 
@@ -61,7 +72,12 @@ export abstract class MasterAbstractService<T extends ObjectLiteral> {
                 relations,
             });
             if (!record) throw new NotFoundException('Record not found');
-            return {success: true, data: record};
+            delete (record as any).password;
+            return {
+                success: true,
+                message: 'Record fetched successfully',
+                data: record
+            };
         } catch (error) {
             throw error;
         }
