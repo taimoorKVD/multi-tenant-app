@@ -16,10 +16,11 @@ export abstract class MasterAbstractService<T extends ObjectLiteral> {
                 skip: (page - 1) * take,
                 relations,
             });
+            const sanitized = data.map(({password, ...rest}) => rest);
 
             return {
                 success: true,
-                data,
+                data: sanitized,
                 meta: {
                     total,
                     page,
@@ -31,10 +32,16 @@ export abstract class MasterAbstractService<T extends ObjectLiteral> {
         }
     }
 
-    async all(relations: string[] = []): Promise<any> {
+    async findAll(relations: string[] = []): Promise<any> {
         try {
             const data = await this.repository.find({relations});
-            return {success: true, data};
+            const sanitized = data.map(({password, ...rest}) => rest);
+
+            return {
+                success: true,
+                count: sanitized.length,
+                data: sanitized,
+            }
         } catch (error) {
             throw new InternalServerErrorException('Failed to retrieve records');
         }

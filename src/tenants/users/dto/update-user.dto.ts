@@ -1,4 +1,3 @@
-// src/tenants/users/dto/update-user.dto.ts
 import {IsEmail, IsNumber, IsOptional, IsString, MaxLength, MinLength,} from 'class-validator';
 
 export class UpdateUserDto {
@@ -19,5 +18,5 @@ export class UpdateUserDto {
 
     @IsOptional()
     @IsNumber({}, {message: 'Role ID must be numeric.'})
-    role_id: number;
+    role_id?: number;
 }

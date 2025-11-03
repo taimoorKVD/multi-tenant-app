@@ -1,4 +1,6 @@
 import {
+    BeforeInsert,
+    BeforeUpdate,
     Column,
     CreateDateColumn,
     Entity,
@@ -9,9 +11,18 @@ import {
 } from 'typeorm';
 import {Role} from "../../role/entities";
 import {Exclude} from "class-transformer";
+import * as argon2 from 'argon2';
 
 @Entity('users')
 export class User {
+    @BeforeInsert()
+    @BeforeUpdate()
+    async hashPassword() {
+        if (this.password && !this.password.startsWith('$argon2')) {
+            this.password = await argon2.hash(this.password);
+        }
+    }
+
     @PrimaryGeneratedColumn()
     id: number;
 

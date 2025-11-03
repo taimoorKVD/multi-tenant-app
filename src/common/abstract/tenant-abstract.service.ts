@@ -51,12 +51,14 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     try {
       const repo = this.getRepo(req);
       const data = await repo.find({relations});
+      const sanitized = data.map(({password, ...rest}) => rest);
+
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        count: data.length,
-        data,
-      };
+        count: sanitized.length,
+        data: sanitized,
+      }
     } catch (error) {
       console.error('❌ Fetch all failed:', error);
       throw new InternalServerErrorException('Failed to retrieve records');
@@ -76,6 +78,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
         relations,
         order: {id: 'DESC'} as any,
       });
+      const sanitized = data.map(({password, ...rest}) => rest);
 
       return {
         success: true,
@@ -85,7 +88,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
           page,
           lastPage: Math.ceil(total / take),
         },
-        data,
+        data: sanitized,
       };
     } catch (error) {
       console.error('❌ Pagination failed:', error);
@@ -101,7 +104,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
       const repo = this.getRepo(req);
       const entity = await repo.findOne({where: {id} as any, relations});
       if (!entity) throw new NotFoundException(`Record with ID ${id} not found`);
-
+      delete (entity as any).password;
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
@@ -124,7 +127,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
       const entity = await repo.findOneBy({id} as any);
       if (!entity) throw new NotFoundException(`Record with ID ${id} not found`);
 
-      await repo.update(id, data as any); // 👈 Explicit cast resolves TS2345
+      await repo.update(id, data as any);
       const updated = await repo.findOneBy({id} as any);
 
       return {

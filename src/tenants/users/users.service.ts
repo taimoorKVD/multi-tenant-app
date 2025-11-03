@@ -1,10 +1,9 @@
-import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
+import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {DataSource, Repository} from 'typeorm';
 import {User} from "./entities";
 import {TenantAbstractService} from "../../common/abstract";
 import {Role} from "../role/entities";
-import {CreateUserDto} from "./dto";
-import * as argon2 from 'argon2';
+import {CreateUserDto, UpdateUserDto} from "./dto";
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -23,13 +22,6 @@ export class UsersService extends TenantAbstractService<User> {
             if (existing)
                 throw new BadRequestException('A user with this email already exists.');
 
-            const hashedPassword = await argon2.hash(password, {
-                type: argon2.argon2id,
-                memoryCost: 2 ** 16,
-                timeCost: 3,
-                parallelism: 1,
-            });
-
             let role: Role | null = null;
             if (role_id) {
                 role = await roleRepo.findOne({where: {id: role_id}});
@@ -40,7 +32,7 @@ export class UsersService extends TenantAbstractService<User> {
             const user = userRepo.create({
                 name,
                 email,
-                password: hashedPassword,
+                password,
                 ...(role ? {role} : {}),
             });
 
@@ -57,6 +49,47 @@ export class UsersService extends TenantAbstractService<User> {
             console.error('❌ Tenant user creation failed:', error);
             throw new InternalServerErrorException(
                 `Failed to create tenant user: ${error.message}`,
+            );
+        }
+    }
+
+    async update(req: any, id: number, dto: UpdateUserDto): Promise<any> {
+        try {
+            const userRepo: Repository<User> = this.getRepo(req);
+            const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
+
+            const user = await userRepo.findOne({where: {id}, relations: ['role']});
+            if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
+
+            if (dto.email && dto.email !== user.email) {
+                const existing = await userRepo.findOne({where: {email: dto.email}});
+                if (existing)
+                    throw new BadRequestException('Email already in use by another user.');
+                user.email = dto.email;
+            }
+
+            if (dto.name) user.name = dto.name;
+
+            if (dto.role_id && dto.role_id !== user.role?.id) {
+                const newRole = await roleRepo.findOne({where: {id: dto.role_id}});
+                if (!newRole)
+                    throw new BadRequestException(`Role with ID ${dto.role_id} not found.`);
+                user.role = newRole;
+            }
+
+            const updated = await userRepo.save(user);
+            delete (updated as any).password;
+
+            return {
+                success: true,
+                message: 'Tenant user updated successfully',
+                tenant: req.tenantConnection.options.database,
+                data: updated,
+            };
+        } catch (error) {
+            console.error('❌ Tenant user update failed:', error);
+            throw new InternalServerErrorException(
+                `Failed to update tenant user: ${error.message}`,
             );
         }
     }
