@@ -1,11 +1,11 @@
-import {IsArray, IsString, MinLength} from 'class-validator';
+import { IsArray, IsString, MinLength } from 'class-validator';
 
 export class RoleUpdateDto {
-    @IsString()
-    @MinLength(2)
-    name: string;
+  @IsString()
+  @MinLength(2)
+  name: string;
 
-    @IsArray()
-    @IsString({each: true})
-    permissionIds: string[];
+  @IsArray()
+  @IsString({ each: true })
+  permissionIds: string[];
 }

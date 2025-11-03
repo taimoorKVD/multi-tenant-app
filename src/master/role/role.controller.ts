@@ -1,11 +1,19 @@
-import {Body, Controller, Delete, Get, Param, Post, Put, Query,} from '@nestjs/common';
-import {RoleService} from './role.service';
-import {MasterAccess} from '../../common/decorators';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { RoleService } from './role.service';
+import { MasterAccess } from '../../common/decorators';
 
 @Controller('master/roles')
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {
-  }
+  constructor(private readonly roleService: RoleService) {}
 
   @Get()
   @MasterAccess('view-role')

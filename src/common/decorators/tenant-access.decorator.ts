@@ -9,8 +9,8 @@ export const PERMISSIONS_KEY = 'permissions';
  * @example @TenantAccess('view-user', 'edit-user')
  */
 export function TenantAccess(...permissions: string[]) {
-    return applyDecorators(
-        SetMetadata(PERMISSIONS_KEY, permissions),
-        UseGuards(TenantAuthGuard, TenantPermissionsGuard),
-    );
+  return applyDecorators(
+    SetMetadata(PERMISSIONS_KEY, permissions),
+    UseGuards(TenantAuthGuard, TenantPermissionsGuard),
+  );
 }

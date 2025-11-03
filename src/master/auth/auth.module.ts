@@ -8,16 +8,16 @@ import { User } from '../users/entities';
 import { MasterJwtStrategy } from './strategies/master-jwt.strategy';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([User]),
-        PassportModule,
-        JwtModule.register({
-            secret: process.env.MASTER_JWT_SECRET || 'master_secret_key',
-            signOptions: { expiresIn: '2h' },
-        }),
-    ],
-    providers: [MasterAuthService, MasterJwtStrategy],
-    controllers: [MasterAuthController],
-    exports: [MasterAuthService],
+  imports: [
+    TypeOrmModule.forFeature([User]),
+    PassportModule,
+    JwtModule.register({
+      secret: process.env.MASTER_JWT_SECRET || 'master_secret_key',
+      signOptions: { expiresIn: '2h' },
+    }),
+  ],
+  providers: [MasterAuthService, MasterJwtStrategy],
+  controllers: [MasterAuthController],
+  exports: [MasterAuthService],
 })
 export class MasterAuthModule {}

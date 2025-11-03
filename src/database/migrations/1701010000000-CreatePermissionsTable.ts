@@ -1,10 +1,10 @@
-import {MigrationInterface, QueryRunner} from 'typeorm';
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreatePermissionsTable1701010000000 implements MigrationInterface {
-    name = 'CreatePermissionsTable1701010000000';
+  name = 'CreatePermissionsTable1701010000000';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "permissions"
             (
                 "id"          SERIAL       NOT NULL,
@@ -16,7 +16,7 @@ export class CreatePermissionsTable1701010000000 implements MigrationInterface {
             );
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             CREATE TABLE "role_permissions"
             (
                 "role_id"       INTEGER NOT NULL,
@@ -28,10 +28,10 @@ export class CreatePermissionsTable1701010000000 implements MigrationInterface {
                     REFERENCES "permissions" ("id") ON DELETE CASCADE
             );
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP TABLE "role_permissions";`);
-        await queryRunner.query(`DROP TABLE "permissions";`);
-    }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE "role_permissions";`);
+    await queryRunner.query(`DROP TABLE "permissions";`);
+  }
 }
