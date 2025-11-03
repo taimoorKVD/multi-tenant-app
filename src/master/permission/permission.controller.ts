@@ -10,6 +10,6 @@ export class PermissionController {
   @Get()
   @MasterAccess('view-permission')
   async all() {
-    return this.permissionService.all();
+    return this.permissionService.findAll();
   }
 }
