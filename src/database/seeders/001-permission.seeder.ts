@@ -31,6 +31,11 @@ export class PermissionSeeder implements ISeeder {
                 actions: ['create', 'view', 'edit', 'delete'],
                 description: 'Tenant management permissions',
             },
+            {
+                module: 'job-position',
+                actions: ['create', 'view', 'edit', 'delete'],
+                description: 'Job position management permissions',
+            },
         ];
 
         const allPermissions = modules.flatMap(mod =>

@@ -1,8 +1,8 @@
-import { DataSourceOptions } from 'typeorm';
-import { User } from '../tenants/users/entities';
-import { Role } from '../tenants/role/entities';
-import { Permission } from '../tenants/permission/entities';
-import { Product } from '../tenants/products/entities';
+import {DataSourceOptions} from 'typeorm';
+import {User} from '../tenants/users/entities';
+import {Role} from '../tenants/role/entities';
+import {Permission} from '../tenants/permission/entities';
+import {Product} from '../tenants/products/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
     const isProduction = process.env.NODE_ENV === 'production';
@@ -17,11 +17,7 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
         entities: [User, Product, Role, Permission],
         synchronize: true,
         logging: process.env.DB_LOGGING === 'true',
-
-        // ✅ Enable SSL only in production
         ssl: isProduction ? { rejectUnauthorized: false } : false,
-
-        // ✅ Add `extra.ssl` only for production environments
         ...(isProduction
             ? {
                 extra: {
