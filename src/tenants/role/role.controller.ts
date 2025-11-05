@@ -11,13 +11,12 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import {RoleService} from './role.service';
-import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
+import { RoleService } from './role.service';
+import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
 
 @Controller('roles')
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {
-  }
+  constructor(private readonly roleService: RoleService) {}
 
   /**
    * Get paginated roles
@@ -39,14 +38,14 @@ export class RoleController {
   @Post()
   @TenantAccess('create-role')
   async create(
-      @Req() req,
-      @Body('name') name: string,
-      @Body('permissions') ids: number[],
+    @Req() req,
+    @Body('name') name: string,
+    @Body('permissions') ids: number[],
   ) {
     try {
       const data = {
         name,
-        permissions: ids?.map((id) => ({id})) || [],
+        permissions: ids?.map((id) => ({ id })) || [],
       };
 
       const result = await this.roleService.create(req, data);
@@ -73,8 +72,8 @@ export class RoleController {
     } catch (error) {
       console.error('❌ Fetch role failed:', error);
       throw error instanceof NotFoundException
-          ? error
-          : new InternalServerErrorException('Failed to retrieve role');
+        ? error
+        : new InternalServerErrorException('Failed to retrieve role');
     }
   }
 
@@ -84,14 +83,14 @@ export class RoleController {
   @Put(':id')
   @TenantAccess('edit-role')
   async update(
-      @Req() req,
-      @Param('id') id: number,
-      @Body('name') name: string,
-      @Body('permissions') ids: number[],
+    @Req() req,
+    @Param('id') id: number,
+    @Body('name') name: string,
+    @Body('permissions') ids: number[],
   ) {
     try {
       // Update role name
-      await this.roleService.update(req, +id, {name});
+      await this.roleService.update(req, +id, { name });
 
       // Re-fetch the updated role
       const roleData = await this.roleService.findOne(req, +id);
@@ -100,7 +99,7 @@ export class RoleController {
       // Update permissions by recreating relationship
       const updateData = {
         ...role,
-        permissions: ids?.map((pid) => ({id: pid})) || [],
+        permissions: ids?.map((pid) => ({ id: pid })) || [],
       };
 
       const updated = await this.roleService.create(req, updateData);

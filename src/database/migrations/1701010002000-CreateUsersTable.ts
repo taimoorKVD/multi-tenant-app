@@ -1,10 +1,10 @@
-import {MigrationInterface, QueryRunner} from 'typeorm';
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateUsersTable1701010002000 implements MigrationInterface {
-    name = 'CreateUsersTable1701010002000';
+  name = 'CreateUsersTable1701010002000';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "users"
             (
                 "id"         SERIAL       NOT NULL,
@@ -21,9 +21,9 @@ export class CreateUsersTable1701010002000 implements MigrationInterface {
                     ON UPDATE CASCADE
             );
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP TABLE "users";`);
-    }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE "users";`);
+  }
 }

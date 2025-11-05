@@ -25,13 +25,13 @@ A scalable multi-tenant architecture built with NestJS and TypeORM, supporting o
 
 ## 🧩 Tech Stack
 
-| Layer           | Technology                           |
-| --------------- | ---------------------------------- |
-| Backend Framework | NestJS                             |
-| ORM              | TypeORM                            |
-| Database         | PostgreSQL (Master + Tenant DBs)  |
-| Authentication  | JWT (HTTP-only cookies)            |
-| API Docs         | Swagger (@nestjs/swagger)           |
+| Layer             | Technology                       |
+| ----------------- | -------------------------------- |
+| Backend Framework | NestJS                           |
+| ORM               | TypeORM                          |
+| Database          | PostgreSQL (Master + Tenant DBs) |
+| Authentication    | JWT (HTTP-only cookies)          |
+| API Docs          | Swagger (@nestjs/swagger)        |
 
 ---
 
@@ -61,7 +61,6 @@ src/
 │ └── guards/
 └── seed.ts
 
-
 ---
 
 ## ⚙️ Environment Variables
@@ -89,16 +88,16 @@ NODE_ENV=development
 
 ## 🏗️ Master Database Schema
 
-| Table          | Description                              |
-| -------------- | ------------------------------------   |
-| tenants        | Tenant metadata (name, domain, DB info)|
-| users          | Global users and roles                  |
+| Table   | Description                             |
+| ------- | --------------------------------------- |
+| tenants | Tenant metadata (name, domain, DB info) |
+| users   | Global users and roles                  |
 
 Example record in `tenants`:
 
-| id | name     | domain           | db_name    | db_user | db_pass  | db_host   | created_at  |
-|----|----------|------------------|------------|---------|----------|-----------|-------------|
-| 1  | Tenant A | tenantA.app.com  | tenant_a_db| tenant_a| secret123| localhost | 2025-10-21  |
+| id  | name     | domain          | db_name     | db_user  | db_pass   | db_host   | created_at |
+| --- | -------- | --------------- | ----------- | -------- | --------- | --------- | ---------- |
+| 1   | Tenant A | tenantA.app.com | tenant_a_db | tenant_a | secret123 | localhost | 2025-10-21 |
 
 ---
 
@@ -117,25 +116,28 @@ Example record in `tenants`:
 ## 🧠 Example API Endpoints
 
 ### Auth Routes
-| Method | Endpoint       | Description                |
-|--------|----------------|----------------------------|
-| POST   | `/auth/register` | Register new user          |
+
+| Method | Endpoint         | Description                     |
+| ------ | ---------------- | ------------------------------- |
+| POST   | `/auth/register` | Register new user               |
 | POST   | `/auth/login`    | Authenticate and set JWT cookie |
-| GET    | `/auth/profile`  | Get current user profile   |
+| GET    | `/auth/profile`  | Get current user profile        |
 
 ### Master Routes
-| Method | Endpoint          | Description               |
-|--------|-------------------|---------------------------|
-| POST   | `/tenants/create` | Create new tenant and DB  |
-| GET    | `/tenants`        | List all tenants          |
-| GET    | `/tenants/:id`    | Fetch tenant details      |
+
+| Method | Endpoint          | Description              |
+| ------ | ----------------- | ------------------------ |
+| POST   | `/tenants/create` | Create new tenant and DB |
+| GET    | `/tenants`        | List all tenants         |
+| GET    | `/tenants/:id`    | Fetch tenant details     |
 
 ### Tenant Routes
-| Method | Endpoint         | Description               |
-|--------|------------------|---------------------------|
-| GET    | `/dashboard`     | Tenant dashboard data     |
-| GET    | `/users`         | Tenant users list         |
-| POST   | `/users`         | Add user to tenant DB     |
+
+| Method | Endpoint     | Description           |
+| ------ | ------------ | --------------------- |
+| GET    | `/dashboard` | Tenant dashboard data |
+| GET    | `/users`     | Tenant users list     |
+| POST   | `/users`     | Add user to tenant DB |
 
 ---
 
@@ -145,7 +147,6 @@ npm install
 npm run typeorm migration:run
 npm run start:dev
 
-
 - Access API: `http://localhost:4000`
 - Swagger Docs: `http://localhost:4000/api`
 
@@ -153,24 +154,24 @@ npm run start:dev
 
 ## 🧱 Roadmap (Planned Features)
 
-| Feature                | Description                                |
-|------------------------|--------------------------------------------|
-| Tenant Setup Wizard     | Automated DB provisioning for new tenants |
-| Tenant Schema Sync      | Auto-migrate models to tenant DBs          |
-| Subscription Module    | Billing & renewal management per tenant    |
-| Custom Domains          | Dynamic tenant subdomains and SSL           |
+| Feature             | Description                               |
+| ------------------- | ----------------------------------------- |
+| Tenant Setup Wizard | Automated DB provisioning for new tenants |
+| Tenant Schema Sync  | Auto-migrate models to tenant DBs         |
+| Subscription Module | Billing & renewal management per tenant   |
+| Custom Domains      | Dynamic tenant subdomains and SSL         |
 
 ---
 
 ## 🧰 Scripts
 
-| Command             | Description               |
-|---------------------|---------------------------|
-| `npm run start:dev`   | Run server in dev mode     |
-| `npm run start:prod`  | Run compiled app          |
-| `npm run build`       | Compile TypeScript        |
-| `npm run test`        | Run tests                 |
-| `npm run lint`        | Lint codebase             |
+| Command              | Description            |
+| -------------------- | ---------------------- |
+| `npm run start:dev`  | Run server in dev mode |
+| `npm run start:prod` | Run compiled app       |
+| `npm run build`      | Compile TypeScript     |
+| `npm run test`       | Run tests              |
+| `npm run lint`       | Lint codebase          |
 
 ---
 

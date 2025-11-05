@@ -1,39 +1,59 @@
-import {Body, Controller, Delete, Get, Param, Post, Put, Query,} from '@nestjs/common';
-import {RoleService} from './role.service';
-import {MasterAccess} from '../../common/decorators';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { RoleService } from './role.service';
+import { MasterAccess } from '../../common/decorators';
+import { CreateRoleDto, UpdateRoleDto } from './dto';
+import { Role } from './entities';
+import { ApiResponse } from 'src/common/abstract';
 
 @Controller('master/roles')
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {
-  }
+  constructor(private readonly roleService: RoleService) {}
 
+  // ✅ Get paginated roles
   @Get()
   @MasterAccess('view-role')
-  async all(@Query('page') page: number = 1) {
+  async all(@Query('page') page = 1) {
     return this.roleService.paginate(page, ['permissions']);
   }
 
+  // ✅ Create new role
   @Post()
   @MasterAccess('create-role')
-  async create(@Body() data: any) {
-    return this.roleService.create(data);
+  async create(@Body() dto: CreateRoleDto): Promise<ApiResponse<Role>> {
+    return this.roleService.create(dto as any);
   }
 
+  // ✅ Get single role by ID
   @Get(':id')
   @MasterAccess('view-role')
-  async get(@Param('id') id: number) {
+  async get(@Param('id', ParseIntPipe) id: number) {
     return this.roleService.findOne(id, ['permissions']);
   }
 
+  // ✅ Update role
   @Put(':id')
   @MasterAccess('edit-role')
-  async update(@Param('id') id: number, @Body() body: any) {
-    return this.roleService.update(id, body);
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRoleDto,
+  ): Promise<ApiResponse<Role>> {
+    return this.roleService.update(id, dto as any);
   }
 
+  // ✅ Delete role
   @Delete(':id')
   @MasterAccess('delete-role')
-  async delete(@Param('id') id: number) {
+  async delete(@Param('id', ParseIntPipe) id: number) {
     return this.roleService.delete(id);
   }
 }

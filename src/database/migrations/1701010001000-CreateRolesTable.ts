@@ -1,10 +1,10 @@
-import {MigrationInterface, QueryRunner} from 'typeorm';
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateRolesTable1701010001000 implements MigrationInterface {
-    name = 'CreateRolesTable1701010001000';
+  name = 'CreateRolesTable1701010001000';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "roles"
             (
                 "id"         SERIAL       NOT NULL,
@@ -14,9 +14,9 @@ export class CreateRolesTable1701010001000 implements MigrationInterface {
                 CONSTRAINT "PK_roles_id" PRIMARY KEY ("id")
             );
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP TABLE "roles";`);
-    }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE "roles";`);
+  }
 }
