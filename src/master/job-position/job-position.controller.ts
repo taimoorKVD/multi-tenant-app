@@ -9,31 +9,31 @@ export class JobPositionController {
     }
 
     @Get()
-    @MasterAccess('view-job-position')
+    @MasterAccess('view-jobposition')
     async all(@Query('page') page: number = 1) {
         return this.jobPositionService.paginate(page);
     }
 
     @Post()
-    @MasterAccess('create-job-position')
+    @MasterAccess('create-jobposition')
     async create(@Body() body: CreateJobPositionDto) {
         return this.jobPositionService.create(body);
     }
 
     @Get(':id')
-    @MasterAccess('view-job-position')
+    @MasterAccess('view-jobposition')
     async findOne(@Param('id') id: number) {
         return this.jobPositionService.findOne(id);
     }
 
     @Put(':id')
-    @MasterAccess('edit-job-position')
+    @MasterAccess('edit-jobposition')
     async update(@Param('id') id: number, @Body() body: UpdateJobPositionDto) {
         return this.jobPositionService.update(id, body);
     }
 
     @Delete(':id')
-    @MasterAccess('delete-job-position')
+    @MasterAccess('delete-jobposition')
     async delete(@Param('id') id: number) {
         return this.jobPositionService.delete(id);
     }

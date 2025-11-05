@@ -4,7 +4,7 @@ import {JobPositionController} from './job-position.controller';
 import {MasterAuthModule} from "../auth/auth.module";
 
 @Module({
-    imports: [MasterAuthModule,],
+    imports: [MasterAuthModule],
     controllers: [JobPositionController],
     providers: [JobPositionService],
 })

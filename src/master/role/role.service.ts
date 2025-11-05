@@ -8,9 +8,9 @@ import { Repository, DeepPartial } from 'typeorm';
 import {
   MasterAbstractService,
   ApiResponse,
-} from '../../common/abstract/master-abstract.service';
-import { Role } from './entities/role.entity';
-import { Permission } from '../permission/entities/permission.entity';
+} from '../../common/abstract';
+import { Role } from './entities';
+import { Permission } from '../permission/entities';
 
 @Injectable()
 export class RoleService extends MasterAbstractService<Role> {
