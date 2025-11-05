@@ -4,15 +4,29 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DeepPartial, ObjectLiteral, Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
+
+interface PaginatedMeta {
+  total: number;
+  page: number;
+  lastPage: number;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T | T[];
+  count?: number;
+  meta?: PaginatedMeta;
+}
 
 @Injectable()
-export abstract class MasterAbstractService<T extends ObjectLiteral> {
+export abstract class MasterAbstractService<T extends Record<string, any>> {
   protected readonly paginateLimit = 15;
 
   protected constructor(protected readonly repository: Repository<T>) {}
 
-  async paginate(page = 1, relations: string[] = []): Promise<any> {
+  async paginate(page = 1, relations: string[] = []): Promise<ApiResponse<Partial<T>>> {
     try {
       const take = this.paginateLimit;
       const [data, total] = await this.repository.findAndCount({
@@ -20,111 +34,99 @@ export abstract class MasterAbstractService<T extends ObjectLiteral> {
         skip: (page - 1) * take,
         relations,
       });
-      const sanitized = data.map(({ password, ...rest }) => rest);
+
+      const sanitized = data.map((item) => {
+        const clone = { ...item };
+        delete (clone as any).password;
+        return clone;
+      });
 
       return {
         success: true,
         data: sanitized,
-        meta: {
-          total,
-          page,
-          lastPage: Math.ceil(total / take),
-        },
+        meta: { total, page, lastPage: Math.ceil(total / take) },
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to paginate records');
     }
   }
 
-  async findAll(relations: string[] = []): Promise<any> {
+  async findAll(relations: string[] = []): Promise<ApiResponse<Partial<T>>> {
     try {
       const data = await this.repository.find({ relations });
-      const sanitized = data.map(({ password, ...rest }) => rest);
+      const sanitized = data.map((item) => {
+        const clone = { ...item };
+        delete (clone as any).password;
+        return clone;
+      });
 
-      return {
-        success: true,
-        count: sanitized.length,
-        data: sanitized,
-      };
-    } catch (error) {
+      return { success: true, count: sanitized.length, data: sanitized };
+    } catch {
       throw new InternalServerErrorException('Failed to retrieve records');
     }
   }
 
-  async create(data: DeepPartial<T>): Promise<any> {
+  async create(data: DeepPartial<T>): Promise<ApiResponse<T>> {
     try {
       const mappedData: any = { ...data };
 
-      // automatically map *_id keys into relations
+      // Auto-map foreign key IDs (like role_id → role: {id})
       for (const key of Object.keys(data)) {
         if (key.endsWith('_id')) {
           const relationKey = key.replace('_id', '');
-          mappedData[relationKey] = { id: data[key] };
+          mappedData[relationKey] = { id: (data as any)[key] };
           delete mappedData[key];
         }
       }
 
       const record = this.repository.create(mappedData);
-      await this.repository.save(record);
-      return {
-        success: true,
-        message: 'Record created successfully',
-        data: record,
-      };
-    } catch (error) {
-      throw new BadRequestException(`Failed to create record: ${error}`);
+      const saved = await this.repository.save(record);
+
+      return { success: true, message: 'Record created successfully', data: saved };
+    } catch (error: any) {
+      throw new BadRequestException(`Failed to create record: ${error.message}`);
     }
   }
 
-  async findOne(id: number, relations: string[] = []): Promise<any> {
-    try {
-      const record = await this.repository.findOne({
-        where: { id } as any,
-        relations,
-      });
-      if (!record) throw new NotFoundException('Record not found');
-      delete (record as any).password;
-      return {
-        success: true,
-        message: 'Record fetched successfully',
-        data: record,
-      };
-    } catch (error) {
-      throw error;
-    }
+  async findOne(id: number, relations: string[] = []): Promise<ApiResponse<Partial<T>>> {
+    const record = await this.repository.findOne({
+      where: { id } as any,
+      relations,
+    });
+    if (!record) throw new NotFoundException('Record not found');
+
+    const clone = { ...record };
+    delete (clone as any).password;
+
+    return { success: true, message: 'Record fetched successfully', data: clone };
   }
 
-  async update(id: number, data: DeepPartial<T>): Promise<any> {
+  async update(id: number, data: DeepPartial<T>): Promise<ApiResponse<T>> {
     try {
       const record = await this.repository.findOneBy({ id } as any);
       if (!record) throw new NotFoundException('Record not found');
 
+      // ✅ Modern TypeORM automatically handles DeepPartial<T>
       await this.repository.update(id, data as any);
-      const updated = await this.repository.findOneBy({ id } as any);
 
-      return {
-        success: true,
-        message: 'Record updated successfully',
-        data: updated,
-      };
-    } catch (error) {
-      throw new InternalServerErrorException('Failed to update record');
+      const updated = await this.repository.findOneBy({ id } as any);
+      if (!updated) throw new NotFoundException('Failed to fetch updated record');
+
+      return { success: true, message: 'Record updated successfully', data: updated };
+    } catch (error: any) {
+      throw new InternalServerErrorException(`Failed to update record: ${error.message}`);
     }
   }
 
-  async delete(id: number): Promise<any> {
+  async delete(id: number): Promise<ApiResponse<null>> {
     try {
       const record = await this.repository.findOneBy({ id } as any);
       if (!record) throw new NotFoundException('Record not found');
 
       await this.repository.delete(id);
-      return {
-        success: true,
-        message: 'Record deleted successfully',
-        deletedId: id,
-      };
-    } catch (error) {
-      throw new InternalServerErrorException('Failed to delete record');
+      return { success: true, message: 'Record deleted successfully' };
+    } catch (error: any) {
+      throw new InternalServerErrorException(`Failed to delete record: ${error.message}`);
     }
   }
 }

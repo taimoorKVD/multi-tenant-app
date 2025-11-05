@@ -6,7 +6,9 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { Match } from 'src/common/decorators/match.decorator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -18,7 +20,10 @@ export class UpdateUserDto {
   @IsEmail({}, { message: 'Email must be a valid email address.' })
   email?: string;
 
-  @IsOptional()
+  /**
+   * ✅ Password validation only if provided.
+   */
+  @ValidateIf((o) => o.password && o.password.trim() !== '')
   @IsString({ message: 'Password must be a string.' })
   @MinLength(6, { message: 'Password must be at least 6 characters long.' })
   @MaxLength(50, { message: 'Password must not exceed 50 characters.' })
@@ -26,6 +31,15 @@ export class UpdateUserDto {
     message: 'Password contains invalid characters.',
   })
   password?: string;
+
+  /**
+   * ✅ Confirm password only validated if password exists.
+   */
+  @ValidateIf((o) => o.password && o.password.trim() !== '')
+  @IsString({ message: 'Confirm Password must be a string.' })
+  @Match('password', { message: 'Passwords do not match.' })
+  @IsOptional()
+  password_confirm?: string;
 
   @IsOptional()
   @IsNumber({}, { message: 'Role ID must be a number.' })

@@ -1,11 +1,5 @@
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsNumber,
-  IsString,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import { Match } from '../../../common/decorators/match.decorator';
 
 export class CreateUserDto {
   @IsString({ message: 'Name must be a string.' })
@@ -22,6 +16,11 @@ export class CreateUserDto {
   @MinLength(6, { message: 'Password must be at least 6 characters long.' })
   @MaxLength(50, { message: 'Password must not exceed 50 characters.' })
   password: string;
+
+  @IsString({ message: 'Confirm Password must be a string.' })
+  @IsNotEmpty({ message: 'Confirm Password is required.' })
+  @Match('password', { message: 'Passwords do not match.' })
+  password_confirm: string;
 
   @IsNumber({}, { message: 'Role ID must be a number.' })
   @IsNotEmpty({ message: 'Role ID is required.' })

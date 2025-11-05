@@ -1,9 +1,4 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { MASTER_PERMISSIONS_KEY } from '../decorators';
 
@@ -24,9 +19,7 @@ export class MasterPermissionsGuard implements CanActivate {
     if (!perms.length) return true;
 
     const userPerms =
-      user.role?.permissions?.map((p) =>
-        typeof p === 'string' ? p : p.name,
-      ) || [];
+      user.role?.permissions?.map((p) => (typeof p === 'string' ? p : p.name)) || [];
 
     const missing = perms.filter((p) => !userPerms.includes(p));
     if (missing.length)

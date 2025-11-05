@@ -23,7 +23,7 @@ export class Role {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @ManyToMany(() => Permission, { cascade: true })
+  @ManyToMany(() => Permission)
   @JoinTable({
     name: 'role_permissions',
     joinColumn: { name: 'role_id', referencedColumnName: 'id' },
