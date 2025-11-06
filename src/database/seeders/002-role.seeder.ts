@@ -20,9 +20,7 @@ export class RoleSeeder implements ISeeder {
       {
         name: 'Admin',
         permissions: permissions.filter((p) =>
-          ['view-role', 'view-user', 'view-tenant', 'view-permission'].includes(
-            p.name,
-          ),
+          ['view-role', 'view-user', 'view-tenant', 'view-permission'].includes(p.name),
         ),
       },
     ];

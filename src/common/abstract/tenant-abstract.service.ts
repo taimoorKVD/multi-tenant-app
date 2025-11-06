@@ -22,9 +22,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     }
 
     // Cast to Repository<T> explicitly to satisfy TypeORM’s internal type system
-    return tenantConnection.getRepository<T>(
-      this.repository.target as any,
-    ) as Repository<T>;
+    return tenantConnection.getRepository<T>(this.repository.target as any) as Repository<T>;
   }
 
   /**
@@ -72,11 +70,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
   /**
    * Paginated list
    */
-  async paginate(
-    req: any,
-    page = this.pageDefault,
-    relations: string[] = [],
-  ): Promise<any> {
+  async paginate(req: any, page = this.pageDefault, relations: string[] = []): Promise<any> {
     try {
       const repo = this.getRepo(req);
       const take = this.paginateLimit;
@@ -111,8 +105,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     try {
       const repo = this.getRepo(req);
       const entity = await repo.findOne({ where: { id } as any, relations });
-      if (!entity)
-        throw new NotFoundException(`Record with ID ${id} not found`);
+      if (!entity) throw new NotFoundException(`Record with ID ${id} not found`);
       delete (entity as any).password;
       return {
         success: true,
@@ -134,8 +127,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     try {
       const repo = this.getRepo(req);
       const entity = await repo.findOneBy({ id } as any);
-      if (!entity)
-        throw new NotFoundException(`Record with ID ${id} not found`);
+      if (!entity) throw new NotFoundException(`Record with ID ${id} not found`);
 
       await repo.update(id, data as any);
       const updated = await repo.findOneBy({ id } as any);
@@ -161,8 +153,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     try {
       const repo = this.getRepo(req);
       const entity = await repo.findOneBy({ id } as any);
-      if (!entity)
-        throw new NotFoundException(`Record with ID ${id} not found`);
+      if (!entity) throw new NotFoundException(`Record with ID ${id} not found`);
 
       await repo.delete(id);
 

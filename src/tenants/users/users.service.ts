@@ -19,20 +19,17 @@ export class UsersService extends TenantAbstractService<User> {
   async create(req: any, dto: CreateUserDto): Promise<any> {
     try {
       const userRepo: Repository<User> = this.getRepo(req);
-      const roleRepo: Repository<Role> =
-        req.tenantConnection.getRepository(Role);
+      const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
 
       const { name, email, password, role_id } = dto;
 
       const existing = await userRepo.findOne({ where: { email } });
-      if (existing)
-        throw new BadRequestException('A user with this email already exists.');
+      if (existing) throw new BadRequestException('A user with this email already exists.');
 
       let role: Role | null = null;
       if (role_id) {
         role = await roleRepo.findOne({ where: { id: role_id } });
-        if (!role)
-          throw new BadRequestException(`Role with ID ${role_id} not found.`);
+        if (!role) throw new BadRequestException(`Role with ID ${role_id} not found.`);
       }
 
       const user = userRepo.create({
@@ -53,17 +50,14 @@ export class UsersService extends TenantAbstractService<User> {
       };
     } catch (error) {
       console.error('❌ Tenant user creation failed:', error);
-      throw new InternalServerErrorException(
-        `Failed to create tenant user: ${error.message}`,
-      );
+      throw new InternalServerErrorException(`Failed to create tenant user: ${error.message}`);
     }
   }
 
   async update(req: any, id: number, dto: UpdateUserDto): Promise<any> {
     try {
       const userRepo: Repository<User> = this.getRepo(req);
-      const roleRepo: Repository<Role> =
-        req.tenantConnection.getRepository(Role);
+      const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
 
       const user = await userRepo.findOne({
         where: { id },
@@ -75,10 +69,7 @@ export class UsersService extends TenantAbstractService<User> {
         const existing = await userRepo.findOne({
           where: { email: dto.email },
         });
-        if (existing)
-          throw new BadRequestException(
-            'Email already in use by another user.',
-          );
+        if (existing) throw new BadRequestException('Email already in use by another user.');
         user.email = dto.email;
       }
 
@@ -86,10 +77,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       if (dto.role_id && dto.role_id !== user.role?.id) {
         const newRole = await roleRepo.findOne({ where: { id: dto.role_id } });
-        if (!newRole)
-          throw new BadRequestException(
-            `Role with ID ${dto.role_id} not found.`,
-          );
+        if (!newRole) throw new BadRequestException(`Role with ID ${dto.role_id} not found.`);
         user.role = newRole;
       }
 
@@ -104,9 +92,7 @@ export class UsersService extends TenantAbstractService<User> {
       };
     } catch (error) {
       console.error('❌ Tenant user update failed:', error);
-      throw new InternalServerErrorException(
-        `Failed to update tenant user: ${error.message}`,
-      );
+      throw new InternalServerErrorException(`Failed to update tenant user: ${error.message}`);
     }
   }
 }
