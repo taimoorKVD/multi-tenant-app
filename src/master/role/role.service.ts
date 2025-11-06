@@ -1,14 +1,7 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DeepPartial } from 'typeorm';
-import {
-  MasterAbstractService,
-  ApiResponse,
-} from '../../common/abstract';
+import { MasterAbstractService, ApiResponse } from '../../common/abstract';
 import { Role } from './entities';
 import { Permission } from '../permission/entities';
 
@@ -34,9 +27,7 @@ export class RoleService extends MasterAbstractService<Role> {
         : [];
 
       if (!validPermissions.length) {
-        throw new BadRequestException(
-          'At least one valid permission must be selected.',
-        );
+        throw new BadRequestException('At least one valid permission must be selected.');
       }
 
       const role = this.roleRepo.create({

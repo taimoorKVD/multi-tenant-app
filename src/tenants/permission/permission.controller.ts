@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  InternalServerErrorException,
-  Req,
-} from '@nestjs/common';
+import { Controller, Get, InternalServerErrorException, Req } from '@nestjs/common';
 import { PermissionService } from './permission.service';
 
 @Controller('permissions')

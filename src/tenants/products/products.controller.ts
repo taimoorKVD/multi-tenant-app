@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-  Req,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { Product } from './entities';
 
@@ -16,11 +7,7 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Post()
-  create(
-    @Req() req,
-    @Param('tenantId') tenantId: string,
-    @Body() body: Partial<Product>,
-  ) {
+  create(@Req() req, @Param('tenantId') tenantId: string, @Body() body: Partial<Product>) {
     return this.productsService.create(req, body);
   }
 
@@ -30,11 +17,7 @@ export class ProductsController {
   }
 
   @Get(':id')
-  findOne(
-    @Req() req,
-    @Param('tenantId') tenantId: string,
-    @Param('id') id: number,
-  ) {
+  findOne(@Req() req, @Param('tenantId') tenantId: string, @Param('id') id: number) {
     return this.productsService.findOne(req, id);
   }
 
@@ -49,11 +32,7 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  remove(
-    @Req() req,
-    @Param('tenantId') tenantId: string,
-    @Param('id') id: number,
-  ) {
+  remove(@Req() req, @Param('tenantId') tenantId: string, @Param('id') id: number) {
     return this.productsService.remove(req, id);
   }
 }

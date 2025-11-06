@@ -37,11 +37,7 @@ export class RoleController {
    */
   @Post()
   @TenantAccess('create-role')
-  async create(
-    @Req() req,
-    @Body('name') name: string,
-    @Body('permissions') ids: number[],
-  ) {
+  async create(@Req() req, @Body('name') name: string, @Body('permissions') ids: number[]) {
     try {
       const data = {
         name,

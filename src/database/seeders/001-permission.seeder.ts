@@ -1,6 +1,6 @@
-import {ISeeder} from '../interfaces/seeder.interface';
-import {MasterDataSource} from '../datasource';
-import {Permission} from '../../master/permission/entities';
+import { ISeeder } from '../interfaces/seeder.interface';
+import { MasterDataSource } from '../datasource';
+import { Permission } from '../../master/permission/entities';
 
 export class PermissionSeeder implements ISeeder {
   name = 'PermissionSeeder';

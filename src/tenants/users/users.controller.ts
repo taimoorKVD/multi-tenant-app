@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-  Req,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
 import { CreateUserDto, UpdateUserDto } from './dto';

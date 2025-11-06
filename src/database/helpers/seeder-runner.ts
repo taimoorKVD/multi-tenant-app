@@ -49,10 +49,7 @@ export class SeederRunner {
       await ds.synchronize();
       console.log('🏗️  Tables recreated successfully using entity metadata.');
     } catch (error) {
-      console.error(
-        '⚠️ Failed to synchronize tables automatically:',
-        error.message,
-      );
+      console.error('⚠️ Failed to synchronize tables automatically:', error.message);
     }
   }
 
