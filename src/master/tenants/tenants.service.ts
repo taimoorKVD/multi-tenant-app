@@ -17,10 +17,12 @@ import {Role} from '../../tenants/role/entities';
 import {CreateTenantDto} from './dto';
 import {IAdminSetup, ITenantResponse} from './interfaces';
 import {Permission} from '../../tenants/permission/entities';
+import {ApiResponse} from "../../common/abstract";
 
 @Injectable()
 export class TenantsService {
   private readonly logger = new Logger(TenantsService.name);
+  protected readonly paginateLimit = 15;
 
   constructor(
       @InjectRepository(Tenant)
@@ -29,35 +31,38 @@ export class TenantsService {
   ) {
   }
 
-  async findAll() {
+  async paginate(page = 1): Promise<ApiResponse<Partial<Tenant>>> {
     try {
-      const tenants = await this.tenantRepo.find({
-        order: { id: 'DESC' },
+      const take = this.paginateLimit || 10;
+      const skip = (page - 1) * take;
+
+      const [data, total] = await this.tenantRepo.findAndCount({
+        order: {id: 'DESC'},
+        take,
+        skip,
       });
 
       return {
         success: true,
-        message: tenants.length
-          ? `${tenants.length} tenants found`
-          : 'No tenants available',
-        count: tenants.length,
-        data: tenants.map((t) => ({
-          id: t.id,
-          name: t.name,
-          dbName: t.dbName,
-          subDomain: t.subdomain,
-          customDomain: t.customDomain,
-          createdAt: t.createdAt,
-        })),
+        message:
+            data.length > 0
+                ? `${data.length} tenant${data.length > 1 ? 's' : ''} retrieved successfully`
+                : 'No tenants found',
+        data,
+        meta: {total, page, lastPage: Math.ceil(total / take)},
       };
     } catch (error) {
-      this.logger.error('❌ Failed to fetch tenants:', error.stack);
+      this.logger.error(
+          `❌ Tenant retrieval failed: ${error.message}`,
+          error.stack,
+      );
 
       throw new InternalServerErrorException(
-        'An unexpected error occurred while retrieving tenants',
+          'An unexpected error occurred while fetching tenants. Please try again later.',
       );
     }
   }
+
 
   /**
    * Create a new tenant with rollback on error.
@@ -213,7 +218,7 @@ export class TenantsService {
   }
 
   protected buildResponse(
-    tenantName: string,
+    name: string,
     dbName: string,
     subdomain: string,
     customDomain?: string,
@@ -227,9 +232,9 @@ export class TenantsService {
 
     return {
       success: true,
-      message: `Tenant "${tenantName}" created successfully`,
+      message: `Tenant "${name}" created successfully`,
       data: {
-        tenantName,
+        name,
         database: dbName,
         subdomain,
         customDomain: customDomain || null,

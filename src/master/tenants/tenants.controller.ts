@@ -19,7 +19,7 @@ export class TenantsController {
   @Get()
   @MasterAccess('view-tenant')
   async findAll() {
-    return this.tenantsService.findAll();
+    return this.tenantsService.paginate();
   }
 
   @Post()

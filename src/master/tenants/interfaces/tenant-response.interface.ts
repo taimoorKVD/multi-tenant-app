@@ -4,7 +4,7 @@ export interface ITenantResponse {
   success: boolean;
   message: string;
   data: {
-    tenantName: string;
+    name: string;
     database: string;
     subdomain: string;
     customDomain?: string | null;
