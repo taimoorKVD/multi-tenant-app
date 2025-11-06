@@ -3,24 +3,39 @@ import {User} from '../master/users/entities';
 import {Role} from '../master/role/entities';
 import {Permission} from '../master/permission/entities';
 import {Tenant} from '../master/tenants/entities';
-import {JobPosition} from "../master/job-position/entities";
+import {JobPosition} from '../master/job-position/entities';
 
 export const masterDatabaseConfig = (): DataSourceOptions => {
-    const isProduction = process.env.NODE_ENV === 'production';
+    const env = process.env.NODE_ENV?.toLowerCase() || 'development';
+    const isProduction = env === 'production';
+
+    const requiredVars = ['DATABASE_URL'];
+    for (const variable of requiredVars) {
+        if (isProduction && !process.env[variable]) {
+            throw new Error(`❌ Missing required environment variable: ${variable}`);
+        }
+    }
+
+    const databaseUrl = process.env.DATABASE_URL || '';
+    const logging = process.env.DB_LOGGING === 'true';
+
+    console.info(
+        `🏗️ Master DB connection initialised | ENV=${env.toUpperCase()} | SSL=${isProduction ? 'ENABLED' : 'DISABLED'}`,
+    );
 
     return {
         type: 'postgres',
-        url: process.env.DATABASE_URL,
+        url: databaseUrl,
         entities: [User, Role, Permission, Tenant, JobPosition],
         synchronize: false,
-        logging: process.env.DB_LOGGING === 'true',
+        logging,
         ssl: isProduction ? {rejectUnauthorized: false} : false,
-        ...(isProduction
+        extra: isProduction
             ? {
-                extra: {
-                    ssl: {rejectUnauthorized: false},
-                },
+                ssl: {rejectUnauthorized: false},
+                max: 10,
+                connectionTimeoutMillis: 5000,
             }
-            : {}),
+            : {},
     };
 };

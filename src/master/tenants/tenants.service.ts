@@ -6,30 +6,28 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { toDbNameSlug, toSubdomainSlug } from '../../utils';
-import {
-  getTenantDataSource,
-  tenantConnections,
-} from '../../database/datasource';
-import { Tenant } from './entities';
-import { User } from '../../tenants/users/entities';
+import {InjectRepository} from '@nestjs/typeorm';
+import {DataSource, Repository} from 'typeorm';
+import {toDbNameSlug, toSubdomainSlug} from '../../utils';
+import {getTenantDataSource, tenantConnections,} from '../../database/datasource';
+import {Tenant} from './entities';
+import {User} from '../../tenants/users/entities';
 import * as argon2 from 'argon2';
-import { Role } from '../../tenants/role/entities';
-import { CreateTenantDto } from './dto';
-import { IAdminSetup, ITenantResponse } from './interfaces';
-import { Permission } from '../../tenants/permission/entities';
+import {Role} from '../../tenants/role/entities';
+import {CreateTenantDto} from './dto';
+import {IAdminSetup, ITenantResponse} from './interfaces';
+import {Permission} from '../../tenants/permission/entities';
 
 @Injectable()
 export class TenantsService {
   private readonly logger = new Logger(TenantsService.name);
 
   constructor(
-    @InjectRepository(Tenant)
-    private tenantRepo: Repository<Tenant>,
-    private dataSource: DataSource,
-  ) {}
+      @InjectRepository(Tenant)
+      private tenantRepo: Repository<Tenant>,
+      private dataSource: DataSource,
+  ) {
+  }
 
   async findAll() {
     try {
@@ -107,7 +105,7 @@ export class TenantsService {
 
       await this.rollbackTenantCreation(tenantName, dbName, tenantRecord);
       throw new InternalServerErrorException(
-        `Tenant creation failed. All changes have been rolled back.`,
+          `Tenant creation failed: ${error.message}. All operations were rolled back to ensure data consistency.`,
       );
     }
   }
