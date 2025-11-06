@@ -1,6 +1,6 @@
-import { ISeeder } from '../interfaces/seeder.interface';
-import { MasterDataSource } from '../datasource';
-import { Permission } from '../../master/permission/entities';
+import {ISeeder} from '../interfaces/seeder.interface';
+import {MasterDataSource} from '../datasource';
+import {Permission} from '../../master/permission/entities';
 
 export class PermissionSeeder implements ISeeder {
   name = 'PermissionSeeder';
@@ -30,6 +30,11 @@ export class PermissionSeeder implements ISeeder {
         module: 'tenant',
         actions: ['create', 'view', 'edit', 'delete'],
         description: 'Tenant management permissions',
+      },
+      {
+        module: 'jobposition',
+        actions: ['create', 'view', 'edit', 'delete'],
+        description: 'Job position management permissions',
       },
     ];
 

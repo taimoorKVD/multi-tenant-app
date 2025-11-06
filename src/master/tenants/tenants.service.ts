@@ -94,7 +94,7 @@ export class TenantsService {
 
       await this.rollbackTenantCreation(tenantName, dbName, tenantRecord);
       throw new InternalServerErrorException(
-        `Tenant creation failed. All changes have been rolled back.`,
+        `Tenant creation failed: ${error.message}. All operations were rolled back to ensure data consistency.`,
       );
     }
   }
