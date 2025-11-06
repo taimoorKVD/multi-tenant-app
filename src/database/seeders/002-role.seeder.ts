@@ -1,4 +1,3 @@
-// src/database/seeders/master/002-roles.seeder.ts
 import { ISeeder } from '../interfaces/seeder.interface';
 import { MasterDataSource } from '../datasource';
 import { Role } from '../../master/role/entities';

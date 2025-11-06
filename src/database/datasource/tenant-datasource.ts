@@ -4,8 +4,9 @@ import { tenantDatabaseConfig } from '../../config/tenant-database.config';
 export const tenantConnections: Record<string, DataSource> = {};
 
 export async function getTenantDataSource(dbName: string): Promise<DataSource> {
-  if (tenantConnections[dbName]) {
-    return tenantConnections[dbName];
+  const existing = tenantConnections[dbName];
+  if (existing?.isInitialized) {
+    return existing;
   }
 
   const dataSource = new DataSource(tenantDatabaseConfig(dbName));

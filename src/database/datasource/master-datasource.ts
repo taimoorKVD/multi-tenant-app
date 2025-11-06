@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
-import { masterDatabaseConfig } from '../../config/master-database.config';
+import {DataSource} from 'typeorm';
+import {masterDatabaseConfig} from '../../config/master-database.config';
 
-export const MasterDataSource = new DataSource(masterDatabaseConfig());
+export const MasterDataSource = new DataSource(masterDatabaseConfig);

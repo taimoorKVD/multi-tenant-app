@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { JobPositionService } from './job-position.service';
 import { MasterAccess } from '../../common/decorators';
-import { CreateJobPositionDto, UpdateJobPositionDto } from './dto';
+import { CreateJobPositionDto, UpdateJobPositionDto, PushJobPositionDto } from './dto';
 
 @Controller('master/jobpositions')
 export class JobPositionController {
@@ -35,5 +35,11 @@ export class JobPositionController {
   @MasterAccess('delete-jobposition')
   async delete(@Param('id') id: number) {
     return this.jobPositionService.delete(id);
+  }
+
+  @Post('push-to-tenants')
+  @MasterAccess('view-jobposition')
+  async pushToTenants(@Body() dto: PushJobPositionDto) {
+    return await this.jobPositionService.pushToTenants(dto);
   }
 }

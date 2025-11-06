@@ -1,17 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { MasterAbstractService } from '../../common/abstract';
-import { User } from './entities';
-import { CreateUserDto, UpdateUserDto } from './dto';
-import { Role } from '../role/entities';
+import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {InjectRepository} from '@nestjs/typeorm';
+import {Repository} from 'typeorm';
+import {MasterAbstractService} from '../../common/abstract';
+import {User} from './entities';
+import {CreateUserDto, UpdateUserDto} from './dto';
+import {Role} from '../role/entities';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class UsersService extends MasterAbstractService<User> {
   constructor(
-    @InjectRepository(User) private readonly userRepo: Repository<User>,
-    @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
+      @InjectRepository(User)
+      private readonly userRepo: Repository<User>,
+      @InjectRepository(Role)
+      private readonly roleRepo: Repository<Role>,
   ) {
     super(userRepo);
   }
