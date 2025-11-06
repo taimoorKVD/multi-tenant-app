@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { Tenant } from './entities';
 import { CreateTenantDto } from './dto';

@@ -9,10 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { toDbNameSlug, toSubdomainSlug } from '../../utils';
-import {
-  getTenantDataSource,
-  tenantConnections,
-} from '../../database/datasource';
+import { getTenantDataSource, tenantConnections } from '../../database/datasource';
 import { Tenant } from './entities';
 import { User } from '../../tenants/users/entities';
 import * as argon2 from 'argon2';
@@ -39,9 +36,7 @@ export class TenantsService {
 
       return {
         success: true,
-        message: tenants.length
-          ? `${tenants.length} tenants found`
-          : 'No tenants available',
+        message: tenants.length ? `${tenants.length} tenants found` : 'No tenants available',
         count: tenants.length,
         data: tenants.map((t) => ({
           id: t.id,
@@ -93,17 +88,9 @@ export class TenantsService {
 
       const adminSetup = await this.bootstrapAdmin(tenantConnection, subdomain);
 
-      return this.buildResponse(
-        tenantName,
-        dbName,
-        subdomain,
-        customDomain,
-        adminSetup,
-      );
+      return this.buildResponse(tenantName, dbName, subdomain, customDomain, adminSetup);
     } catch (error) {
-      this.logger.error(
-        `❌ Tenant creation failed for "${tenantName}": ${error.message}`,
-      );
+      this.logger.error(`❌ Tenant creation failed for "${tenantName}": ${error.message}`);
 
       await this.rollbackTenantCreation(tenantName, dbName, tenantRecord);
       throw new InternalServerErrorException(
@@ -112,9 +99,7 @@ export class TenantsService {
     }
   }
 
-  private async ensureUniqueTenant(
-    name: string,
-  ): Promise<{ subdomain: string }> {
+  private async ensureUniqueTenant(name: string): Promise<{ subdomain: string }> {
     const baseSubdomain = toSubdomainSlug(name);
     let subdomain = baseSubdomain;
     let counter = 1;
@@ -151,16 +136,11 @@ export class TenantsService {
         this.logger.warn(`⚠️ Rolled back tenant metadata: ${tenantName}`);
       }
     } catch (rollbackError) {
-      this.logger.error(
-        `❌ Rollback failed for tenant "${tenantName}": ${rollbackError.message}`,
-      );
+      this.logger.error(`❌ Rollback failed for tenant "${tenantName}": ${rollbackError?.message}`);
     }
   }
 
-  private async bootstrapAdmin(
-    connection: DataSource,
-    subdomain: string,
-  ): Promise<IAdminSetup> {
+  private async bootstrapAdmin(connection: DataSource, subdomain: string): Promise<IAdminSetup> {
     const userRepo = connection.getRepository(User);
     const roleRepo = connection.getRepository(Role);
     const permissionRepo = connection.getRepository(Permission);
@@ -262,9 +242,7 @@ export class TenantsService {
       }
 
       const dbName = tenant.dbName;
-      this.logger.log(
-        `🧹 Preparing to delete tenant "${tenant.name}" and DB "${dbName}"`,
-      );
+      this.logger.log(`🧹 Preparing to delete tenant "${tenant.name}" and DB "${dbName}"`);
 
       if (tenantConnections[dbName]) {
         const conn = tenantConnections[dbName];
@@ -293,13 +271,8 @@ export class TenantsService {
         await this.dataSource.query(`DROP DATABASE IF EXISTS "${dbName}"`);
         this.logger.log(`🗑️ Database dropped: ${dbName}`);
       } catch (dropErr) {
-        this.logger.error(
-          `❌ Failed to drop database ${dbName}:`,
-          dropErr.stack,
-        );
-        throw new InternalServerErrorException(
-          `Failed to drop database "${dbName}"`,
-        );
+        this.logger.error(`❌ Failed to drop database ${dbName}:`, dropErr.stack);
+        throw new InternalServerErrorException(`Failed to drop database "${dbName}"`);
       }
 
       await this.tenantRepo.remove(tenant);
@@ -315,15 +288,10 @@ export class TenantsService {
         },
       };
     } catch (error) {
-      this.logger.error(
-        `❌ Tenant deletion failed: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`❌ Tenant deletion failed: ${error.message}`, error.stack);
 
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(
-        `Failed to delete tenant: ${error.message}`,
-      );
+      throw new InternalServerErrorException(`Failed to delete tenant: ${error.message}`);
     }
   }
 
@@ -347,15 +315,10 @@ export class TenantsService {
         data: tenant,
       };
     } catch (error) {
-      this.logger.error(
-        `❌ Failed to update tenant: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`❌ Failed to update tenant: ${error.message}`, error.stack);
 
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(
-        'An unexpected error occurred while updating tenant',
-      );
+      throw new InternalServerErrorException('An unexpected error occurred while updating tenant');
     }
   }
 }
