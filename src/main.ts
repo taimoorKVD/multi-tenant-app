@@ -1,9 +1,9 @@
 import 'ejs';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
-import { ValidationPipe, RequestMethod } from '@nestjs/common';
+import {NestFactory} from '@nestjs/core';
+import {AppModule} from './app.module';
+import {NestExpressApplication} from '@nestjs/platform-express';
+import {join} from 'path';
+import {RequestMethod, ValidationPipe} from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -12,7 +12,7 @@ async function bootstrap() {
   app.setViewEngine('ejs');
 
   app.setGlobalPrefix('api', {
-    exclude: [{ path: '/', method: RequestMethod.GET }],
+    exclude: [{path: '/', method: RequestMethod.GET}],
   });
 
   app.useGlobalPipes(
@@ -24,7 +24,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: ['http://localhost:4200'], // Angular frontend
+    origin: [process.env.FRONTEND_URL || 'http://localhost:4200',], // Angular frontend
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: false, // ❌ set to false for token-based auth
