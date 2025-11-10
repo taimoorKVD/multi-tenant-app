@@ -1,12 +1,13 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import {BadRequestException, Injectable, UnauthorizedException} from '@nestjs/common';
+import {JwtService} from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { DataSource } from 'typeorm';
-import { User } from '../users/entities';
+import {DataSource} from 'typeorm';
+import {User} from '../users/entities';
 
 @Injectable()
 export class TenantAuthService {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(private readonly jwtService: JwtService) {
+  }
 
   async login(req: any, dto: { email: string; password: string }) {
     const tenantConnection: DataSource = req.tenantConnection;
@@ -49,7 +50,7 @@ export class TenantAuthService {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role.name,
+        role: user.role,
       },
     };
   }

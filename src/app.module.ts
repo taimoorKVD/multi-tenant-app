@@ -4,11 +4,13 @@ import {ConfigModule} from '@nestjs/config';
 import {TenantMiddleware} from './common/middleware';
 import {AppController} from './app.controller';
 import {MasterModule} from './master/master.module';
+import {TenantsModule} from "./tenants/tenants.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({isGlobal: true}),
     MasterModule,
+    TenantsModule
   ],
   controllers: [AppController],
 })

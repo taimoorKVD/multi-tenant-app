@@ -59,6 +59,27 @@ export class TenantsService {
     }
   }
 
+  async findOne(id: number, relations: string[] = []): Promise<ApiResponse<Partial<Tenant>>> {
+    try {
+      const record = await this.tenantRepo.findOne({
+        where: {id} as any,
+        relations,
+      });
+      if (!record) throw new NotFoundException('Record not found');
+
+      const clone = {...record};
+      delete (clone as any).password;
+
+      return {success: true, message: 'Record fetched successfully', data: clone};
+    } catch (error) {
+      this.logger.error(`❌ Tenant retrieval failed: ${error.message}`, error.stack);
+
+      throw new InternalServerErrorException(
+          'An unexpected error occurred while fetching tenants. Please try again later.',
+      );
+    }
+  }
+
   /**
    * Create a new tenant with rollback on error.
    */

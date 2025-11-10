@@ -2,7 +2,7 @@ import { Body, Controller, Post, Req, UnauthorizedException } from '@nestjs/comm
 import { TenantAuthService } from './auth.service';
 import { LoginDto } from './dto';
 
-@Controller('tenant/:tenantId/auth')
+@Controller('tenant/:tenantId')
 export class TenantAuthController {
   constructor(private readonly authService: TenantAuthService) {}
 
