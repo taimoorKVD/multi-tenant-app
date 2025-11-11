@@ -6,18 +6,18 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { toDbNameSlug, toSubdomainSlug } from '../../utils';
-import { getTenantDataSource, tenantConnections } from '../../database/datasource';
-import { Tenant } from './entities';
-import { User } from '../../tenants/users/entities';
+import {InjectRepository} from '@nestjs/typeorm';
+import {DataSource, Repository} from 'typeorm';
+import {toDbNameSlug, toSubdomainSlug} from '../../utils';
+import {getTenantDataSource, tenantConnections} from '../../database/datasource';
+import {Tenant} from './entities';
+import {User} from '../../tenants/users/entities';
 import * as argon2 from 'argon2';
-import { Role } from '../../tenants/role/entities';
-import { CreateTenantDto } from './dto';
-import { IAdminSetup, ITenantResponse } from './interfaces';
-import { Permission } from '../../tenants/permission/entities';
-import { ApiResponse } from '../../common/abstract';
+import {Role} from '../../tenants/role/entities';
+import {CreateTenantDto} from './dto';
+import {IAdminSetup, ITenantResponse} from './interfaces';
+import {Permission} from '../../tenants/permission/entities';
+import {ApiResponse} from '../../common/abstract';
 
 @Injectable()
 export class TenantsService {
@@ -25,9 +25,9 @@ export class TenantsService {
   protected readonly paginateLimit = 15;
 
   constructor(
-    @InjectRepository(Tenant)
-    private tenantRepo: Repository<Tenant>,
-    private dataSource: DataSource,
+      @InjectRepository(Tenant)
+      private tenantRepo: Repository<Tenant>,
+      private dataSource: DataSource,
   ) {}
 
   async paginate(page = 1): Promise<ApiResponse<Partial<Tenant>>> {
@@ -178,6 +178,14 @@ export class TenantsService {
       'edit-role',
       'view-role',
       'delete-role',
+      'create-job-position',
+      'edit-job-position',
+      'view-job-position',
+      'delete-job-position',
+      'create-location',
+      'edit-location',
+      'view-location',
+      'delete-location',
     ];
 
     const permissions = await Promise.all(

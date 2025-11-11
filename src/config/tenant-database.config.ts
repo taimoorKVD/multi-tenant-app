@@ -3,7 +3,8 @@ import {User} from '../tenants/users/entities';
 import {Role} from '../tenants/role/entities';
 import {Permission} from '../tenants/permission/entities';
 import {Product} from '../tenants/products/entities';
-import {JobPosition} from "../master/job-position/entities";
+import {JobPosition} from "../tenants/job-positions/entities";
+import {Location} from "../tenants/locations/entities";
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
   const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -51,7 +52,7 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
     username,
     password,
     database: dbName,
-    entities: [User, Product, Role, Permission, JobPosition],
+    entities: [User, Product, Role, Permission, JobPosition, Location],
     synchronize: true,
     logging,
     ssl: isProduction ? {rejectUnauthorized: false} : false,
