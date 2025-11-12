@@ -2,7 +2,9 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { JobPositionService } from './job-position.service';
 import { MasterAccess } from '../../common/decorators';
 import { CreateJobPositionDto, UpdateJobPositionDto, PushJobPositionDto } from './dto';
+import {ApiTags} from "@nestjs/swagger";
 
+@ApiTags('Job Position Management')
 @Controller('master/jobpositions')
 export class JobPositionController {
   constructor(private readonly jobPositionService: JobPositionService) {}

@@ -14,7 +14,9 @@ import { MasterAccess } from '../../common/decorators';
 import { CreateRoleDto, UpdateRoleDto } from './dto';
 import { Role } from './entities';
 import { ApiResponse } from 'src/common/abstract';
+import {ApiTags} from "@nestjs/swagger";
 
+@ApiTags('Role Management')
 @Controller('master/roles')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}

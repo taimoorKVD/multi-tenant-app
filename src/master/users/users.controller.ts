@@ -18,6 +18,7 @@ import { CreateUserDto, UpdateUserDto } from './dto';
 import { MasterAuthGuard } from '../auth/guards';
 import { MasterAuthService } from '../auth/auth.service';
 import { Request } from 'express';
+import {ApiTags} from "@nestjs/swagger";
 
 /**
  * ✅ Type-safe request interface for authenticated users
@@ -30,6 +31,7 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+@ApiTags('User Management')
 @Controller('master/users')
 export class UsersController {
   constructor(
