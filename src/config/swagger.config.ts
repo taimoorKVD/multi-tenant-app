@@ -51,6 +51,13 @@ export function setupSwagger(app: INestApplication) {
     });
 
     SwaggerModule.setup('api/collection/master', app, masterDocument, {
+        customCssUrl: [
+            'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.19.0/swagger-ui.css',
+        ],
+        customJs: [
+            'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.19.0/swagger-ui-bundle.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.19.0/swagger-ui-standalone-preset.js',
+        ],
         swaggerOptions: {
             persistAuthorization: true,
             tagsSorter: (a, b) => {
