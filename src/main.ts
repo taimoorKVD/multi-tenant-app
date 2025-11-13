@@ -4,7 +4,7 @@ import {AppModule} from './app.module';
 import {NestExpressApplication} from '@nestjs/platform-express';
 import {join} from 'path';
 import {RequestMethod, ValidationPipe} from '@nestjs/common';
-import { setupSwagger } from './config/swagger.config';
+import {setupSwagger} from './config/swagger.config';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -27,10 +27,10 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: [process.env.FRONTEND_URL || 'http://localhost:4200',], // Angular frontend
+    origin: [process.env.FRONTEND_URL || 'http://localhost:4200'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false, // ❌ set to false for token-based auth
+    credentials: false,
   });
 
   await app.listen(process.env.PORT ?? 3000);

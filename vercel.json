@@ -1,12 +1,16 @@
 {
-  "rewrites": [
+  "version": 2,
+  "builds": [{ "src": "api/index.ts", "use": "@vercel/node" }],
+  "routes": [
     {
-      "source": "/api/collection/master/:match*",
-      "destination": "/api"
-    },
-    {
-      "source": "/api/collection/tenant/:match*",
-      "destination": "/api"
+      "src": "/.*",
+      "dest": "api/index.ts",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+        "Access-Control-Allow-Credentials": "true"
+      }
     }
   ]
 }
