@@ -2,15 +2,14 @@ import {INestApplication} from '@nestjs/common';
 import {DocumentBuilder, SwaggerModule} from '@nestjs/swagger';
 import {TenantsModule} from '../tenants/tenants.module';
 import {MasterAuthModule} from "../master/auth/auth.module";
-import {UsersModule} from "../master/users/users.module";
-import {RoleModule} from "../master/role/role.module";
-import {PermissionModule} from "../master/permission/permission.module";
-import {JobPositionModule} from "../master/job-position/job-position.module";
+import {UsersModule, UsersModule as TenantUsersModule} from "../master/users/users.module";
+import {RoleModule, RoleModule as TenantRoleModule} from "../master/role/role.module";
+import {PermissionModule, PermissionModule as TenantPermissionModule} from "../master/permission/permission.module";
+import {
+    JobPositionModule,
+    JobPositionModule as TenantJobPositionModule
+} from "../master/job-position/job-position.module";
 import {TenantAuthModule} from "../tenants/auth/auth.module";
-import {UsersModule as TenantUsersModule} from "../master/users/users.module";
-import {RoleModule as TenantRoleModule} from "../master/role/role.module";
-import {PermissionModule as TenantPermissionModule} from "../master/permission/permission.module";
-import {JobPositionModule as TenantJobPositionModule} from "../master/job-position/job-position.module";
 
 export function setupSwagger(app: INestApplication) {
     const commonAuth = {
@@ -67,7 +66,12 @@ export function setupSwagger(app: INestApplication) {
                 const idxB = order.indexOf(b);
                 return (idxA === -1 ? order.length : idxA) - (idxB === -1 ? order.length : idxB);
             },
-            operationsSorter: 'alpha',
+            operationsSorter: (a: any, b: any) => {
+                const order = ['post', 'get', 'patch', 'put', 'delete'];
+                const methodA = a.get('method');
+                const methodB = b.get('method');
+                return order.indexOf(methodA) - order.indexOf(methodB);
+            },
             docExpansion: 'full',
             defaultModelsExpandDepth: -1,
         },
