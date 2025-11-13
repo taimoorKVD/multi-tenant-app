@@ -1,15 +1,16 @@
-import { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { TenantsModule } from '../tenants/tenants.module';
-import { MasterAuthModule } from '../master/auth/auth.module';
-import { UsersModule, UsersModule as TenantUsersModule } from '../master/users/users.module';
-import { RoleModule, RoleModule as TenantRoleModule } from '../master/role/role.module';
-import { PermissionModule, PermissionModule as TenantPermissionModule } from '../master/permission/permission.module';
-import {
-    JobPositionModule,
-    JobPositionModule as TenantJobPositionModule,
-} from '../master/job-position/job-position.module';
-import { TenantAuthModule } from '../tenants/auth/auth.module';
+import {INestApplication} from '@nestjs/common';
+import {DocumentBuilder, SwaggerModule} from '@nestjs/swagger';
+import {TenantsModule} from '../tenants/tenants.module';
+import {MasterAuthModule} from '../master/auth/auth.module';
+import {UsersModule as MasterUsersModule} from '../master/users/users.module';
+import {RoleModule as MasterRoleModule} from '../master/role/role.module';
+import {PermissionModule as MasterPermissionModule} from '../master/permission/permission.module';
+import {JobPositionModule as MasterJobPositionModule} from '../master/job-position/job-position.module';
+import {TenantAuthModule} from '../tenants/auth/auth.module';
+import {UsersModule as TenantUsersModule} from '../tenants/users/users.module';
+import {RoleModule as TenantRoleModule} from '../tenants/role/role.module';
+import {PermissionModule as TenantPermissionModule} from '../tenants/permission/permission.module';
+import {JobPositionsModule as TenantJobPositionModule} from '../tenants/job-positions/job-positions.module';
 
 export function setupSwagger(app: INestApplication) {
     // 🔐 Common bearer auth
@@ -43,11 +44,11 @@ export function setupSwagger(app: INestApplication) {
     const masterDocument = SwaggerModule.createDocument(app, masterConfig, {
         include: [
             MasterAuthModule,
-            UsersModule,
+            MasterUsersModule,
             TenantsModule,
-            RoleModule,
-            PermissionModule,
-            JobPositionModule,
+            MasterRoleModule,
+            MasterPermissionModule,
+            MasterJobPositionModule,
         ],
     });
 
