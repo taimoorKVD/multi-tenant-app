@@ -2,15 +2,18 @@ import { Controller, Get } from '@nestjs/common';
 import { PermissionService } from './permission.service';
 import { MasterAccess } from '../../common/decorators';
 import {ApiTags} from "@nestjs/swagger";
+import {PermissionSwagger} from "./swagger";
 
 @ApiTags('Permission Management')
+@PermissionSwagger.Auth()
 @Controller('master/permissions')
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
 
   @Get()
   @MasterAccess('view-permission')
+  @PermissionSwagger.GetAll()
   async all() {
-    return this.permissionService.findAll();
+    return this.permissionService.paginate();
   }
 }

@@ -98,7 +98,7 @@ export function setupSwagger(app: INestApplication) {
                 const methodB = b.get('method');
                 return order.indexOf(methodA) - order.indexOf(methodB);
             },
-            docExpansion: 'full',
+            docExpansion: 'list',
             defaultModelsExpandDepth: -1,
         },
         customSiteTitle: 'Master API Docs',
