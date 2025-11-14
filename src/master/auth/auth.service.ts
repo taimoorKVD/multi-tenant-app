@@ -1,24 +1,26 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import {JwtService} from '@nestjs/jwt';
+import {Repository} from 'typeorm';
+import {InjectRepository} from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { User } from '../users/entities';
-import { LoginDto } from './dto';
-import { UpdateUserDto } from '../users/dto';
+import {User} from '../users/entities';
+import {LoginDto} from './dto';
+import {UpdateUserDto} from '../users/dto';
 
 @Injectable()
 export class MasterAuthService {
   constructor(
-    @InjectRepository(User)
-    private readonly userRepo: Repository<User>,
-    private readonly jwtService: JwtService,
-  ) {}
+      @InjectRepository(User)
+      private readonly userRepo: Repository<User>,
+      private readonly jwtService: JwtService,
+  ) {
+  }
 
   /** ✅ Validate user credentials */
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -93,21 +95,63 @@ export class MasterAuthService {
   }
 
   async updateProfile(id: number, dto: UpdateUserDto) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) throw new BadRequestException('User not found');
+    try {
+      const user = await this.userRepo.findOne({where: {id}});
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
 
-    if (dto.name) user.name = dto.name;
-    if (dto.email) user.email = dto.email;
+      if (dto.name) {
+        const trimmed = dto.name.trim();
+        if (!trimmed) {
+          throw new BadRequestException('Name cannot be empty');
+        }
+        user.name = trimmed;
+      }
 
-    if (dto.password) {
-      if (dto.password_confirm !== dto.password)
-        throw new BadRequestException('Passwords do not match');
-      user.password = await argon2.hash(dto.password);
+      if (dto.password) {
+        if (!dto.password_confirm) {
+          throw new BadRequestException('Confirm password is required');
+        }
+        if (dto.password !== dto.password_confirm) {
+          throw new BadRequestException('Passwords do not match');
+        }
+
+        if (dto.password.length < 6) {
+          throw new BadRequestException(
+              'Password must be at least 6 characters long',
+          );
+        }
+
+        user.password = await argon2.hash(dto.password);
+      }
+
+      const saved = await this.userRepo.save(user).catch((error) => {
+        console.error('Error saving user profile:', error);
+        throw new InternalServerErrorException(
+            'Unable to update profile at this time. Please try again later.',
+        );
+      });
+
+      delete (saved as any).password;
+
+      return {
+        success: true,
+        message: 'Profile updated successfully',
+        data: saved,
+      };
+    } catch (error) {
+      if (
+          error instanceof NotFoundException ||
+          error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      console.error('Unexpected error in updateProfile:', error);
+      throw new InternalServerErrorException(
+          'Something went wrong while updating your profile.',
+      );
     }
-
-    const saved = await this.userRepo.save(user);
-    delete (saved as any).password;
-
-    return saved;
   }
 }

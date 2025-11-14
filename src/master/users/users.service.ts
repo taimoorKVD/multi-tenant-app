@@ -19,7 +19,7 @@ export class UsersService extends MasterAbstractService<User> {
   }
 
   /**
-   * ✅ Create a new user (using CreateUserDto)
+   * Create a new user (using CreateUserDto)
    */
   async create(dto: CreateUserDto) {
     try {
@@ -59,7 +59,7 @@ export class UsersService extends MasterAbstractService<User> {
   }
 
   /**
-   * ✅ Update user (using UpdateUserDto)
+   * Update user (using UpdateUserDto)
    */
   async update(id: number, dto: UpdateUserDto) {
     try {
@@ -68,15 +68,6 @@ export class UsersService extends MasterAbstractService<User> {
         relations: ['role'],
       });
       if (!user) throw new NotFoundException('User not found.');
-
-      // Update email if provided
-      if (dto.email && dto.email !== user.email) {
-        const existing = await this.userRepo.findOne({
-          where: { email: dto.email },
-        });
-        if (existing) throw new BadRequestException('Email already in use by another user.');
-        user.email = dto.email;
-      }
 
       // Update name if provided
       if (dto.name) user.name = dto.name;
@@ -110,65 +101,6 @@ export class UsersService extends MasterAbstractService<User> {
       };
     } catch (error) {
       throw new BadRequestException(`Failed to update user: ${error.message}`);
-    }
-  }
-
-  async updateProfile(userId: number, dto: UpdateUserDto) {
-    try {
-      const user = await this.userRepo.findOne({
-        where: { id: userId },
-        relations: ['role'],
-      });
-
-      if (!user) throw new NotFoundException('User not found.');
-
-      // 🧹 Sanitize DTO fields
-      const cleanDto = { ...dto };
-      delete (cleanDto as any).password_confirm;
-      delete (cleanDto as any).role_id;
-      delete (cleanDto as any).id;
-
-      Object.keys(cleanDto).forEach((key) => {
-        if (cleanDto[key] === '' || cleanDto[key] === null || Number.isNaN(cleanDto[key])) {
-          delete cleanDto[key];
-        }
-      });
-
-      // ✅ Update name if provided
-      if (cleanDto.name && cleanDto.name.trim() !== '') {
-        user.name = cleanDto.name.trim();
-      }
-
-      // ✅ Prevent duplicate email
-      if (cleanDto.email && cleanDto.email !== user.email) {
-        const existing = await this.userRepo.findOne({
-          where: { email: cleanDto.email },
-        });
-        if (existing) throw new BadRequestException('Email already in use.');
-        user.email = cleanDto.email;
-      }
-
-      // ✅ Update password only if provided and non-empty
-      if (cleanDto.password && cleanDto.password.trim() !== '') {
-        user.password = await argon2.hash(cleanDto.password, {
-          type: argon2.argon2id,
-          memoryCost: 2 ** 16,
-          timeCost: 3,
-          parallelism: 1,
-        });
-      }
-
-      // ✅ Save updates
-      const saved = await this.userRepo.save(user);
-      delete (saved as any).password;
-
-      return {
-        success: true,
-        message: 'Profile updated successfully',
-        data: saved,
-      };
-    } catch (error) {
-      throw new BadRequestException(`Failed to update profile: ${error.message}`);
     }
   }
 }

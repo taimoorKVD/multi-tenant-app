@@ -16,12 +16,8 @@ export class UpdateUserDto {
   @MaxLength(100, { message: 'Name must not exceed 100 characters.' })
   name?: string;
 
-  @IsOptional()
-  @IsEmail({}, { message: 'Email must be a valid email address.' })
-  email?: string;
-
   /**
-   * ✅ Password validation only if provided.
+   * Password validation only if provided.
    */
   @ValidateIf((o) => o.password && o.password.trim() !== '')
   @IsString({ message: 'Password must be a string.' })
@@ -33,7 +29,7 @@ export class UpdateUserDto {
   password?: string;
 
   /**
-   * ✅ Confirm password only validated if password exists.
+   * Confirm password only validated if password exists.
    */
   @ValidateIf((o) => o.password && o.password.trim() !== '')
   @IsString({ message: 'Confirm Password must be a string.' })

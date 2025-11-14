@@ -1,10 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
-import { DeepPartial, Repository } from 'typeorm';
+import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException,} from '@nestjs/common';
+import {DeepPartial, Repository} from 'typeorm';
 
 interface PaginatedMeta {
   total: number;
@@ -120,13 +115,23 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
 
   async delete(id: number): Promise<ApiResponse<null>> {
     try {
-      const record = await this.repository.findOneBy({ id } as any);
+      const record = await this.repository.findOneBy({id} as any);
       if (!record) throw new NotFoundException('Record not found');
 
       await this.repository.delete(id);
-      return { success: true, message: 'Record deleted successfully' };
+      return {success: true, message: 'Record deleted successfully'};
     } catch (error: any) {
-      throw new InternalServerErrorException(`Failed to delete record: ${error.message}`);
+      if (
+          error instanceof BadRequestException ||
+          error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+          'An unexpected error occurred while deleting the record. Please try again later.',
+      );
     }
+
   }
 }
