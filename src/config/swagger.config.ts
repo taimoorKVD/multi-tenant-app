@@ -13,14 +13,15 @@ import {PermissionModule as TenantPermissionModule} from '../tenants/permission/
 import {JobPositionsModule as TenantJobPositionModule} from '../tenants/job-positions/job-positions.module';
 
 export function setupSwagger(app: INestApplication) {
-    // 🔐 Common bearer auth
+
+    // Common bearer auth
     const commonAuth = {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
     } as const;
 
-    // 🧱 Master API document builder
+    // Master API document builder
     const masterConfig = new DocumentBuilder()
         .setTitle('Master API Collection')
         .setDescription(
@@ -30,7 +31,7 @@ export function setupSwagger(app: INestApplication) {
         .addBearerAuth(commonAuth, 'access-token')
         .build();
 
-    // 🧩 Tenant API document builder
+    // Tenant API document builder
     const tenantConfig = new DocumentBuilder()
         .setTitle('Tenant API Collection')
         .setDescription(
@@ -40,7 +41,7 @@ export function setupSwagger(app: INestApplication) {
         .addBearerAuth(commonAuth, 'access-token')
         .build();
 
-    // 🧾 Create Swagger documents
+    // Create Swagger documents
     const masterDocument = SwaggerModule.createDocument(app, masterConfig, {
         include: [
             MasterAuthModule,
@@ -62,7 +63,7 @@ export function setupSwagger(app: INestApplication) {
         ],
     });
 
-    // ⚙️ Shared options for both
+    // Shared options for both
     const cdnAssets = {
         customCssUrl: [
             'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.19.0/swagger-ui.css',
@@ -73,7 +74,7 @@ export function setupSwagger(app: INestApplication) {
         ],
     };
 
-    // ✅ Master Swagger UI
+    // Master Swagger UI
     SwaggerModule.setup('api/collection/master', app, masterDocument, {
         ...cdnAssets,
         swaggerOptions: {
@@ -103,9 +104,9 @@ export function setupSwagger(app: INestApplication) {
         customSiteTitle: 'Master API Docs',
     });
 
-    // ✅ Tenant Swagger UI (added CDN assets here too)
+    // Tenant Swagger UI
     SwaggerModule.setup('api/collection/tenant', app, tenantDocument, {
-        ...cdnAssets, // 👈 same CDN fix here
+        ...cdnAssets,
         swaggerOptions: {
             persistAuthorization: true,
             tagsSorter: 'alpha',

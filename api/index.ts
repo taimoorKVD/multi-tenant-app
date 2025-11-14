@@ -1,36 +1,35 @@
-import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
-import express, { Request, Response } from 'express';
-import path, { join } from 'path';
-import { ValidationPipe, RequestMethod } from '@nestjs/common';
-import { AppModule } from '../src/app.module';
-import { setupSwagger } from '../src/config/swagger.config';
+import {NestFactory} from '@nestjs/core';
+import {ExpressAdapter} from '@nestjs/platform-express';
+import express, {Request, Response} from 'express';
+import path, {join} from 'path';
+import {RequestMethod, ValidationPipe} from '@nestjs/common';
+import {AppModule} from '../src/app.module';
+import {setupSwagger} from '../src/config/swagger.config';
 
 let cachedServer: any;
 
 async function bootstrap() {
     const expressApp = express();
 
-    // ✅ Configure EJS view engine (so Swagger and landing page can render)
+    // Configure EJS view engine
     expressApp.set('views', join(process.cwd(), 'src/views'));
     expressApp.set('view engine', 'ejs');
 
-    // ✅ Serve Swagger UI static assets (needed for Vercel)
+    // Serve Swagger UI static assets
     expressApp.use(
         '/api/collection-assets',
         express.static(path.join(process.cwd(), 'node_modules/swagger-ui-dist')),
     );
 
-    // ✅ Create NestJS app using the Express adapter
+    // Create NestJS app using the Express adapter
     const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
 
-    // ✅ Global settings replicated from main.ts
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     app.setGlobalPrefix('api', {
-        exclude: [{ path: '/', method: RequestMethod.GET }], // landing page stays accessible
+        exclude: [{path: '/', method: RequestMethod.GET}],
     });
 
-    // ✅ Call your shared Swagger setup
+    // Call your shared Swagger setup
     setupSwagger(app);
 
     await app.init();
