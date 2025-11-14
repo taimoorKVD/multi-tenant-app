@@ -1,10 +1,10 @@
 import {INestApplication} from '@nestjs/common';
 import {DocumentBuilder, SwaggerModule} from '@nestjs/swagger';
-import {TenantsModule} from '../tenants/tenants.module';
 import {MasterAuthModule} from '../master/auth/auth.module';
 import {UsersModule as MasterUsersModule} from '../master/users/users.module';
 import {RoleModule as MasterRoleModule} from '../master/role/role.module';
 import {PermissionModule as MasterPermissionModule} from '../master/permission/permission.module';
+import {TenantsModule as MasterTenantsModule} from '../master/tenants/tenants.module';
 import {JobPositionModule as MasterJobPositionModule} from '../master/job-position/job-position.module';
 import {TenantAuthModule} from '../tenants/auth/auth.module';
 import {UsersModule as TenantUsersModule} from '../tenants/users/users.module';
@@ -46,7 +46,7 @@ export function setupSwagger(app: INestApplication) {
         include: [
             MasterAuthModule,
             MasterUsersModule,
-            TenantsModule,
+            MasterTenantsModule,
             MasterRoleModule,
             MasterPermissionModule,
             MasterJobPositionModule,
