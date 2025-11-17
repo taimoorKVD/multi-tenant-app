@@ -72,6 +72,13 @@ export class TenantsService {
 
       return {success: true, message: 'Record fetched successfully', data: clone};
     } catch (error) {
+      if (
+          error instanceof BadRequestException ||
+          error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
       this.logger.error(`❌ Tenant retrieval failed: ${error.message}`, error.stack);
 
       throw new InternalServerErrorException(
@@ -80,9 +87,6 @@ export class TenantsService {
     }
   }
 
-  /**
-   * Create a new tenant with rollback on error.
-   */
   async create(dto: CreateTenantDto): Promise<ITenantResponse> {
     const { name, customDomain } = dto;
     const tenantName = name?.trim();
@@ -329,24 +333,53 @@ export class TenantsService {
 
   async update(id: number, updates: Partial<Tenant>) {
     try {
-      const tenant = await this.tenantRepo.findOneBy({ id });
+
+      const tenant = await this.tenantRepo.findOneBy({id});
       if (!tenant) {
-        throw new NotFoundException(`Tenant with ID ${id} not found`);
+        throw new NotFoundException(`Tenant with ID ${id} not found.`);
       }
 
-      // Prevent dangerous updates
-      if (updates.dbName) delete updates.dbName;
-      if (updates.id) delete updates.id;
+      const forbiddenFields = ['id', 'dbName'];
+      for (const field of forbiddenFields) {
+        if (field in updates) {
+          this.logger.warn(`⚠️ Attempted update of protected field "${field}" was ignored.`);
+          delete updates[field];
+        }
+      }
+
+      Object.keys(updates).forEach((key) => {
+        const value = updates[key];
+        if (
+            value === null ||
+            value === undefined ||
+            (typeof value === 'string' && value.trim() === '')
+        ) {
+          delete updates[key];
+        }
+      });
+
+      if (Object.keys(updates).length === 0) {
+        throw new BadRequestException('No valid fields provided for update.');
+      }
 
       Object.assign(tenant, updates);
-      await this.tenantRepo.save(tenant);
+      const saved = await this.tenantRepo.save(tenant).catch((dbError) => {
+        this.logger.error(`❌ Database error while updating tenant ${id}: ${dbError.message}`, dbError.stack);
+        throw new InternalServerErrorException('Database error while updating tenant.');
+      });
 
       return {
         success: true,
-        message: `Tenant "${tenant.name}" updated successfully`,
-        data: tenant,
+        message: `Tenant "${saved?.name}" updated successfully`,
+        data: saved,
       };
     } catch (error) {
+      if (
+          error instanceof BadRequestException ||
+          error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       this.logger.error(`❌ Failed to update tenant: ${error.message}`, error.stack);
 
       if (error instanceof NotFoundException) throw error;

@@ -139,7 +139,6 @@ export const TenantSwagger = {
             }),
         ),
 
-    // 🔍 Get one tenant by ID
     FindOne: () =>
         applyDecorators(
             ApiOperation({
@@ -196,26 +195,30 @@ export const TenantSwagger = {
             }),
         ),
 
-    // ✏️ Update tenant
     Update: () =>
         applyDecorators(
             ApiOperation({
                 summary: 'Update tenant details',
                 description:
-                    'Updates the information of an existing tenant. Typically used for renaming or updating subdomain/domain details.',
+                    'Updates an existing tenant record in the master system. ' +
+                    'Only editable fields such as `name` and `customDomain` may be updated. ' +
+                    'Fields like `id` and `dbName` are protected and ignored if provided.',
             }),
             ApiParam({
                 name: 'id',
                 type: Number,
-                example: 1,
-                description: 'Unique identifier of the tenant to update.',
+                required: true,
+                example: 2,
+                description: 'Unique numeric identifier of the tenant to update.',
             }),
             ApiBody({
-                description: 'Partial tenant update payload.',
+                description:
+                    'Payload for updating a tenant record. Only non-empty values are applied. ' +
+                    'Sending an empty object or invalid data will return a 400 error.',
                 schema: {
                     example: {
-                        name: 'Updated Tenant Name',
-                        subdomain: 'updated-subdomain',
+                        name: 'Travel Agency International',
+                        customDomain: 'travelagency.co.uk',
                     },
                 },
             }),
@@ -225,24 +228,93 @@ export const TenantSwagger = {
                 schema: {
                     example: {
                         success: true,
-                        message: 'Tenant updated successfully',
+                        message: 'Tenant "Travel Agency International" updated successfully',
                         data: {
-                            id: 1,
-                            name: 'Updated Tenant Name',
-                            dbName: 'tenant_updated-subdomain',
-                            subdomain: 'updated-subdomain',
-                            updatedAt: '2025-11-14T12:30:00.511Z',
+                            id: 2,
+                            name: 'Travel Agency International',
+                            customDomain: 'travelagency.co.uk',
+                            dbName: 'tenant_travel_agency',
+                            subdomain: 'travel-agency',
+                            updatedAt: '2025-11-14T15:15:30.511Z',
                         },
                     },
                 },
             }),
             ApiResponse({
                 status: 400,
-                description: 'Invalid or duplicate update data.',
+                description:
+                    'Invalid request payload, empty update object, or invalid tenant ID provided.',
                 schema: {
                     example: {
                         statusCode: 400,
-                        message: 'Subdomain already in use.',
+                        message: 'No valid fields provided for update.',
+                        error: 'Bad Request',
+                    },
+                },
+            }),
+            ApiResponse({
+                status: 404,
+                description: 'Tenant with the given ID was not found.',
+                schema: {
+                    example: {
+                        statusCode: 404,
+                        message: 'Tenant with ID 99 not found.',
+                        error: 'Not Found',
+                    },
+                },
+            }),
+            ApiResponse({
+                status: 500,
+                description:
+                    'Unexpected server or database error while updating tenant. Usually caused by connectivity or schema issues.',
+                schema: {
+                    example: {
+                        statusCode: 500,
+                        message:
+                            'An unexpected error occurred while updating the tenant. Please try again later.',
+                        error: 'Internal Server Error',
+                    },
+                },
+            }),
+        ),
+
+    Delete: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Delete tenant',
+                description:
+                    'Deletes a tenant from the system along with its associated tenant database. ' +
+                    'This action is irreversible — use with caution.',
+            }),
+            ApiParam({
+                name: 'id',
+                type: Number,
+                example: 1,
+                description: 'Unique identifier of the tenant to delete.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Tenant deleted successfully.',
+                schema: {
+                    example: {
+                        success: true,
+                        message:
+                            'Tenant "Recruiters" and its database "tenant_recruiters" deleted successfully.',
+                        deleted: {
+                            name: 'Recruiters',
+                            dbName: 'tenant_recruiters',
+                        },
+                    },
+                },
+            }),
+            ApiResponse({
+                status: 400,
+                description:
+                    'Invalid tenant ID or deletion not allowed (e.g. protected system tenant).',
+                schema: {
+                    example: {
+                        statusCode: 400,
+                        message: 'Invalid tenant ID provided.',
                         error: 'Bad Request',
                     },
                 },
@@ -260,56 +332,8 @@ export const TenantSwagger = {
             }),
             ApiResponse({
                 status: 500,
-                description: 'Unexpected error during update.',
-                schema: {
-                    example: {
-                        statusCode: 500,
-                        message: 'Internal server error while updating tenant.',
-                        error: 'Internal Server Error',
-                    },
-                },
-            }),
-        ),
-
-    // 🗑️ Delete tenant
-    Delete: () =>
-        applyDecorators(
-            ApiOperation({
-                summary: 'Delete tenant',
                 description:
-                    'Deletes a tenant from the system. Use with caution — this may cascade delete tenant-related databases.',
-            }),
-            ApiParam({
-                name: 'id',
-                type: Number,
-                example: 1,
-                description: 'Unique identifier of the tenant to delete.',
-            }),
-            ApiResponse({
-                status: 200,
-                description: 'Tenant deleted successfully.',
-                schema: {
-                    example: {
-                        success: true,
-                        message: 'Record deleted successfully',
-                        data: null,
-                    },
-                },
-            }),
-            ApiResponse({
-                status: 404,
-                description: 'Tenant not found.',
-                schema: {
-                    example: {
-                        statusCode: 404,
-                        message: 'Record not found.',
-                        error: 'Not Found',
-                    },
-                },
-            }),
-            ApiResponse({
-                status: 500,
-                description: 'Unexpected error during deletion.',
+                    'Unexpected server error while attempting to delete tenant or drop its database.',
                 schema: {
                     example: {
                         statusCode: 500,
