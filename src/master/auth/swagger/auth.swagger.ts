@@ -79,10 +79,10 @@ export const MasterAuthGetUserDocs = () =>
         }),
         ApiResponse({
             status: 401,
-            description: 'Unauthorized - Missing or invalid JWT token.',
+            description: 'Unauthorized or Session expired.',
             schema: {
                 example: {
-                    message: 'Unauthorized',
+                    message: 'Your session has expired or is invalid. Please log in again.',
                     error: 'Unauthorized',
                     statusCode: 401,
                 },
