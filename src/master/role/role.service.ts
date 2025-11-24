@@ -1,30 +1,68 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DeepPartial } from 'typeorm';
-import { MasterAbstractService, ApiResponse } from '../../common/abstract';
-import { Role } from './entities';
-import { Permission } from '../permission/entities';
+import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {InjectRepository} from '@nestjs/typeorm';
+import {DeepPartial, Repository} from 'typeorm';
+import {ApiResponse, MasterAbstractService} from '../../common/abstract';
+import {Role} from './entities';
+import {Permission} from '../permission/entities';
+import {User} from "../users/entities";
 
 @Injectable()
 export class RoleService extends MasterAbstractService<Role> {
   constructor(
-    @InjectRepository(Role)
-    private readonly roleRepo: Repository<Role>,
-    @InjectRepository(Permission)
-    private readonly permRepo: Repository<Permission>,
+      @InjectRepository(Role)
+      private readonly roleRepo: Repository<Role>,
+      @InjectRepository(Permission)
+      private readonly permRepo: Repository<Permission>,
+      @InjectRepository(User)
+      private readonly userRepo: Repository<User>,
   ) {
     super(roleRepo);
   }
 
-  // ✅ Signature matches base class (DeepPartial<Role>)
+  private async ensureRoleNotAssigned(id: number) {
+    const role = await this.roleRepo.findOne({
+      where: { id },
+      relations: ['users'],
+    });
+
+    if ((role?.users ?? []).length > 0) {
+      throw new BadRequestException(
+          `Role cannot be deleted because it is assigned to ${(role?.users ?? []).length} user(s).`,
+      );
+    }
+
+    return true;
+  }
+
+  async delete(id: number): Promise<ApiResponse<null>> {
+    try {
+      const role = await this.roleRepo.findOne({where: {id}});
+      if (!role) {
+        throw new NotFoundException('Role not found.');
+      }
+
+      await this.ensureRoleNotAssigned(id);
+
+      await this.roleRepo.delete(id);
+
+      return {
+        success: true,
+        message: 'Role deleted successfully.',
+        data: null,
+      };
+    } catch (error: any) {
+      throw new BadRequestException(error.message || 'Failed to delete role.');
+    }
+  }
+
   async create(data: DeepPartial<Role>): Promise<ApiResponse<Role>> {
     try {
-      const { name, permissions } = data as any;
+      const {name, permissions} = data as any;
 
       // Fetch valid permission entities
       const validPermissions = permissions?.length
-        ? await this.permRepo.findByIds(permissions)
-        : [];
+          ? await this.permRepo.findByIds(permissions)
+          : [];
 
       if (!validPermissions.length) {
         throw new BadRequestException('At least one valid permission must be selected.');
@@ -47,7 +85,6 @@ export class RoleService extends MasterAbstractService<Role> {
     }
   }
 
-  // ✅ Signature matches base class (DeepPartial<Role>)
   async update(id: number, data: DeepPartial<Role>): Promise<ApiResponse<Role>> {
     try {
       const role = await this.roleRepo.findOne({

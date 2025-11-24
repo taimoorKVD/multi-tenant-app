@@ -25,7 +25,9 @@ export class User {
   @Column()
   password: string;
 
-  @ManyToOne(() => Role)
+  @ManyToOne(() => Role, role => role.users, {
+    onDelete: 'RESTRICT', // 🚫 Prevent deleting role if assigned
+  })
   @JoinColumn({ name: 'role_id' })
   role: Role;
 

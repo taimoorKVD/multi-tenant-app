@@ -32,7 +32,11 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
 
       const sanitized = data.map((item) => {
         const clone = { ...item };
-        delete (clone as any).password;
+
+        if ('password' in clone) {
+          delete clone.password;
+        }
+
         return clone;
       });
 

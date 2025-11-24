@@ -14,22 +14,33 @@ export const MasterAuthLoginDocs = () =>
             type: LoginDto,
             examples: {
                 valid: {
-                    summary: 'Example login request',
+                    summary: 'Valid login request example',
                     value: {
                         email: 'superadmin@system.com',
                         password: 'SuperSecure123!',
+                    },
+                },
+                missingEmail: {
+                    summary: 'Missing email field',
+                    value: {
+                        password: 'SuperSecure123!',
+                    },
+                },
+                missingPassword: {
+                    summary: 'Missing password field',
+                    value: {
+                        email: 'superadmin@system.com',
                     },
                 },
             },
         } as any),
         ApiResponse({
             status: 200,
-            description:
-                'Successfully authenticated. Returns JWT access token and user info.',
+            description: 'Successfully authenticated.',
             schema: {
                 example: {
                     success: true,
-                    message: 'Login successful',
+                    message: 'Login successful.',
                     data: {
                         access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                         user: {
@@ -43,12 +54,28 @@ export const MasterAuthLoginDocs = () =>
             },
         }),
         ApiResponse({
-            status: 401,
-            description: 'Unauthorized - Invalid credentials provided.',
+            status: 400,
+            description: 'Validation error — missing or invalid fields.',
             schema: {
                 example: {
-                    message: 'Invalid credentials',
-                    error: 'Unauthorized',
+                    success: false,
+                    message: 'Validation failed',
+                    errors: [
+                        {
+                            field: 'password',
+                            messages: ['Password cannot be empty. Please enter your password.'],
+                        },
+                    ],
+                },
+            },
+        }),
+        ApiResponse({
+            status: 401,
+            description: 'Unauthorized — incorrect email or password.',
+            schema: {
+                example: {
+                    success: false,
+                    message: 'The email or password you entered is incorrect.',
                     statusCode: 401,
                 },
             },
@@ -85,6 +112,7 @@ export const MasterAuthGetUserDocs = () =>
                     message: 'Your session has expired or is invalid. Please log in again.',
                     error: 'Unauthorized',
                     statusCode: 401,
+                    success: false,
                 },
             },
         }),

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import {Controller, Get, Query} from '@nestjs/common';
 import { PermissionService } from './permission.service';
 import { MasterAccess } from '../../common/decorators';
 import {ApiTags} from "@nestjs/swagger";
@@ -13,7 +13,7 @@ export class PermissionController {
   @Get()
   @MasterAccess('view-permission')
   @PermissionSwagger.GetAll()
-  async all() {
-    return this.permissionService.paginate();
+  async all(@Query('page') page: number) {
+    return this.permissionService.paginate(Number(page));
   }
 }
