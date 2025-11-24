@@ -45,7 +45,7 @@ export class UsersController {
   @Get()
   @MasterAccess('view-user')
   @UsersSwagger.GetAll()
-  async all(@Query('page') page = 1) {
+  async all(@Query('page') page: number = 1) {
     return this.usersService.paginate(page, ['role']);
   }
 

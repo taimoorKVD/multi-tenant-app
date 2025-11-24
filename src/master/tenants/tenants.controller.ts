@@ -1,4 +1,4 @@
-import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put} from '@nestjs/common';
+import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query} from '@nestjs/common';
 import {TenantsService} from './tenants.service';
 import {Tenant} from './entities';
 import {CreateTenantDto} from './dto';
@@ -16,8 +16,8 @@ export class TenantsController {
   @Get()
   @MasterAccess('view-tenant')
   @TenantSwagger.FindAll()
-  async findAll() {
-    return this.tenantsService.paginate();
+  async findAll(@Query('page') page: number = 1) {
+    return this.tenantsService.paginate(page);
   }
 
   @Post()

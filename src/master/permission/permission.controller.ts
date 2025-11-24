@@ -13,7 +13,7 @@ export class PermissionController {
   @Get()
   @MasterAccess('view-permission')
   @PermissionSwagger.GetAll()
-  async all(@Query('page') page: number) {
-    return this.permissionService.paginate(Number(page));
+  async all(@Query('page') page: number = 1) {
+    return this.permissionService.paginate(page);
   }
 }

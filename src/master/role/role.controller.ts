@@ -18,7 +18,7 @@ export class RoleController {
   @Get()
   @MasterAccess('view-role')
   @RoleSwagger.GetAll()
-  async all(@Query('page') page = 1) {
+  async all(@Query('page') page: number = 1) {
     return this.roleService.paginate(page, ['permissions']);
   }
 
