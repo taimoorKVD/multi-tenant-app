@@ -11,6 +11,22 @@ let cachedServer: any;
 async function bootstrap() {
     const expressApp = express();
 
+    // GLOBAL CORS
+    expressApp.use((req, res, next) => {
+        const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:4200';
+
+        res.header("Access-Control-Allow-Origin", allowedOrigin);
+        res.header("Access-Control-Allow-Credentials", "true");
+        res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
+
+        if (req.method === "OPTIONS") {
+            return res.sendStatus(200);
+        }
+
+        next();
+    });
+
     // Configure EJS view engine
     expressApp.set('views', join(process.cwd(), 'src/views'));
     expressApp.set('view engine', 'ejs');
