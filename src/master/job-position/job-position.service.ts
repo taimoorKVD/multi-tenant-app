@@ -3,6 +3,7 @@ import {InjectRepository} from '@nestjs/typeorm';
 import {DataSource, In, QueryRunner, Repository} from 'typeorm';
 import {MasterAbstractService} from '../../common/abstract';
 import {JobPosition} from './entities';
+import {JobPosition as TenantJobPosition} from '../../tenants/job-positions/entities';
 import {CreateJobPositionDto, PushJobPositionDto, UpdateJobPositionDto} from './dto';
 import {getTenantDataSource} from "../../database/datasource";
 import {Logger} from "../../database/helpers/logger";
@@ -13,6 +14,7 @@ export class JobPositionService extends MasterAbstractService<JobPosition> {
   constructor(
       @InjectRepository(JobPosition)
       private readonly jobPositionRepo: Repository<JobPosition>,
+
       @InjectRepository(Tenant)
       private readonly tenantRepo: Repository<Tenant>,
   ) {
@@ -109,7 +111,7 @@ export class JobPositionService extends MasterAbstractService<JobPosition> {
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
-        const tenantJobRepo = queryRunner.manager.getRepository(JobPosition);
+        const tenantJobRepo = queryRunner.manager.getRepository(TenantJobPosition);
 
         let createdCount = 0;
         let existedCount = 0;
