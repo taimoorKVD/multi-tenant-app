@@ -149,7 +149,6 @@ export const JobPositionSwagger = {
                     'All fields are optional, but unexpected fields will trigger validation errors. ' +
                     'Empty or invalid update payloads will be rejected.',
             }),
-
             ApiParam({
                 name: 'id',
                 type: Number,
@@ -157,7 +156,6 @@ export const JobPositionSwagger = {
                 example: 2,
                 description: 'Unique ID of the job position to update.',
             }),
-
             ApiBody({
                 description:
                     'Job position update payload. Only valid fields from the DTO (`name`, `description`) are allowed.',
@@ -290,6 +288,7 @@ export const JobPositionSwagger = {
                 schema: {
                     example: {
                         jobPositionIds: [1, 2, 3],
+                        tenantIds: [1, 2, 9]
                     },
                 },
             }),
