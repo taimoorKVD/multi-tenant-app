@@ -280,11 +280,11 @@ export const JobPositionSwagger = {
             ApiOperation({
                 summary: 'Sync job positions with tenant databases',
                 description:
-                    'Pushes selected job positions from the master database to all active tenant databases. ' +
-                    'Useful for ensuring consistent job roles across environments.',
+                    'Pushes selected job positions from the master database to the specified tenant databases. '
+                    + 'Creates missing job positions and ensures consistent data across tenants.',
             }),
             ApiBody({
-                description: 'List of job position IDs to push to tenants.',
+                description: 'Provide job position IDs and tenant IDs to sync.',
                 schema: {
                     example: {
                         jobPositionIds: [1, 2, 3],
@@ -294,21 +294,45 @@ export const JobPositionSwagger = {
             }),
             ApiResponse({
                 status: 200,
-                description: 'Job positions successfully pushed to all tenants.',
+                description: 'Job positions successfully processed for selected tenants.',
                 schema: {
                     example: {
-                        success: true,
-                        message: 'Job positions synced to 5 tenants successfully',
-                        data: {
-                            totalTenantsUpdated: 5,
-                            jobPositions: [1, 2, 3],
+                        status: true,
+                        message: "Job positions successfully processed for selected tenants.",
+                        summary: {
+                            totalJobPositions: 3,
+                            totalTenantsSelected: 3,
+                            totalTenantsProcessed: 2,
+                            missingTenants: [9],
+                            statusBreakdown: {
+                                successCount: 1,
+                                failedCount: 1
+                            }
                         },
+                        results: [
+                            {
+                                tenant: "Travel Agency International",
+                                status: "success",
+                                message: "Synced successfully. 2 created, 1 already existed.",
+                                createdCount: 2,
+                                existedCount: 1,
+                                error: null
+                            },
+                            {
+                                tenant: "Core 2 Plus",
+                                status: "error",
+                                message: "Sync failed: No metadata found for job positions in this tenant database.",
+                                createdCount: 0,
+                                existedCount: 0,
+                                error: "No metadata for 'JobPosition' was found."
+                            }
+                        ]
                     },
                 },
             }),
             ApiResponse({
                 status: 500,
-                description: 'Error during syncing process.',
+                description: 'Unexpected server error.',
                 schema: {
                     example: {
                         statusCode: 500,
@@ -319,4 +343,5 @@ export const JobPositionSwagger = {
                 },
             }),
         ),
+
 };

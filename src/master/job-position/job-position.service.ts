@@ -158,13 +158,31 @@ export class JobPositionService extends MasterAbstractService<JobPosition> {
     }
 
     return {
+      status: true,
+      message: "Job positions successfully processed for selected tenants.",
       summary: {
         totalJobPositions: jobPositions.length,
-        totalTenants: tenantIds.length,
+        totalTenantsSelected: tenantIds.length,
+        totalTenantsProcessed: tenants.length,
         missingTenants,
+        statusBreakdown: {
+          successCount: results.filter(r => r.status === "success").length,
+          failedCount: results.filter(r => r.status === "error").length
+        }
       },
-      results,
+      results: results.map(item => ({
+        tenant: item.tenant,
+        status: item.status,
+        message:
+            item.status === "success"
+                ? `Synced successfully. ${item.createdCount} created, ${item.existedCount} already existed.`
+                : `Sync failed: ${item.message}`,
+        createdCount: item.createdCount ?? 0,
+        existedCount: item.existedCount ?? 0,
+        error: item.status === "error" ? item.message : null
+      }))
     };
+
   }
 
   protected async ensureJobPositionsTable(tenantDS: DataSource): Promise<void> {
