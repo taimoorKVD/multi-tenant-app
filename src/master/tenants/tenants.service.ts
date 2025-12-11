@@ -54,23 +54,45 @@ export class TenantsService {
       this.logger.error(`❌ Tenant retrieval failed: ${error.message}`, error.stack);
 
       throw new InternalServerErrorException(
-        'An unexpected error occurred while fetching tenants. Please try again later.',
+          'An unexpected error occurred while fetching tenants. Please try again later.',
       );
     }
   }
 
-  async findOne(id: number, relations: string[] = []): Promise<ApiResponse<Partial<Tenant>>> {
+  async findOne(
+      identifier: number | string,
+      relations: string[] = [],
+  ): Promise<ApiResponse<Partial<Tenant>>> {
     try {
+      let where: any = {};
+
+      if (typeof identifier === 'number' || /^\d+$/.test(identifier as string)) {
+        where = {id: Number(identifier)};
+      } else if (typeof identifier! === 'string' && /^[a-zA-Z0-9_-]+$/.test(identifier)) {
+        where = {subdomain: identifier};
+      } else if (typeof identifier! === 'string' && identifier.includes('.')) {
+        where = {customDomain: identifier};
+      } else {
+        throw new BadRequestException(
+            `Invalid tenant identifier: ${identifier}`,
+        );
+      }
+
       const record = await this.tenantRepo.findOne({
-        where: {id} as any,
+        where,
         relations,
       });
-      if (!record) throw new NotFoundException('Record not found');
+
+      if (!record) throw new NotFoundException(`Tenant not found for "${identifier}"`);
 
       const clone = {...record};
       delete (clone as any).password;
 
-      return {success: true, message: 'Record fetched successfully', data: clone};
+      return {
+        success: true,
+        message: 'Tenant fetched successfully',
+        data: clone,
+      };
     } catch (error) {
       if (
           error instanceof BadRequestException ||
@@ -79,16 +101,88 @@ export class TenantsService {
         throw error;
       }
 
-      this.logger.error(`❌ Tenant retrieval failed: ${error.message}`, error.stack);
+      this.logger.error(
+          `❌ Tenant retrieval failed for identifier: ${identifier} → ${error.message}`,
+          error.stack,
+      );
 
       throw new InternalServerErrorException(
-          'An unexpected error occurred while fetching tenants. Please try again later.',
+          'An unexpected error occurred while fetching tenant details. Please try again later.',
+      );
+    }
+  }
+
+  async findOneFlexible(value: string): Promise<Tenant | null> {
+    if (!value || typeof value! !== 'string') {
+      throw new BadRequestException('Invalid tenant lookup value.');
+    }
+
+    const lookup = value.toLowerCase().trim();
+
+    try {
+      const bySubdomain = await this.tenantRepo.findOne({
+        where: {subdomain: lookup},
+      });
+      if (bySubdomain) return bySubdomain;
+
+      const byDomain = await this.tenantRepo.findOne({
+        where: [{customDomain: lookup}],
+      });
+      if (byDomain) return byDomain;
+
+      if (lookup.includes('@')) {
+        const emailDomain = lookup.split('@')[1]?.toLowerCase();
+        if (emailDomain) {
+          const emailSub = emailDomain.split('.')[0];
+
+          const byEmailDomain =
+              (await this.tenantRepo.findOne({
+                where: {subdomain: emailSub},
+              })) ||
+              (await this.tenantRepo.findOne({
+                where: [{customDomain: emailDomain}],
+              }));
+
+          if (byEmailDomain) return byEmailDomain;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ Tenant lookup failed:', error);
+      throw new InternalServerErrorException(
+          'An unexpected error occurred while looking up tenant.',
+      );
+    }
+  }
+
+  async getTenantConnection(subdomain: string): Promise<DataSource> {
+    const result = await this.findOne(subdomain);
+    if (!result?.data) {
+      throw new BadRequestException(
+          `Tenant "${subdomain}" does not exist or has no metadata.`,
+      );
+    }
+
+    const tenant = result.data as Tenant;
+    if (!tenant.dbName) {
+      throw new BadRequestException(
+          `Tenant "${subdomain}" does not have a configured database.`,
+      );
+    }
+
+    try {
+      return await getTenantDataSource(tenant.dbName);
+    } catch (err) {
+      console.error(`❌ ERROR connecting tenant DB "${tenant.dbName}"`, err);
+      throw new BadRequestException(
+          `Unable to connect to database "${tenant.dbName}" for tenant "${subdomain}"`,
       );
     }
   }
 
   async create(dto: CreateTenantDto): Promise<ITenantResponse> {
-    const { name, customDomain } = dto;
+    const {name, customDomain} = dto;
     const tenantName = name?.trim();
     if (!tenantName) throw new BadRequestException('Tenant name is required');
 

@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
-import { CreateUserDto, UpdateUserDto } from './dto';
+import {Body, Controller, Delete, Get, Param, Post, Put, Req} from '@nestjs/common';
+import {UsersService} from './users.service';
+import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
+import {CreateUserDto, UpdateUserDto} from './dto';
 
-@Controller('tenant/:tenantId/users')
+@Controller(['users', 'tenant/:tenantId/users'])
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) {
+  }
 
   @TenantAccess('create-user')
   @Post()

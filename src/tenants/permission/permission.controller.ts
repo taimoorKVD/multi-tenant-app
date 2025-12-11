@@ -1,9 +1,10 @@
-import { Controller, Get, InternalServerErrorException, Req } from '@nestjs/common';
-import { PermissionService } from './permission.service';
+import {Controller, Get, InternalServerErrorException, Req} from '@nestjs/common';
+import {PermissionService} from './permission.service';
 
-@Controller('permissions')
+@Controller(['permissions', 'tenant/:tenantId/permissions'])
 export class PermissionController {
-  constructor(private readonly permissionService: PermissionService) {}
+  constructor(private readonly permissionService: PermissionService) {
+  }
 
   /**
    * Get all permissions for a tenant

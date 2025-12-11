@@ -3,7 +3,7 @@ import {JobPositionsService} from './job-positions.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 import {CreateJobPositionDto, UpdateJobPositionDto} from "./dto";
 
-@Controller('tenant/:tenantId/jobpositions')
+@Controller(['jobpositions', 'tenant/:tenantId/jobpositions'])
 export class JobPositionController {
     constructor(private readonly jobPositionService: JobPositionsService) {
     }

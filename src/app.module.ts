@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import {MiddlewareConsumer, Module, NestModule} from '@nestjs/common';
+import {MiddlewareConsumer, Module, NestModule, RequestMethod} from '@nestjs/common';
 import {ConfigModule} from '@nestjs/config';
 import {TenantMiddleware} from './common/middleware';
 import {AppController} from './app.controller';
@@ -8,14 +8,14 @@ import {TenantsModule} from "./tenants/tenants.module";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({isGlobal: true}),
-    MasterModule,
-    TenantsModule
+      ConfigModule.forRoot({isGlobal: true}),
+      MasterModule,
+      TenantsModule,
   ],
   controllers: [AppController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('tenant');
+      consumer.apply(TenantMiddleware).forRoutes('*');
   }
 }

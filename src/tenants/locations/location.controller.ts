@@ -3,7 +3,7 @@ import {LocationsService} from './locations.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 import {CreateLocationDto, UpdateLocationDto} from "./dto";
 
-@Controller('tenant/:tenantId/locations')
+@Controller(['locations', 'tenant/:tenantId/locations'])
 export class LocationsController {
     constructor(private readonly locationsService: LocationsService) {
     }

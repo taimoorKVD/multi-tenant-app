@@ -1,10 +1,11 @@
-import { Body, Controller, Post, Req, UnauthorizedException } from '@nestjs/common';
-import { TenantAuthService } from './auth.service';
-import { LoginDto } from './dto';
+import {Body, Controller, Post, Req, UnauthorizedException} from '@nestjs/common';
+import {TenantAuthService} from './auth.service';
+import {LoginDto} from './dto';
 
-@Controller('tenant/:tenantId')
+@Controller(['', 'tenant/:tenantId'])
 export class TenantAuthController {
-  constructor(private readonly authService: TenantAuthService) {}
+  constructor(private readonly authService: TenantAuthService) {
+  }
 
   @Post('login')
   async login(@Req() req, @Body() dto: LoginDto) {

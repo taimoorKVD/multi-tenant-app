@@ -6,6 +6,8 @@ import {PermissionModule} from './permission/permission.module';
 import {TenantsModule} from './tenants/tenants.module';
 import {JobPositionModule} from './job-position/job-position.module';
 import {MasterDatabaseModule} from "../database";
+import {TenantsService} from "./tenants/tenants.service";
+import {JwtService} from "@nestjs/jwt";
 
 @Module({
   imports: [
@@ -17,5 +19,7 @@ import {MasterDatabaseModule} from "../database";
     TenantsModule,
     JobPositionModule,
   ],
+  providers: [TenantsService, JwtService],
+  exports: [TenantsService, JwtService],
 })
 export class MasterModule {}

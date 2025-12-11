@@ -1,51 +1,126 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
-import { NextFunction, Request, Response } from 'express';
-import { DataSource } from 'typeorm';
-import { Tenant } from '../../master/tenants/entities';
-import { getTenantDataSource } from '../../database/datasource';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NestMiddleware,
+  NotFoundException,
+  UnauthorizedException
+} from '@nestjs/common';
+import {NextFunction, Request, Response} from 'express';
+import {TenantsService} from '../../master/tenants/tenants.service';
+import {JwtService} from '@nestjs/jwt';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  constructor(private readonly dataSource: DataSource) {}
+  private readonly BASE_DOMAIN = 'myapp.com';
+
+  constructor(
+      private readonly tenantsService: TenantsService,
+      private readonly jwtService: JwtService,
+  ) {
+  }
 
   async use(req: Request, res: Response, next: NextFunction) {
     try {
-      const skipPaths = ['/tenants', '/auth'];
-      if (skipPaths.some((p) => req.originalUrl.startsWith(p))) return next();
-
-      const urlParts = req.originalUrl.split('/');
-      const tenantIndex = urlParts.indexOf('tenant');
-      if (tenantIndex === -1 || !urlParts[tenantIndex + 1]) {
-        return res.status(400).json({
-          success: false,
-          message: 'Tenant ID missing in path (expected /tenant/:tenantId/...)',
-        });
+      const url = req.originalUrl.toLowerCase();
+      if (url.startsWith('/api/master')) {
+        return next();
       }
 
-      const tenantKey = urlParts[tenantIndex + 1];
-      const tenantRepo = this.dataSource.getRepository(Tenant);
-      const tenant = await tenantRepo.findOne({
-        where: [{ name: tenantKey }, { subdomain: tenantKey }],
-      });
+      if (
+          url.startsWith('/api/docs/*') ||
+          url === '/favicon.ico'
+      ) {
+        return next();
+      }
+
+      const hostname = (req.headers.host?.split(':')[0] || '').toLowerCase().trim();
+      if (!hostname) {
+        throw new BadRequestException('Invalid hostname in request');
+      }
+
+      let tenant: string | null = null;
+
+      const authHeader = req.headers['authorization'];
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          const payload = this.jwtService.verify(token);
+
+          if (payload?.tenantId) {
+            tenant = payload.tenantId.toLowerCase();
+          }
+        } catch {
+        }
+      }
+
+      if (!tenant && hostname.endsWith(this.BASE_DOMAIN)) {
+        const sub = hostname.replace(`.${this.BASE_DOMAIN}`, '');
+        if (sub && sub !== 'www') {
+          tenant = sub.toLowerCase();
+        }
+      }
 
       if (!tenant) {
-        return res.status(404).json({
-          success: false,
-          message: `Tenant '${tenantKey}' not found in master database.`,
-        });
+        const found = await this.tenantsService.findOneFlexible(hostname);
+        if (found) tenant = found.subdomain.toLowerCase();
       }
 
-      req['tenantConnection'] = await getTenantDataSource(tenant.dbName);
-      req['tenant'] = tenant;
+      if (!tenant) {
+        const match = req.originalUrl.match(/\/tenant\/([^\/]+)/);
+        if (match?.[1]) tenant = match[1].toLowerCase();
+      }
+
+      if (!tenant && req.body?.email) {
+        const domain = req.body.email.split('@')[1];
+        if (domain) tenant = domain.split('.')[0].toLowerCase();
+      }
+
+      if (!tenant && req.headers['x-tenant']) {
+        tenant = String(req.headers['x-tenant']).toLowerCase();
+      }
+
+      if (!tenant) {
+        throw new BadRequestException(
+            'Unable to determine tenant from hostname, token, path, email, or headers.',
+        );
+      }
+
+      let connection;
+      try {
+        connection = await this.tenantsService.getTenantConnection(tenant);
+      } catch {
+        throw new NotFoundException(`Tenant "${tenant}" not found or inactive.`);
+      }
+
+      req['tenantId'] = tenant;
+      req['tenantConnection'] = connection;
 
       return next();
+
     } catch (err) {
-      console.error('❌ Tenant middleware error:', err);
-      return res.status(500).json({
-        success: false,
-        message: 'Tenant resolution failed.',
-        error: err.message,
-      });
+      if (
+          err instanceof BadRequestException ||
+          err instanceof UnauthorizedException ||
+          err instanceof NotFoundException
+      ) {
+        throw err;
+      }
+
+      console.error('❌ Unexpected tenant middleware error:', err);
+      throw new InternalServerErrorException('Tenant resolution failed.');
     }
+  }
+
+  protected isSubdomainHost(hostname: string): boolean {
+    return hostname.endsWith(this.BASE_DOMAIN) && hostname.split('.').length > 2;
+  }
+
+  protected extractTenantCode(input: any): string | null {
+    if (!input) return null;
+    if (typeof input === 'string') return input;
+    if (input?.data?.code) return input.data.code;
+    if (input?.code) return input.code;
+    return null;
   }
 }

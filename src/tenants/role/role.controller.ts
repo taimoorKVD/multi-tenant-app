@@ -11,12 +11,13 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { RoleService } from './role.service';
-import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
+import {RoleService} from './role.service';
+import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
 
-@Controller('roles')
+@Controller(['roles', 'tenant/:tenantId/roles'])
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {}
+  constructor(private readonly roleService: RoleService) {
+  }
 
   /**
    * Get paginated roles

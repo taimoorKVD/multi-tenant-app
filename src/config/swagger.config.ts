@@ -109,9 +109,26 @@ export function setupSwagger(app: INestApplication) {
         ...cdnAssets,
         swaggerOptions: {
             persistAuthorization: true,
-            tagsSorter: 'alpha',
-            operationsSorter: 'method',
-            docExpansion: 'full',
+            tagsSorter: (a, b) => {
+                const order = [
+                    'Authentication',
+                    'Role Management',
+                    'Permission Management',
+                    'User Management',
+                    'Tenant Management',
+                    'Job Position Management',
+                ];
+                const idxA = order.indexOf(a);
+                const idxB = order.indexOf(b);
+                return (idxA === -1 ? order.length : idxA) - (idxB === -1 ? order.length : idxB);
+            },
+            operationsSorter: (a: any, b: any) => {
+                const order = ['post', 'get', 'patch', 'put', 'delete'];
+                const methodA = a.get('method');
+                const methodB = b.get('method');
+                return order.indexOf(methodA) - order.indexOf(methodB);
+            },
+            docExpansion: 'list',
             defaultModelsExpandDepth: -1,
         },
         customSiteTitle: 'Tenant API Docs',
