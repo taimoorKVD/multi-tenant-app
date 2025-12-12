@@ -61,9 +61,11 @@ export class TenantMiddleware implements NestMiddleware {
         }
       }
 
-      if (!tenant) {
+      if (!tenant && !hostname.endsWith(this.BASE_DOMAIN) && hostname !== 'localhost') {
         const found = await this.tenantsService.findOneFlexible(hostname);
-        if (found) tenant = found.subdomain.toLowerCase();
+        if (found && (found.customDomain === hostname)) {
+          tenant = found.subdomain.toLowerCase();
+        }
       }
 
       if (!tenant) {
@@ -71,7 +73,7 @@ export class TenantMiddleware implements NestMiddleware {
         if (match?.[1]) tenant = match[1].toLowerCase();
       }
 
-      if (!tenant && req.body?.email) {
+      if (!tenant && req.body?.email && req.originalUrl.endsWith('/login')) {
         const domain = req.body.email.split('@')[1];
         if (domain) tenant = domain.split('.')[0].toLowerCase();
       }
