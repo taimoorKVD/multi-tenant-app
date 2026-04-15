@@ -40,14 +40,25 @@ export const TenantAuthLoginDocs = () =>
             schema: {
                 example: {
                     success: true,
-                    message: 'Login successful.',
-                    data: {
-                        access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-                        user: {
+                    message: 'Login successful',
+                    tenant_slug: 'kingdomvision',
+                    tenant: 'tenant_kingdomvision',
+                    accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                    user: {
+                        id: 1,
+                        email: 'admin@kingdomvision.com',
+                        name: 'Administrator',
+                        role: {
                             id: 1,
-                            name: 'Super Admin',
-                            email: 'superadmin@system.com',
-                            role: 'Super Admin',
+                            name: 'Senior Manager',
+                            createdAt: '2026-04-14T00:52:55.371Z',
+                            updatedAt: '2026-04-14T17:26:41.358Z',
+                            permissions: [
+                                {id: 1, name: 'create-user'},
+                                {id: 2, name: 'view-job-position'},
+                                {id: 5, name: 'edit-location'},
+                                {id: 6, name: 'view-location'},
+                            ],
                         },
                     },
                 },
