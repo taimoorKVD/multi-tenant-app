@@ -48,6 +48,7 @@ export class TenantAuthService {
       return {
         success: true,
         message: 'Login successful',
+        tenant_slug: req.tenantId || null,
         tenant: tenantConnection.options.database,
         accessToken: token,
         user: {
