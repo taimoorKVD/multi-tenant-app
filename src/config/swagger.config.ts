@@ -11,6 +11,7 @@ import {UsersModule as TenantUsersModule} from '../tenants/users/users.module';
 import {RoleModule as TenantRoleModule} from '../tenants/role/role.module';
 import {PermissionModule as TenantPermissionModule} from '../tenants/permission/permission.module';
 import {JobPositionsModule as TenantJobPositionModule} from '../tenants/job-positions/job-positions.module';
+import {LocationsModule as TenantLocationsModule} from '../tenants/locations/locations.module';
 
 export function setupSwagger(app: INestApplication) {
 
@@ -60,6 +61,7 @@ export function setupSwagger(app: INestApplication) {
             TenantRoleModule,
             TenantPermissionModule,
             TenantJobPositionModule,
+            TenantLocationsModule,
         ],
     });
 
@@ -87,6 +89,7 @@ export function setupSwagger(app: INestApplication) {
                     'User Management',
                     'Tenant Management',
                     'Job Position Management',
+                    'Tenant Locations',
                 ];
                 const idxA = order.indexOf(a);
                 const idxB = order.indexOf(b);
@@ -115,8 +118,8 @@ export function setupSwagger(app: INestApplication) {
                     'Role Management',
                     'Permission Management',
                     'User Management',
-                    'Tenant Management',
                     'Job Position Management',
+                    'Location Management',
                 ];
                 const idxA = order.indexOf(a);
                 const idxB = order.indexOf(b);

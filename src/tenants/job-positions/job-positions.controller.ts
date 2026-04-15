@@ -1,8 +1,11 @@
-import {Body, Controller, Delete, Get, Param, Post, Put, Req} from '@nestjs/common';
+import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Req} from '@nestjs/common';
 import {JobPositionsService} from './job-positions.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 import {CreateJobPositionDto, UpdateJobPositionDto} from "./dto";
+import {TenantJobPositionsSwagger} from './swagger';
 
+@TenantJobPositionsSwagger.Tags()
+@TenantJobPositionsSwagger.Auth()
 @Controller(['jobpositions', 'tenant/:tenantId/jobpositions'])
 export class JobPositionController {
     constructor(private readonly jobPositionService: JobPositionsService) {
@@ -10,31 +13,36 @@ export class JobPositionController {
 
     @TenantAccess('create-job-position')
     @Post()
+    @TenantJobPositionsSwagger.Create()
     create(@Req() req, @Body() dto: CreateJobPositionDto) {
         return this.jobPositionService.create(req, dto);
     }
 
     @TenantAccess('view-job-position')
     @Get()
+    @TenantJobPositionsSwagger.FindAll()
     findAll(@Req() req) {
         return this.jobPositionService.findAll(req);
     }
 
     @TenantAccess('view-job-position')
     @Get(':id')
-    findOne(@Req() req, @Param('id') id: number) {
+    @TenantJobPositionsSwagger.FindOne()
+    findOne(@Req() req, @Param('id', ParseIntPipe) id: number) {
         return this.jobPositionService.findOne(req, id);
     }
 
     @TenantAccess('edit-job-position')
     @Put(':id')
-    update(@Req() req, @Param('id') id: number, @Body() dto: UpdateJobPositionDto) {
+    @TenantJobPositionsSwagger.Update()
+    update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateJobPositionDto) {
         return this.jobPositionService.update(req, id, dto);
     }
 
     @TenantAccess('delete-job-position')
     @Delete(':id')
-    remove(@Req() req, @Param('id') id: number) {
+    @TenantJobPositionsSwagger.Delete()
+    remove(@Req() req, @Param('id', ParseIntPipe) id: number) {
         return this.jobPositionService.delete(req, id);
     }
 }

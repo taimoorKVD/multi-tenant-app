@@ -1,0 +1,244 @@
+import { applyDecorators } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+} from '@nestjs/swagger';
+import { CreateUserDto, UpdateUserDto } from '../dto';
+
+export const TenantUsersSwagger = {
+  Auth: () => ApiBearerAuth('access-token'),
+
+  Create: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Create tenant user',
+        description:
+          'Creates a new user in the current tenant database. Use `/tenant/{tenantId}/users` for explicit tenant routing.',
+      }),
+      ApiParam({
+        name: 'tenantId',
+        required: true,
+        example: 'kingdomvision',
+        description:
+          'Tenant slug. Required when using `/tenant/{tenantId}/users` route.',
+      }),
+      ApiBody({
+        type: CreateUserDto,
+        examples: {
+          valid: {
+            summary: 'Create user request',
+            value: {
+              name: 'Madeline Smith',
+              email: 'madelinesmith@gmail.com',
+              phone_number: '+1 718 7955 6664',
+              address: '409 E100 ST New York NY 10122',
+              username: 'madeline',
+              password: 'StrongPass123!',
+              password_confirm: 'StrongPass123!',
+              role_id: 1,
+              job_position_id: 1,
+              location_id: 1,
+              availability_days: ['Monday', 'Thursday', 'Saturday'],
+            },
+          },
+        },
+      } as any),
+      ApiResponse({
+        status: 201,
+        description: 'Tenant user created successfully.',
+      }),
+      ApiResponse({
+        status: 400,
+        description: 'Validation failed or email/role conflict.',
+      }),
+    ),
+
+  FindAll: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Get tenant users',
+        description:
+          'Returns all users for the current tenant. Use `/tenant/{tenantId}/users` for explicit tenant routing.',
+      }),
+      ApiParam({
+        name: 'tenantId',
+        required: true,
+        example: 'kingdomvision',
+        description:
+          'Tenant slug. Required when using `/tenant/{tenantId}/users` route.',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Tenant users fetched successfully.',
+      }),
+    ),
+
+  Search: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Search existing tenant users',
+        description:
+          'Searches tenant users for dropdown selection using name, email, username, or phone number.',
+      }),
+      ApiParam({
+        name: 'tenantId',
+        required: true,
+        example: 'kingdomvision',
+        description:
+          'Tenant slug. Required when using `/tenant/{tenantId}/users/search` route.',
+      }),
+      ApiQuery({
+        name: 'q',
+        required: true,
+        type: String,
+        example: 'madel',
+        description: 'Search keyword for existing user lookup.',
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 15,
+        description: 'Maximum number of records to return (1-50). Default is 15.',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Matching tenant users fetched successfully.',
+        schema: {
+          example: {
+            success: true,
+            tenant: 'kingdomvision',
+            count: 1,
+            data: [
+              {
+                id: 5,
+                name: 'Madeline Smith',
+                email: 'madelinesmith@gmail.com',
+                username: 'madeline',
+                phone_number: '+1 718 7955 6664',
+                role: { id: 1, name: 'Manager' },
+                job_position: { id: 2, name: 'Shift Manager' },
+                location: { id: 3, name: 'Downtown Branch' },
+              },
+            ],
+          },
+        },
+      }),
+    ),
+
+  FindOne: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Get tenant user by ID',
+        description:
+          'Returns a specific tenant user by identifier. Use `/tenant/{tenantId}/users/{id}` for explicit tenant routing.',
+      }),
+      ApiParam({
+        name: 'tenantId',
+        required: true,
+        example: 'kingdomvision',
+        description:
+          'Tenant slug. Required when using `/tenant/{tenantId}/users/{id}` route.',
+      }),
+      ApiParam({
+        name: 'id',
+        type: Number,
+        example: 1,
+        description: 'Tenant user ID',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Tenant user fetched successfully.',
+      }),
+      ApiResponse({
+        status: 404,
+        description: 'Tenant user not found.',
+      }),
+    ),
+
+  Update: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Update tenant user',
+        description:
+          'Updates tenant user fields such as name, email, and role. Use `/tenant/{tenantId}/users/{id}` for explicit tenant routing.',
+      }),
+      ApiParam({
+        name: 'tenantId',
+        required: true,
+        example: 'kingdomvision',
+        description:
+          'Tenant slug. Required when using `/tenant/{tenantId}/users/{id}` route.',
+      }),
+      ApiParam({
+        name: 'id',
+        type: Number,
+        example: 1,
+        description: 'Tenant user ID',
+      }),
+      ApiBody({
+        type: UpdateUserDto,
+        examples: {
+          valid: {
+            summary: 'Update user request',
+            value: {
+              name: 'Madeline Smith',
+              phone_number: '+1 718 7955 6664',
+              address: '409 E100 ST New York NY 10122',
+              username: 'madeline',
+              role_id: 1,
+              job_position_id: 1,
+              location_id: 1,
+              availability_days: ['Monday', 'Thursday', 'Saturday'],
+            },
+          },
+        },
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Tenant user updated successfully.',
+      }),
+      ApiResponse({
+        status: 400,
+        description: 'Validation failed or role/email conflict.',
+      }),
+      ApiResponse({
+        status: 404,
+        description: 'Tenant user not found.',
+      }),
+    ),
+
+  Delete: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Delete tenant user',
+        description:
+          'Deletes a tenant user by identifier. Use `/tenant/{tenantId}/users/{id}` for explicit tenant routing.',
+      }),
+      ApiParam({
+        name: 'tenantId',
+        required: true,
+        example: 'kingdomvision',
+        description:
+          'Tenant slug. Required when using `/tenant/{tenantId}/users/{id}` route.',
+      }),
+      ApiParam({
+        name: 'id',
+        type: Number,
+        example: 1,
+        description: 'Tenant user ID',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Tenant user deleted successfully.',
+      }),
+      ApiResponse({
+        status: 404,
+        description: 'Tenant user not found.',
+      }),
+    ),
+};
