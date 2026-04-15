@@ -12,7 +12,9 @@ import {JwtService} from '@nestjs/jwt';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  private readonly BASE_DOMAIN = 'myapp.com';
+  private readonly BASE_DOMAIN = (process.env.BASE_DOMAIN || 'myapp.com')
+      .replace(/^"|"$/g, '')
+      .toLowerCase();
 
   constructor(
       private readonly tenantsService: TenantsService,
@@ -82,18 +84,33 @@ export class TenantMiddleware implements NestMiddleware {
         tenant = String(req.headers['x-tenant']).toLowerCase();
       }
 
+      if (!tenant && req.body?.tenantId) {
+        const bodyTenant = this.extractTenantCode(req.body.tenantId);
+        if (bodyTenant) tenant = bodyTenant.toLowerCase();
+      }
+
+      if (!tenant && (req as any).query?.tenantId) {
+        const queryTenant = this.extractTenantCode((req as any).query?.tenantId);
+        if (queryTenant) tenant = queryTenant.toLowerCase();
+      }
+
       if (!tenant) {
         throw new BadRequestException(
-            'Unable to determine tenant from hostname, token, path, email, or headers.',
+            'Unable to determine tenant from hostname, token, path, email, headers, or query/body tenantId.',
         );
       }
 
       let connection;
       try {
         connection = await this.tenantsService.getTenantConnection(tenant);
-      } catch {
-        console.error('REAL ERROR:', `Failed to get connection for tenant "${tenant}"`);
-        throw new NotFoundException(`Tenant "${tenant}" not found or inactive.`);
+      } catch (err) {
+        console.error('REAL ERROR: Failed to get connection for tenant "' + tenant + '"', err);
+        if (err instanceof BadRequestException || err instanceof NotFoundException) {
+          throw err;
+        }
+        throw new InternalServerErrorException(
+            `Unable to resolve tenant "${tenant}" at this time.`,
+        );
       }
 
       req['tenantId'] = tenant;
