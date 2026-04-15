@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 import {RoleService} from './role.service';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
+import {ApiTags} from '@nestjs/swagger';
+import {TenantRoleSwagger} from './swagger';
 
+@ApiTags('Role Management')
+@TenantRoleSwagger.Auth()
 @Controller(['roles', 'tenant/:tenantId/roles'])
 export class RoleController {
   constructor(private readonly roleService: RoleService) {
@@ -24,6 +28,7 @@ export class RoleController {
    */
   @Get()
   @TenantAccess('view-role')
+  @TenantRoleSwagger.FindAll()
   async all(@Req() req, @Query('page') page: number = 1) {
     try {
       return await this.roleService.paginate(req, +page, ['permissions']);
@@ -38,6 +43,7 @@ export class RoleController {
    */
   @Post()
   @TenantAccess('create-role')
+  @TenantRoleSwagger.Create()
   async create(@Req() req, @Body('name') name: string, @Body('permissions') ids: number[]) {
     try {
       const data = {
@@ -61,6 +67,7 @@ export class RoleController {
    */
   @Get(':id')
   @TenantAccess('view-role')
+  @TenantRoleSwagger.FindOne()
   async get(@Req() req, @Param('id') id: number) {
     try {
       const result = await this.roleService.findOne(req, +id, ['permissions']);
@@ -79,6 +86,7 @@ export class RoleController {
    */
   @Put(':id')
   @TenantAccess('edit-role')
+  @TenantRoleSwagger.Update()
   async update(
     @Req() req,
     @Param('id') id: number,
@@ -115,6 +123,7 @@ export class RoleController {
    */
   @Delete(':id')
   @TenantAccess('delete-role')
+  @TenantRoleSwagger.Delete()
   async delete(@Req() req, @Param('id') id: number) {
     try {
       return await this.roleService.delete(req, +id);

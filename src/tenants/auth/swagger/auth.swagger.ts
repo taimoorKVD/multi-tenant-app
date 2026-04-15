@@ -16,7 +16,7 @@ export const TenantAuthLoginDocs = () =>
                 valid: {
                     summary: 'Valid login request example',
                     value: {
-                        email: 'admin@folio3.com',
+                        email: 'admin@kingdomvision.com',
                         password: 'Admin@123',
                     },
                 },
@@ -29,7 +29,7 @@ export const TenantAuthLoginDocs = () =>
                 missingPassword: {
                     summary: 'Missing password field',
                     value: {
-                        email: 'admin@folio3.com',
+                        email: 'admin@kingdomvision.com',
                     },
                 },
             },

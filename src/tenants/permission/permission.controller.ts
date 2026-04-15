@@ -1,6 +1,11 @@
 import {Controller, Get, InternalServerErrorException, Req} from '@nestjs/common';
 import {PermissionService} from './permission.service';
+import {ApiTags} from '@nestjs/swagger';
+import {TenantPermissionSwagger} from './swagger';
+import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
 
+@ApiTags('Permission Management')
+@TenantPermissionSwagger.Auth()
 @Controller(['permissions', 'tenant/:tenantId/permissions'])
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {
@@ -10,6 +15,8 @@ export class PermissionController {
    * Get all permissions for a tenant
    */
   @Get()
+  @TenantAccess('view-permission')
+  @TenantPermissionSwagger.FindAll()
   async all(@Req() req) {
     try {
       const result = await this.permissionService.findAll(req, ['roles']); // optional relation

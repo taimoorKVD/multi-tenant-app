@@ -92,6 +92,7 @@ export class TenantMiddleware implements NestMiddleware {
       try {
         connection = await this.tenantsService.getTenantConnection(tenant);
       } catch {
+        console.error('REAL ERROR:', `Failed to get connection for tenant "${tenant}"`);
         throw new NotFoundException(`Tenant "${tenant}" not found or inactive.`);
       }
 

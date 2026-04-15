@@ -68,7 +68,9 @@ export class TenantsService {
 
       if (typeof identifier === 'number' || /^\d+$/.test(identifier as string)) {
         where = {id: Number(identifier)};
-      } else if (typeof identifier! === 'string' && /^[a-zA-Z0-9_-]+$/.test(identifier)) {
+      } 
+      // else if (typeof identifier! === 'string' && /^[a-zA-Z0-9_-]+$/.test(identifier)) {
+      else if (typeof identifier === 'string' && /^[a-zA-Z0-9_-]+$/.test(identifier)) {
         where = {subdomain: identifier};
       } else if (typeof identifier! === 'string' && identifier.includes('.')) {
         where = {customDomain: identifier};
