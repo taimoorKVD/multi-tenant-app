@@ -17,6 +17,6 @@ export class Tenant {
   @Column({ type: 'varchar', unique: false, nullable: true })
   customDomain?: string | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 }
