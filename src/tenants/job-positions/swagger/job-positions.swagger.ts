@@ -13,12 +13,6 @@ export const TenantJobPositionsSwagger = {
                 description:
                     'Creates a job position for the current tenant, including optional description and permission mapping.',
             }),
-            ApiParam({
-                name: 'tenantId',
-                required: true,
-                example: 'kingdomvision',
-                description: 'Tenant slug. Required when using `/tenant/{tenantId}/jobpositions` route.',
-            }),
             ApiBody({
                 type: CreateJobPositionDto,
                 examples: {
@@ -48,12 +42,6 @@ export const TenantJobPositionsSwagger = {
                 summary: 'List tenant job positions',
                 description: 'Returns all job positions for the current tenant with related permissions.',
             }),
-            ApiParam({
-                name: 'tenantId',
-                required: true,
-                example: 'kingdomvision',
-                description: 'Tenant slug. Required when using `/tenant/{tenantId}/jobpositions` route.',
-            }),
             ApiResponse({
                 status: 200,
                 description: 'Job positions fetched successfully.',
@@ -65,12 +53,6 @@ export const TenantJobPositionsSwagger = {
             ApiOperation({
                 summary: 'Get tenant job position by ID',
                 description: 'Fetches one tenant job position by numeric ID with related permissions.',
-            }),
-            ApiParam({
-                name: 'tenantId',
-                required: true,
-                example: 'kingdomvision',
-                description: 'Tenant slug. Required when using `/tenant/{tenantId}/jobpositions/{id}` route.',
             }),
             ApiParam({
                 name: 'id',
@@ -93,12 +75,6 @@ export const TenantJobPositionsSwagger = {
             ApiOperation({
                 summary: 'Update tenant job position',
                 description: 'Updates tenant job position fields and permission assignments.',
-            }),
-            ApiParam({
-                name: 'tenantId',
-                required: true,
-                example: 'kingdomvision',
-                description: 'Tenant slug. Required when using `/tenant/{tenantId}/jobpositions/{id}` route.',
             }),
             ApiParam({
                 name: 'id',
@@ -138,12 +114,6 @@ export const TenantJobPositionsSwagger = {
             ApiOperation({
                 summary: 'Delete tenant job position',
                 description: 'Deletes a tenant job position by ID.',
-            }),
-            ApiParam({
-                name: 'tenantId',
-                required: true,
-                example: 'kingdomvision',
-                description: 'Tenant slug. Required when using `/tenant/{tenantId}/jobpositions/{id}` route.',
             }),
             ApiParam({
                 name: 'id',

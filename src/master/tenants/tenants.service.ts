@@ -122,6 +122,11 @@ export class TenantsService {
     const lookup = value.toLowerCase().trim();
 
     try {
+      const byDbName = await this.tenantRepo.findOne({
+        where: {dbName: lookup},
+      });
+      if (byDbName) return byDbName;
+
       const bySubdomain = await this.tenantRepo.findOne({
         where: {subdomain: lookup},
       });

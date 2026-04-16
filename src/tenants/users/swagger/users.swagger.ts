@@ -17,14 +17,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Create tenant user',
         description:
-          'Creates a new user in the current tenant database. Use `/tenant/{tenantId}/users` for explicit tenant routing.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description:
-          'Tenant slug. Required when using `/tenant/{tenantId}/users` route.',
+          'Creates a new user in the current tenant database.',
       }),
       ApiBody({
         type: CreateUserDto,
@@ -62,14 +55,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Get tenant users',
         description:
-          'Returns all users for the current tenant. Use `/tenant/{tenantId}/users` for explicit tenant routing.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description:
-          'Tenant slug. Required when using `/tenant/{tenantId}/users` route.',
+          'Returns all users for the current tenant.',
       }),
       ApiResponse({
         status: 200,
@@ -83,13 +69,6 @@ export const TenantUsersSwagger = {
         summary: 'Search existing tenant users',
         description:
           'Searches tenant users for dropdown selection using name, email, username, or phone number.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description:
-          'Tenant slug. Required when using `/tenant/{tenantId}/users/search` route.',
       }),
       ApiQuery({
         name: 'q',
@@ -135,14 +114,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Get tenant user by ID',
         description:
-          'Returns a specific tenant user by identifier. Use `/tenant/{tenantId}/users/{id}` for explicit tenant routing.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description:
-          'Tenant slug. Required when using `/tenant/{tenantId}/users/{id}` route.',
+          'Returns a specific tenant user by identifier.',
       }),
       ApiParam({
         name: 'id',
@@ -165,14 +137,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Update tenant user',
         description:
-          'Updates tenant user fields such as name, email, and role. Use `/tenant/{tenantId}/users/{id}` for explicit tenant routing.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description:
-          'Tenant slug. Required when using `/tenant/{tenantId}/users/{id}` route.',
+          'Updates tenant user fields such as name, email, and role.',
       }),
       ApiParam({
         name: 'id',
@@ -217,14 +182,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Delete tenant user',
         description:
-          'Deletes a tenant user by identifier. Use `/tenant/{tenantId}/users/{id}` for explicit tenant routing.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description:
-          'Tenant slug. Required when using `/tenant/{tenantId}/users/{id}` route.',
+          'Deletes a tenant user by identifier.',
       }),
       ApiParam({
         name: 'id',

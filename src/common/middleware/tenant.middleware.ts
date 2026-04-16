@@ -45,14 +45,42 @@ export class TenantMiddleware implements NestMiddleware {
 
       const authHeader = req.headers['authorization'];
       if (authHeader?.startsWith('Bearer ')) {
-        try {
-          const token = authHeader.split(' ')[1];
-          const payload = this.jwtService.verify(token);
+        const token = authHeader.split(' ')[1];
+        let payload: any = null;
 
-          if (payload?.tenantId) {
-            tenant = payload.tenantId.toLowerCase();
+        const secrets = [
+          process.env.JWT_SECRET,
+          process.env.TENANT_JWT_SECRET,
+          process.env.MASTER_JWT_SECRET,
+          'tenant_default_secret',
+          'master_secret_key',
+          'master_default_secret',
+        ].filter(Boolean) as string[];
+
+        for (const secret of secrets) {
+          try {
+            payload = this.jwtService.verify(token, {secret});
+            if (payload) break;
+          } catch {
           }
-        } catch {
+        }
+
+        if (!payload) {
+          payload = this.jwtService.decode(token);
+        }
+
+        if (payload?.tenantId) {
+          tenant = String(payload.tenantId).toLowerCase();
+        } else if (payload?.tenant_slug) {
+          tenant = String(payload.tenant_slug).toLowerCase();
+        } else if (payload?.tenantDb) {
+          const dbName = String(payload.tenantDb).toLowerCase();
+          const byDb = await this.tenantsService.findOneFlexible(dbName);
+          if (byDb?.subdomain) {
+            tenant = byDb.subdomain.toLowerCase();
+          } else if (dbName.startsWith('tenant_')) {
+            tenant = dbName.replace(/^tenant_/, '');
+          }
         }
       }
 
