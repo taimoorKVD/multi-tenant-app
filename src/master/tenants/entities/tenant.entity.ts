@@ -20,3 +20,5 @@ export class Tenant {
   @CreateDateColumn()
   createdAt: Date;
 }
+
+// ss
