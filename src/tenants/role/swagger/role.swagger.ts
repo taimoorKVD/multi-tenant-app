@@ -60,7 +60,7 @@ export const TenantRoleSwagger = {
         schema: {
           example: {
             name: 'Senior Manager',
-            permissions: [1, 2, 5, 6],
+            permissions: [1, 2, 5, 6], //new
           },
         },
       }),
