@@ -145,7 +145,7 @@ export class TenantMiddleware implements NestMiddleware {
           payload = this.jwtService.decode(token);
         }
 
-        // ✅ BEST: tenantId (fast)
+        // ✅ GET: tenantId (fast)
         if (payload?.tenantId) {
           tenant = String(payload.tenantId).toLowerCase();
         }
