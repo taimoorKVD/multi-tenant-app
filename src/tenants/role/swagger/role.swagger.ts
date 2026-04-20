@@ -10,12 +10,6 @@ export const TenantRoleSwagger = {
         summary: 'Get tenant roles',
         description: 'Returns paginated roles for the current tenant with linked permissions.',
       }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/roles` route.',
-      }),
       ApiQuery({
         name: 'page',
         required: false,
@@ -32,19 +26,13 @@ export const TenantRoleSwagger = {
         summary: 'Create tenant role',
         description: 'Creates a role and maps selected permission IDs.',
       }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/roles` route.',
-      }),
       ApiBody({
         schema: {
           example: {
             name: 'Manager',
             permissions: [1, 2, 3, 4],
           },
-        },
+        }, 
       }),
       ApiResponse({status: 201, description: 'Role created successfully.'}),
       ApiResponse({status: 400, description: 'Validation failed.'}),
@@ -55,12 +43,6 @@ export const TenantRoleSwagger = {
       ApiOperation({
         summary: 'Get tenant role by ID',
         description: 'Returns a single tenant role with permission mapping.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/roles/{id}` route.',
       }),
       ApiParam({name: 'id', type: Number, example: 1, description: 'Role ID'}),
       ApiResponse({status: 200, description: 'Role fetched successfully.'}),
@@ -73,18 +55,12 @@ export const TenantRoleSwagger = {
         summary: 'Update tenant role',
         description: 'Updates role name and permission IDs.',
       }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/roles/{id}` route.',
-      }),
       ApiParam({name: 'id', type: Number, example: 1, description: 'Role ID'}),
       ApiBody({
         schema: {
           example: {
             name: 'Senior Manager',
-            permissions: [1, 2, 5, 6],
+            permissions: [1, 2, 5, 6], //new
           },
         },
       }),
@@ -98,12 +74,6 @@ export const TenantRoleSwagger = {
       ApiOperation({
         summary: 'Delete tenant role',
         description: 'Deletes a tenant role by ID.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/roles/{id}` route.',
       }),
       ApiParam({name: 'id', type: Number, example: 1, description: 'Role ID'}),
       ApiResponse({status: 200, description: 'Role deleted successfully.'}),

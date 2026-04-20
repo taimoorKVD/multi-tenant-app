@@ -12,12 +12,6 @@ export const TenantLocationsSwagger = {
         summary: 'Create tenant location',
         description: 'Creates a location record for the current tenant.',
       }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/locations` route.',
-      }),
       ApiBody({
         type: CreateLocationDto,
         examples: {
@@ -43,12 +37,6 @@ export const TenantLocationsSwagger = {
         summary: 'List tenant locations',
         description: 'Returns all locations for the current tenant.',
       }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/locations` route.',
-      }),
       ApiResponse({status: 200, description: 'Locations fetched successfully.'}),
     ),
 
@@ -58,12 +46,6 @@ export const TenantLocationsSwagger = {
         summary: 'Search tenant locations',
         description:
           'Searches tenant locations for dropdown selection by name, address, city, country, or postal code.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/locations/search` route.',
       }),
       ApiQuery({
         name: 'q',
@@ -110,12 +92,6 @@ export const TenantLocationsSwagger = {
         summary: 'Get tenant location by ID',
         description: 'Returns a single location by ID for the current tenant.',
       }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/locations/{id}` route.',
-      }),
       ApiParam({name: 'id', type: Number, example: 1, description: 'Location ID'}),
       ApiResponse({status: 200, description: 'Location fetched successfully.'}),
       ApiResponse({status: 404, description: 'Location not found.'}),
@@ -126,12 +102,6 @@ export const TenantLocationsSwagger = {
       ApiOperation({
         summary: 'Update tenant location',
         description: 'Updates an existing location by ID for the current tenant.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/locations/{id}` route.',
       }),
       ApiParam({name: 'id', type: Number, example: 1, description: 'Location ID'}),
       ApiBody({
@@ -159,12 +129,6 @@ export const TenantLocationsSwagger = {
       ApiOperation({
         summary: 'Delete tenant location',
         description: 'Deletes an existing location by ID for the current tenant.',
-      }),
-      ApiParam({
-        name: 'tenantId',
-        required: true,
-        example: 'kingdomvision',
-        description: 'Tenant slug. Required when using `/tenant/{tenantId}/locations/{id}` route.',
       }),
       ApiParam({name: 'id', type: Number, example: 1, description: 'Location ID'}),
       ApiResponse({status: 200, description: 'Location deleted successfully.'}),

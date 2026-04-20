@@ -27,8 +27,8 @@ export const masterDatabaseConfig: DataSourceOptions = {
     url: databaseUrl,
     entities: [User, Role, Permission, Tenant, JobPosition],
     synchronize: false,
-    migrations: [__dirname + '/../database/migrations/[0-9]*.{ts,js}'],
-    migrationsRun: true,
+    // migrations: [__dirname + '/../database/migrations/[0-9]*.{ts,js}'],
+    // migrationsRun: true,
     logging,
     ssl: isProduction ? {rejectUnauthorized: false} : false,
     extra: isProduction
