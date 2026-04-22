@@ -3,3 +3,5 @@ export * from './002-role.seeder';
 export * from './003-user.seeder';
 export * from './004-job-position.seeder';
 export * from './005-location.seeder';
+export * from './006-country.seeder';
+export * from './007-state.seeder';

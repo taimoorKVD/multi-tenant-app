@@ -4,6 +4,17 @@ import {Role} from '../master/role/entities';
 import {Permission} from '../master/permission/entities';
 import {Tenant} from '../master/tenants/entities';
 import {JobPosition} from '../master/job-position/entities';
+import {Country} from '../master/countries/entities';
+import {State} from '../master/states/entities';
+import {
+  CreatePermissionsTable1701010000000,
+  CreateRolesTable1701010001000,
+  CreateUsersTable1701010002000,
+  CreateJobPositionsTable1701010003000,
+  CreateTenantsTable1701010004000,
+  CreateCountriesTable1701010005000,
+  CreateStatesTable1701010006000,
+} from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
 const isProduction = env === 'production';
@@ -25,9 +36,17 @@ console.info(
 export const masterDatabaseConfig: DataSourceOptions = {
     type: 'postgres',
     url: databaseUrl,
-    entities: [User, Role, Permission, Tenant, JobPosition],
+    entities: [User, Role, Permission, Tenant, JobPosition, Country, State],
+    migrations: [
+      CreatePermissionsTable1701010000000,
+      CreateRolesTable1701010001000,
+      CreateUsersTable1701010002000,
+      CreateJobPositionsTable1701010003000,
+      CreateTenantsTable1701010004000,
+      CreateCountriesTable1701010005000,
+      CreateStatesTable1701010006000,
+    ],
     synchronize: false,
-    // migrations: [__dirname + '/../database/migrations/[0-9]*.{ts,js}'],
     // migrationsRun: true,
     logging,
     ssl: isProduction ? {rejectUnauthorized: false} : false,

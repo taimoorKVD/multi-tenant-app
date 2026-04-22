@@ -6,12 +6,14 @@ import {Role} from '../master/role/entities';
 import {Permission} from '../master/permission/entities';
 import {masterDatabaseConfig} from '../config/master-database.config';
 import {JobPosition} from '../master/job-position/entities';
+import {Country} from '../master/countries/entities';
+import {State} from '../master/states/entities';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forRoot(masterDatabaseConfig),
-    TypeOrmModule.forFeature([Role, Permission, User, Tenant, JobPosition]),
+    TypeOrmModule.forFeature([Role, Permission, User, Tenant, JobPosition, Country, State]),
   ],
   exports: [TypeOrmModule],
 })

@@ -3,6 +3,7 @@ import {JwtService} from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import {DataSource} from 'typeorm';
 import {User} from '../users/entities';
+import {Permission} from '../permission/entities';
 
 @Injectable()
 export class TenantAuthService {
@@ -32,12 +33,26 @@ export class TenantAuthService {
         throw new UnauthorizedException('Invalid credentials');
       }
 
+      const roleName = user.role?.name?.trim().toLowerCase() ?? '';
+      const isTenantAdminUser =
+        roleName === 'admin' ||
+        roleName === 'super admin' ||
+        (typeof user.email === 'string' && user.email.toLowerCase().startsWith('admin@'));
+
+      let resolvedPermissions = user.role?.permissions ?? [];
+      if (isTenantAdminUser) {
+        // Tenant admins should always receive full tenant permissions in their auth context.
+        resolvedPermissions = await tenantConnection.getRepository(Permission).find();
+      }
+
+      const permissionNames = resolvedPermissions.map((p) => p.name);
+
       const payload = {
         sub: user.id,
         tenantDb: tenantConnection.options.database,
         email: user.email,
         role: user.role?.name,
-        permissions: user.role?.permissions?.map((p) => p.name) ?? [],
+        permissions: permissionNames,
       };
 
       const token = this.jwtService.sign(payload, {
@@ -55,7 +70,10 @@ export class TenantAuthService {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: {
+            ...user.role,
+            permissions: resolvedPermissions,
+          },
         },
       };
 
@@ -67,9 +85,11 @@ export class TenantAuthService {
         throw error;
       }
 
+      const err = error instanceof Error ? error : new Error(String(error));
+
       console.error('Tenant Login Error:', {
-        message: error.message,
-        stack: error.stack,
+        message: err.message,
+        stack: err.stack,
       });
 
       throw new InternalServerErrorException('Something went wrong during login');

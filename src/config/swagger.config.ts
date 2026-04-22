@@ -6,12 +6,15 @@ import {RoleModule as MasterRoleModule} from '../master/role/role.module';
 import {PermissionModule as MasterPermissionModule} from '../master/permission/permission.module';
 import {TenantsModule as MasterTenantsModule} from '../master/tenants/tenants.module';
 import {JobPositionModule as MasterJobPositionModule} from '../master/job-position/job-position.module';
+import {CountriesModule as MasterCountriesModule} from '../master/countries/countries.module';
+import {StatesModule as MasterStatesModule} from '../master/states/states.module';
 import {TenantAuthModule} from '../tenants/auth/auth.module';
 import {UsersModule as TenantUsersModule} from '../tenants/users/users.module';
 import {RoleModule as TenantRoleModule} from '../tenants/role/role.module';
 import {PermissionModule as TenantPermissionModule} from '../tenants/permission/permission.module';
 import {JobPositionsModule as TenantJobPositionModule} from '../tenants/job-positions/job-positions.module';
 import {LocationsModule as TenantLocationsModule} from '../tenants/locations/locations.module';
+import {VendorsModule as TenantVendorsModule} from '../tenants/vendors/vendors.module';
 
 export function setupSwagger(app: INestApplication) {
 
@@ -51,6 +54,8 @@ export function setupSwagger(app: INestApplication) {
             MasterRoleModule,
             MasterPermissionModule,
             MasterJobPositionModule,
+            MasterCountriesModule,
+            MasterStatesModule,
         ],
     });
 
@@ -62,6 +67,7 @@ export function setupSwagger(app: INestApplication) {
             TenantPermissionModule,
             TenantJobPositionModule,
             TenantLocationsModule,
+            TenantVendorsModule,
         ],
     });
 
@@ -89,6 +95,8 @@ export function setupSwagger(app: INestApplication) {
                     'User Management',
                     'Tenant Management',
                     'Job Position Management',
+                    'Country Management',
+                    'State Management',
                     'Tenant Locations',
                 ];
                 const idxA = order.indexOf(a);
@@ -120,6 +128,7 @@ export function setupSwagger(app: INestApplication) {
                     'User Management',
                     'Job Position Management',
                     'Location Management',
+                    'Vendor Management',
                 ];
                 const idxA = order.indexOf(a);
                 const idxB = order.indexOf(b);
