@@ -1,7 +1,15 @@
 import 'dotenv/config';
 
 import {SeederRunner} from '../helpers/seeder-runner';
-import {JobPositionSeeder, LocationSeeder, PermissionSeeder, RoleSeeder, UserSeeder} from '../seeders';
+import {
+  CountrySeeder,
+  JobPositionSeeder,
+  LocationSeeder,
+  PermissionSeeder,
+  RoleSeeder,
+  StateSeeder,
+  UserSeeder,
+} from '../seeders';
 
 (async () => {
   const runner = new SeederRunner([
@@ -10,6 +18,8 @@ import {JobPositionSeeder, LocationSeeder, PermissionSeeder, RoleSeeder, UserSee
     new UserSeeder(),
     new JobPositionSeeder(),
     new LocationSeeder(),
+    new CountrySeeder(),
+    new StateSeeder(),
   ]);
 
   const shouldReset = process.argv.includes('--reset') || process.argv.includes('reset');

@@ -1,0 +1,135 @@
+import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {InjectRepository} from '@nestjs/typeorm';
+import {ILike, Repository} from 'typeorm';
+import {State} from './entities';
+import {CreateStateDto, UpdateStateDto} from './dto';
+import {Country} from '../countries/entities';
+
+@Injectable()
+export class StatesService {
+  constructor(
+    @InjectRepository(State)
+    private readonly stateRepo: Repository<State>,
+    @InjectRepository(Country)
+    private readonly countryRepo: Repository<Country>,
+  ) {}
+
+  private async ensureCountryExists(countryId: number) {
+    const country = await this.countryRepo.findOne({where: {id: countryId}});
+    if (!country) {
+      throw new NotFoundException('Country not found.');
+    }
+  }
+
+  async create(dto: CreateStateDto) {
+    await this.ensureCountryExists(dto.country_id);
+
+    const name = dto.name.trim();
+    const duplicate = await this.stateRepo.findOne({
+      where: {
+        name: ILike(name),
+        countryId: dto.country_id,
+      },
+    });
+
+    if (duplicate) {
+      throw new BadRequestException('State with this name already exists in the selected country.');
+    }
+
+    const record = this.stateRepo.create({name, countryId: dto.country_id});
+    const saved = await this.stateRepo.save(record);
+
+    return {success: true, message: 'State created successfully', data: saved};
+  }
+
+  async findAll(page = 1, limit = 15, countryId?: number) {
+    const take = Math.min(Math.max(Number(limit) || 15, 1), 100);
+    const currentPage = Math.max(Number(page) || 1, 1);
+
+    const where = countryId ? ({countryId} as any) : undefined;
+
+    const [data, total] = await this.stateRepo.findAndCount({
+      where,
+      order: {name: 'ASC'},
+      take,
+      skip: (currentPage - 1) * take,
+      relations: ['country'],
+    });
+
+    return {
+      success: true,
+      data,
+      meta: {
+        total,
+        page: currentPage,
+        lastPage: Math.ceil(total / take) || 1,
+      },
+    };
+  }
+
+  async search(q: string, limit = 10, countryId?: number) {
+    const keyword = (q || '').trim();
+    const take = Math.min(Math.max(Number(limit) || 10, 1), 100);
+
+    if (!keyword) {
+      return {success: true, count: 0, data: []};
+    }
+
+    const qb = this.stateRepo
+      .createQueryBuilder('state')
+      .leftJoinAndSelect('state.country', 'country')
+      .where('state.name ILIKE :keyword', {keyword: `%${keyword}%`})
+      .orderBy('state.name', 'ASC')
+      .take(take);
+
+    if (countryId) {
+      qb.andWhere('state.countryId = :countryId', {countryId});
+    }
+
+    const data = await qb.getMany();
+    return {success: true, count: data.length, data};
+  }
+
+  async findOne(id: number) {
+    const record = await this.stateRepo.findOne({where: {id}, relations: ['country']});
+    if (!record) throw new NotFoundException('State not found.');
+
+    return {success: true, data: record};
+  }
+
+  async update(id: number, dto: UpdateStateDto) {
+    const record = await this.stateRepo.findOne({where: {id}});
+    if (!record) throw new NotFoundException('State not found.');
+
+    const countryId = dto.country_id ?? record.countryId;
+    if (dto.country_id !== undefined) {
+      await this.ensureCountryExists(dto.country_id);
+    }
+
+    if (dto.name !== undefined || dto.country_id !== undefined) {
+      const name = (dto.name ?? record.name).trim();
+      const duplicate = await this.stateRepo.findOne({
+        where: {name: ILike(name), countryId},
+      });
+      if (duplicate && duplicate.id !== id) {
+        throw new BadRequestException('State with this name already exists in the selected country.');
+      }
+      record.name = name;
+    }
+
+    if (dto.country_id !== undefined) {
+      record.countryId = dto.country_id;
+    }
+
+    const saved = await this.stateRepo.save(record);
+    return {success: true, message: 'State updated successfully', data: saved};
+  }
+
+  async remove(id: number) {
+    const record = await this.stateRepo.findOne({where: {id}});
+    if (!record) throw new NotFoundException('State not found.');
+
+    await this.stateRepo.delete(id);
+    return {success: true, message: 'State deleted successfully'};
+  }
+}

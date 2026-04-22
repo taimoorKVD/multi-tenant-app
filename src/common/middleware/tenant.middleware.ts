@@ -111,11 +111,22 @@ export class TenantMiddleware implements NestMiddleware {
     try {
       const url = req.originalUrl.toLowerCase();
 
-      // ✅ Skip master routes
-      if (url.startsWith('/api/master')) return next();
+      // Skip routes that do not require tenant context.
+      const tenantOptionalPrefixes = [
+        '/api/master',
+        '/api/countries',
+        '/api/states',
+        '/api/collection',
+        '/api/docs',
+      ];
 
-      // ✅ Skip docs/static
-      if (url.startsWith('/api/docs') || url === '/favicon.ico') return next();
+      if (
+        tenantOptionalPrefixes.some((prefix) => url.startsWith(prefix)) ||
+        url === '/favicon.ico' ||
+        url === '/'
+      ) {
+        return next();
+      }
 
       let tenant: string | null = null;
 

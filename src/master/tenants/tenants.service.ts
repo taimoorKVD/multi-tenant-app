@@ -291,6 +291,10 @@ export class TenantsService {
       'edit-location',
       'view-location',
       'delete-location',
+      'create-vendor',
+      'edit-vendor',
+      'view-vendor',
+      'delete-vendor',
     ];
 
     const permissions = await Promise.all(

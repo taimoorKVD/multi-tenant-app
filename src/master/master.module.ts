@@ -8,6 +8,8 @@ import {JobPositionModule} from './job-position/job-position.module';
 import {MasterDatabaseModule} from "../database";
 import {TenantsService} from "./tenants/tenants.service";
 import {JwtService} from "@nestjs/jwt";
+import {CountriesModule} from './countries/countries.module';
+import {StatesModule} from './states/states.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import {JwtService} from "@nestjs/jwt";
     UsersModule,
     TenantsModule,
     JobPositionModule,
+    CountriesModule,
+    StatesModule,
   ],
   providers: [TenantsService, JwtService],
   exports: [TenantsService, JwtService],

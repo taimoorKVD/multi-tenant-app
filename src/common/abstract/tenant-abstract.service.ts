@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, DeepPartial, ObjectLiteral, Repository } from 'typeorm';
+import { DataSource, DeepPartial, ObjectLiteral, QueryFailedError, Repository } from 'typeorm';
 
 @Injectable()
 export abstract class TenantAbstractService<T extends ObjectLiteral> {
@@ -25,6 +26,39 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     return tenantConnection.getRepository<T>(this.repository.target as any) as Repository<T>;
   }
 
+  protected handlePersistenceError(error: unknown, fallbackMessage: string): never {
+    if (error instanceof QueryFailedError) {
+      const driverError = error.driverError as { code?: string; detail?: string; constraint?: string };
+
+      if (driverError?.code === '23505') {
+        const detail = driverError.detail?.match(/Key \(([^)]+)\)=\(([^)]+)\)/);
+        if (detail) {
+          const [, field, value] = detail;
+          throw new ConflictException(`${field} \"${value}\" already exists.`);
+        }
+
+        throw new ConflictException('A record with the same unique value already exists.');
+      }
+    }
+
+    throw new InternalServerErrorException(fallbackMessage);
+  }
+
+  protected sanitizeEntity<K>(entity: K | null): K | null {
+    if (!entity || typeof entity !== 'object') {
+      return entity;
+    }
+
+    const sanitized = {...(entity as Record<string, unknown>)};
+    delete sanitized.password;
+
+    return sanitized as K;
+  }
+
+  protected sanitizeCollection<K>(entities: K[]): K[] {
+    return entities.map((entity) => this.sanitizeEntity(entity) as K);
+  }
+
   /**
    * Create record
    */
@@ -38,11 +72,11 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
         success: true,
         message: 'Record created successfully',
         tenant: req.tenantConnection.options.database,
-        data: saved,
+        data: this.sanitizeEntity(saved),
       };
     } catch (error) {
       console.error('❌ Create operation failed:', error);
-      throw new InternalServerErrorException('Failed to create record');
+      this.handlePersistenceError(error, 'Failed to create record');
     }
   }
 
@@ -53,7 +87,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
     try {
       const repo = this.getRepo(req);
       const data = await repo.find({ relations });
-      const sanitized = data.map(({ password, ...rest }) => rest);
+      const sanitized = this.sanitizeCollection(data as any[]);
 
       return {
         success: true,
@@ -80,7 +114,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
         relations,
         order: { id: 'DESC' } as any,
       });
-      const sanitized = data.map(({ password, ...rest }) => rest);
+      const sanitized = this.sanitizeCollection(data as any[]);
 
       return {
         success: true,
@@ -106,11 +140,10 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
       const repo = this.getRepo(req);
       const entity = await repo.findOne({ where: { id } as any, relations });
       if (!entity) throw new NotFoundException(`Record with ID ${id} not found`);
-      delete (entity as any).password;
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        data: entity,
+        data: this.sanitizeEntity(entity),
       };
     } catch (error) {
       console.error('❌ Find one failed:', error);
@@ -136,13 +169,13 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
         success: true,
         message: 'Record updated successfully',
         tenant: req.tenantConnection.options.database,
-        data: updated,
+        data: this.sanitizeEntity(updated),
       };
     } catch (error) {
       console.error('❌ Update failed:', error);
       throw error instanceof NotFoundException
         ? error
-        : new InternalServerErrorException('Failed to update record');
+        : this.handlePersistenceError(error, 'Failed to update record');
     }
   }
 
