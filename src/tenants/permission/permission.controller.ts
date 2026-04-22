@@ -19,7 +19,7 @@ export class PermissionController {
   @TenantPermissionSwagger.FindAll()
   async all(@Req() req) {
     try {
-      const result = await this.permissionService.findAll(req, ['roles']); // optional relation
+      const result = await this.permissionService.findAll(req); // optional relation
       return {
         ...result,
         message: 'Permissions fetched successfully',
