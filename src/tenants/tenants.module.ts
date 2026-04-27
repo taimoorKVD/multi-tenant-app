@@ -6,6 +6,7 @@ import {PermissionModule} from './permission/permission.module';
 import {LocationsModule} from "./locations/locations.module";
 import {JobPositionsModule} from "./job-positions/job-positions.module";
 import {VendorsModule} from './vendors/vendors.module';
+import { TenantMailAdminModule } from './mail/tenant-mail-admin.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import {VendorsModule} from './vendors/vendors.module';
     LocationsModule,
     JobPositionsModule,
     VendorsModule,
+    TenantMailAdminModule,
   ],
 })
 export class TenantsModule {

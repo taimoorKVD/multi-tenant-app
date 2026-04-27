@@ -10,6 +10,7 @@ import {TenantsService} from "./tenants/tenants.service";
 import {JwtService} from "@nestjs/jwt";
 import {CountriesModule} from './countries/countries.module';
 import {StatesModule} from './states/states.module';
+import {MailAdminModule} from './mail/mail-admin.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import {StatesModule} from './states/states.module';
     JobPositionModule,
     CountriesModule,
     StatesModule,
+    MailAdminModule,
   ],
   providers: [TenantsService, JwtService],
   exports: [TenantsService, JwtService],

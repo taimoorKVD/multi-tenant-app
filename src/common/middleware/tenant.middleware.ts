@@ -164,14 +164,12 @@ export class TenantMiddleware implements NestMiddleware {
         // ✅ fallback: tenantDb
         if (!tenant && payload?.tenantDb) {
           const dbName = String(payload.tenantDb).toLowerCase();
+          const found = await this.tenantsService.findOneFlexible(dbName);
 
-          if (dbName.startsWith('tenant_')) {
-            tenant = dbName.replace(/^tenant_/, '');
-          } else {
-            const found = await this.tenantsService.findOneFlexible(dbName);
-            if (found?.subdomain) {
-              tenant = found.subdomain.toLowerCase();
-            }
+          if (found?.subdomain) {
+            tenant = found.subdomain.toLowerCase();
+          } else if (dbName.startsWith('tenant_')) {
+            tenant = dbName.replace(/^tenant_/, '').replace(/_/g, '-');
           }
         }
       }

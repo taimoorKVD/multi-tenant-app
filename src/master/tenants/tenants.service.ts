@@ -163,18 +163,15 @@ export class TenantsService {
     }
   }
 
-  async getTenantConnection(subdomain: string): Promise<DataSource> {
-    const result = await this.findOne(subdomain);
-    if (!result?.data) {
-      throw new BadRequestException(
-          `Tenant "${subdomain}" does not exist or has no metadata.`,
-      );
+  async getTenantConnection(identifier: string): Promise<DataSource> {
+    const tenant = await this.findOneFlexible(identifier);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant not found for "${identifier}"`);
     }
 
-    const tenant = result.data as Tenant;
     if (!tenant.dbName) {
       throw new BadRequestException(
-          `Tenant "${subdomain}" does not have a configured database.`,
+          `Tenant "${identifier}" does not have a configured database.`,
       );
     }
 
@@ -183,7 +180,7 @@ export class TenantsService {
     } catch (err) {
       console.error(`❌ ERROR connecting tenant DB "${tenant.dbName}"`, err);
       throw new BadRequestException(
-          `Unable to connect to database "${tenant.dbName}" for tenant "${subdomain}"`,
+          `Unable to connect to database "${tenant.dbName}" for tenant "${identifier}"`,
       );
     }
   }

@@ -9,6 +9,8 @@ import {
   RoleSeeder,
   StateSeeder,
   UserSeeder,
+  GlobalMailSettingSeeder,
+  UserEmailTemplateSeeder,
 } from '../seeders';
 
 (async () => {
@@ -20,6 +22,8 @@ import {
     new LocationSeeder(),
     new CountrySeeder(),
     new StateSeeder(),
+    new GlobalMailSettingSeeder(),
+    new UserEmailTemplateSeeder(),
   ]);
 
   const shouldReset = process.argv.includes('--reset') || process.argv.includes('reset');

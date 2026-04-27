@@ -49,6 +49,7 @@ export class TenantAuthService {
 
       const payload = {
         sub: user.id,
+        tenantId: req.tenantId || null,
         tenantDb: tenantConnection.options.database,
         email: user.email,
         role: user.role?.name,

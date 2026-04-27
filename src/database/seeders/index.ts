@@ -5,3 +5,5 @@ export * from './004-job-position.seeder';
 export * from './005-location.seeder';
 export * from './006-country.seeder';
 export * from './007-state.seeder';
+export * from './008-global-mail-setting.seeder';
+export * from './009-user-email-template.seeder';

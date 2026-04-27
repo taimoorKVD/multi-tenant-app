@@ -8,12 +8,30 @@ import {masterDatabaseConfig} from '../config/master-database.config';
 import {JobPosition} from '../master/job-position/entities';
 import {Country} from '../master/countries/entities';
 import {State} from '../master/states/entities';
+import {
+  EmailLog,
+  EmailTemplate,
+  EmailTemplateRecipient,
+  GlobalMailSetting,
+} from '../master/mail/entities';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forRoot(masterDatabaseConfig),
-    TypeOrmModule.forFeature([Role, Permission, User, Tenant, JobPosition, Country, State]),
+    TypeOrmModule.forFeature([
+      Role,
+      Permission,
+      User,
+      Tenant,
+      JobPosition,
+      Country,
+      State,
+      EmailTemplate,
+      EmailTemplateRecipient,
+      GlobalMailSetting,
+      EmailLog,
+    ]),
   ],
   exports: [TypeOrmModule],
 })
