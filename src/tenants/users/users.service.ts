@@ -11,10 +11,14 @@ import { Role } from '../role/entities';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { JobPosition } from '../job-positions/entities';
 import { Location } from '../locations/entities';
+import { MailService } from '../../mail/mail.service';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
-  constructor(private readonly dataSource: DataSource) {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly mailService: MailService,
+  ) {
     super(dataSource.getRepository(User));
   }
 
@@ -83,12 +87,71 @@ export class UsersService extends TenantAbstractService<User> {
         relations: ['role', 'jobPosition', 'location'],
       });
       delete (payload as any)?.password;
+      const mailPayload = {
+        module: 'users',
+        action: 'create',
+        tenantId: req?.tenantId || null,
+        to: payload?.email,
+        data: {
+          user_id: payload?.id,
+          name: payload?.name,
+          first_name: payload?.name?.split(' ')?.[0] || payload?.name,
+          full_name: payload?.name,
+          email: payload?.email,
+          username: payload?.username,
+          password,
+          user_password: password,
+          role_name: payload?.role?.name || null,
+          job_position_name: payload?.jobPosition?.name || null,
+          location_name: payload?.location?.name || null,
+        },
+      };
+
+      const isDevelopment =
+        (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
+      let emailNotification:
+        | {
+            attempted: true;
+            success: boolean;
+            status?: 'sent' | 'queued';
+            logId?: number;
+            idempotencyKey?: string;
+            error?: string;
+          }
+        | undefined;
+
+      if (isDevelopment) {
+        try {
+          const mailResult = await this.mailService.sendTemplateMail(req, mailPayload);
+          emailNotification = {
+            attempted: true,
+            success: true,
+            status: mailResult.status,
+            logId: mailResult.logId,
+            idempotencyKey: mailResult.idempotencyKey,
+          };
+        } catch (mailError) {
+          const mailErrorMessage =
+            mailError instanceof Error ? mailError.message : 'Unknown email dispatch error';
+          console.error('Tenant user email trigger failed:', mailErrorMessage);
+          emailNotification = {
+            attempted: true,
+            success: false,
+            error: mailErrorMessage,
+          };
+        }
+      } else {
+        void this.mailService.sendTemplateMail(req, mailPayload).catch((mailError) => {
+          console.error('Tenant user email trigger failed:', mailError);
+        });
+      }
 
       return {
         success: true,
         message: 'Tenant user created successfully',
         tenant: req.tenantConnection.options.database,
         data: payload,
+        ...(isDevelopment ? { email_notification: emailNotification } : {}),
       };
     } catch (error) {
       console.error('Tenant user creation failed:', error);
@@ -155,6 +218,30 @@ export class UsersService extends TenantAbstractService<User> {
         relations: ['role', 'jobPosition', 'location'],
       });
       delete (payload as any)?.password;
+
+      void this.mailService
+        .sendTemplateMail(req, {
+          module: 'users',
+          action: 'update',
+          tenantId: req?.tenantId || null,
+          to: payload?.email,
+          data: {
+            user_id: payload?.id,
+            name: payload?.name,
+            first_name: payload?.name?.split(' ')?.[0] || payload?.name,
+            full_name: payload?.name,
+            email: payload?.email,
+            username: payload?.username,
+            password: dto.password || 'Not changed',
+            user_password: dto.password || 'Not changed',
+            role_name: payload?.role?.name || null,
+            job_position_name: payload?.jobPosition?.name || null,
+            location_name: payload?.location?.name || null,
+          },
+        })
+        .catch((mailError) => {
+          console.error('Tenant user update email trigger failed:', mailError);
+        });
 
       return {
         success: true,

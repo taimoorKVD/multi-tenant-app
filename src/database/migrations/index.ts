@@ -5,3 +5,7 @@ export * from './1701010003000-CreateJobPositionsTable';
 export * from './1701010004000-CreateTenantsTable';
 export * from './1701010005000-CreateCountriesTable';
 export * from './1701010006000-CreateStatesTable';
+export * from './1701010007000-CreateEmailTemplatesTable';
+export * from './1701010008000-CreateEmailTemplateRecipientsTable';
+export * from './1701010009000-CreateGlobalMailSettingsTable';
+export * from './1701010010000-CreateEmailLogsTable';

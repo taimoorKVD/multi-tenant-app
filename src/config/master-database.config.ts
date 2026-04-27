@@ -7,6 +7,12 @@ import {JobPosition} from '../master/job-position/entities';
 import {Country} from '../master/countries/entities';
 import {State} from '../master/states/entities';
 import {
+    EmailLog,
+    EmailTemplate,
+    EmailTemplateRecipient,
+    GlobalMailSetting,
+} from '../master/mail/entities';
+import {
   CreatePermissionsTable1701010000000,
   CreateRolesTable1701010001000,
   CreateUsersTable1701010002000,
@@ -14,6 +20,10 @@ import {
   CreateTenantsTable1701010004000,
   CreateCountriesTable1701010005000,
   CreateStatesTable1701010006000,
+    CreateEmailTemplatesTable1701010007000,
+    CreateEmailTemplateRecipientsTable1701010008000,
+    CreateGlobalMailSettingsTable1701010009000,
+    CreateEmailLogsTable1701010010000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -36,7 +46,19 @@ console.info(
 export const masterDatabaseConfig: DataSourceOptions = {
     type: 'postgres',
     url: databaseUrl,
-    entities: [User, Role, Permission, Tenant, JobPosition, Country, State],
+        entities: [
+            User,
+            Role,
+            Permission,
+            Tenant,
+            JobPosition,
+            Country,
+            State,
+            EmailTemplate,
+            EmailTemplateRecipient,
+            GlobalMailSetting,
+            EmailLog,
+        ],
     migrations: [
       CreatePermissionsTable1701010000000,
       CreateRolesTable1701010001000,
@@ -45,6 +67,10 @@ export const masterDatabaseConfig: DataSourceOptions = {
       CreateTenantsTable1701010004000,
       CreateCountriesTable1701010005000,
       CreateStatesTable1701010006000,
+            CreateEmailTemplatesTable1701010007000,
+            CreateEmailTemplateRecipientsTable1701010008000,
+            CreateGlobalMailSettingsTable1701010009000,
+            CreateEmailLogsTable1701010010000,
     ],
     synchronize: false,
     // migrationsRun: true,
