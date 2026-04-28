@@ -13,6 +13,7 @@ import {getTenantDataSource, tenantConnections} from '../../database/datasource'
 import {Tenant} from './entities';
 import {User} from '../../tenants/users/entities';
 import * as argon2 from 'argon2';
+import * as nodemailer from 'nodemailer';
 import {Role} from '../../tenants/role/entities';
 import {CreateTenantDto} from './dto';
 import {IAdminSetup, ITenantResponse} from './interfaces';
@@ -23,6 +24,147 @@ import {ApiResponse} from '../../common/abstract';
 export class TenantsService {
   private readonly logger = new Logger(TenantsService.name);
   protected readonly paginateLimit = 15;
+
+  private toError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+
+  private getEnvValue(...keys: string[]): string | null {
+    for (const key of keys) {
+      const value = process.env[key]?.trim();
+      if (value) {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveSmtpConfig() {
+    const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
+    const smtpUsername = this.getEnvValue('SMTP_USER', 'MAIL_USER');
+    const fromEmail =
+      explicitFrom || (smtpUsername && smtpUsername.includes('@') ? smtpUsername : null);
+
+    if (!fromEmail) {
+      return null;
+    }
+
+    // Guard against common placeholder values that SMTP providers reject.
+    const blockedDomains = ['yourdomain.com', 'example.com'];
+    const fromDomain = fromEmail.split('@')[1]?.toLowerCase() || '';
+    if (blockedDomains.includes(fromDomain)) {
+      return null;
+    }
+
+    return {
+      host: this.getEnvValue('SMTP_HOST', 'MAIL_HOST'),
+      port: Number(this.getEnvValue('SMTP_PORT', 'MAIL_PORT') || 587),
+      secure: this.getEnvValue('SMTP_SECURE', 'MAIL_SECURE') === 'true',
+      username: smtpUsername,
+      password: this.getEnvValue('SMTP_PASS', 'MAIL_PASS'),
+      fromEmail,
+      fromName: this.getEnvValue('MAIL_FROM_NAME'),
+      replyTo: this.getEnvValue('MAIL_REPLY_TO'),
+    };
+  }
+
+  private async sendTenantCredentialsEmail(payload: {
+    tenantName: string;
+    tenantSubdomain: string;
+    customDomain?: string | null;
+    recipientEmail: string;
+    loginEmail: string;
+    adminPassword: string;
+  }): Promise<void> {
+    const smtp = this.resolveSmtpConfig();
+    if (!smtp?.host || !smtp.fromEmail) {
+      throw new BadRequestException(
+        'SMTP is not configured with a verified sender. Set SMTP_HOST/SMTP_USER/SMTP_PASS and a verified SMTP_FROM.',
+      );
+    }
+
+    const loginUrl =
+      (process.env.FRONTEND_URL || '').trim() ||
+      `https://${payload.customDomain || payload.tenantSubdomain}.com`;
+
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: smtp.username
+        ? {
+            user: smtp.username,
+            pass: smtp.password || undefined,
+          }
+        : undefined,
+    });
+
+    const subject = `Tenant account ready: ${payload.tenantName}`;
+    const html = `
+      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
+          <tr>
+            <td align="center">
+              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
+                <tr>
+                  <td style="padding:24px 28px;background:#0b2948;">
+                    <img src="${process.env.FRONTEND_URL}/assets/eusocial-logo.png" alt="EuSocial" style="height:44px;display:block;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:30px 28px 22px;color:#1f2d3d;">
+                    <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Tenant Ready to Launch</h2>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
+                      Your tenant <strong>${payload.tenantName}</strong> has been successfully created and is now active. Use the credentials below to log in.
+                    </p>
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
+                      <tr style="border-bottom:1px solid #e8edf3;">
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Tenant Slug</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.tenantSubdomain}</td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8edf3;">
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Admin Email</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.loginEmail}</td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8edf3;">
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Password</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;font-family:monospace;background:#fafbfc;">${payload.adminPassword}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>
+                      </tr>
+                    </table>
+                    <div style="background:#fef3cd;border-left:4px solid #ffc107;padding:12px 14px;border-radius:4px;margin:16px 0;">
+                      <p style="margin:0;font-size:13px;color:#856404;"><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
+                    </div>
+                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
+                      © 2026 EuSocial. All rights reserved.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
+        to: payload.recipientEmail,
+        replyTo: smtp.replyTo || undefined,
+        subject,
+        html,
+      });
+
+      this.logger.log(`📧 Tenant credentials email sent to ${payload.recipientEmail}`);
+    } finally {
+      transporter.close();
+    }
+  }
 
   constructor(
       @InjectRepository(Tenant)
@@ -51,7 +193,8 @@ export class TenantsService {
         meta: { total, page, lastPage: Math.ceil(total / take) },
       };
     } catch (error) {
-      this.logger.error(`❌ Tenant retrieval failed: ${error.message}`, error.stack);
+      const err = this.toError(error);
+      this.logger.error(`❌ Tenant retrieval failed: ${err.message}`, err.stack);
 
       throw new InternalServerErrorException(
           'An unexpected error occurred while fetching tenants. Please try again later.',
@@ -96,6 +239,7 @@ export class TenantsService {
         data: clone,
       };
     } catch (error) {
+      const err = this.toError(error);
       if (
           error instanceof BadRequestException ||
           error instanceof NotFoundException
@@ -104,8 +248,8 @@ export class TenantsService {
       }
 
       this.logger.error(
-          `❌ Tenant retrieval failed for identifier: ${identifier} → ${error.message}`,
-          error.stack,
+          `❌ Tenant retrieval failed for identifier: ${identifier} → ${err.message}`,
+          err.stack,
       );
 
       throw new InternalServerErrorException(
@@ -156,7 +300,7 @@ export class TenantsService {
 
       return null;
     } catch (error) {
-      console.error('❌ Tenant lookup failed:', error);
+      console.error('❌ Tenant lookup failed:', this.toError(error));
       throw new InternalServerErrorException(
           'An unexpected error occurred while looking up tenant.',
       );
@@ -214,13 +358,21 @@ export class TenantsService {
 
       const adminSetup = await this.bootstrapAdmin(tenantConnection, subdomain);
 
-      return this.buildResponse(tenantName, dbName, subdomain, customDomain, adminSetup);
+      return this.buildResponse(
+        tenantRecord.id,
+        tenantName,
+        dbName,
+        subdomain,
+        customDomain,
+        adminSetup,
+      );
     } catch (error) {
-      this.logger.error(`❌ Tenant creation failed for "${tenantName}": ${error.message}`);
+      const err = this.toError(error);
+      this.logger.error(`❌ Tenant creation failed for "${tenantName}": ${err.message}`);
 
       await this.rollbackTenantCreation(tenantName, dbName, tenantRecord);
       throw new InternalServerErrorException(
-        `Tenant creation failed: ${error.message}. All operations were rolled back to ensure data consistency.`,
+        `Tenant creation failed: ${err.message}. All operations were rolled back to ensure data consistency.`,
       );
     }
   }
@@ -246,6 +398,47 @@ export class TenantsService {
     this.logger.log(`🗄️ Database created: ${dbName}`);
   }
 
+  async sendCredentials(id: number, recipientEmail: string) {
+    try {
+      const tenant = await this.tenantRepo.findOneBy({ id });
+      if (!tenant) {
+        throw new NotFoundException(`Tenant with ID ${id} not found.`);
+      }
+
+      const loginEmail = `admin@${tenant.subdomain}.com`;
+
+      await this.sendTenantCredentialsEmail({
+        tenantName: tenant.name,
+        tenantSubdomain: tenant.subdomain,
+        customDomain: tenant.customDomain || null,
+        recipientEmail,
+        loginEmail,
+        adminPassword: 'Admin@123',
+      });
+
+      return {
+        success: true,
+        message: `Tenant credentials email sent to ${recipientEmail}`,
+        data: {
+          tenantId: tenant.id,
+          tenant: tenant.name,
+          recipient: recipientEmail,
+          login_email: loginEmail,
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      const err = this.toError(error);
+      this.logger.error(
+        `❌ Failed to send tenant credentials for tenant ${id} to ${recipientEmail}: ${err.message}`,
+      );
+      throw new BadRequestException(`Unable to send tenant credentials email: ${err.message}`);
+    }
+  }
+
   private async rollbackTenantCreation(
     tenantName: string,
     dbName: string,
@@ -262,7 +455,8 @@ export class TenantsService {
         this.logger.warn(`⚠️ Rolled back tenant metadata: ${tenantName}`);
       }
     } catch (rollbackError) {
-      this.logger.error(`❌ Rollback failed for tenant "${tenantName}": ${rollbackError.message}`);
+      const err = this.toError(rollbackError);
+      this.logger.error(`❌ Rollback failed for tenant "${tenantName}": ${err.message}`);
     }
   }
 
@@ -329,10 +523,11 @@ export class TenantsService {
 
     this.logger.log(`👤 Admin user created: ${adminEmail}`);
 
-    return { role: adminRole, user: adminUser };
+    return { role: adminRole, user: adminUser, plainPassword: defaultPassword };
   }
 
   protected buildResponse(
+    id: number,
     name: string,
     dbName: string,
     subdomain: string,
@@ -349,6 +544,7 @@ export class TenantsService {
       success: true,
       message: `Tenant "${name}" created successfully`,
       data: {
+        id,
         name,
         database: dbName,
         subdomain,
@@ -358,7 +554,7 @@ export class TenantsService {
         customDomainUrl: customDomain ? `https://${customDomain}` : null,
         admin: {
           email: user.email,
-          password: 'Admin@123',
+          password: adminSetup.plainPassword,
           role: {
             id: role.id,
             name: role.name,
@@ -400,8 +596,9 @@ export class TenantsService {
                 `);
         this.logger.log(`🔫 Terminated active sessions for ${dbName}`);
       } catch (terminateErr) {
+        const err = this.toError(terminateErr);
         this.logger.warn(
-          `⚠️ Could not terminate connections for ${dbName}: ${terminateErr.message}`,
+          `⚠️ Could not terminate connections for ${dbName}: ${err.message}`,
         );
       }
 
@@ -409,7 +606,8 @@ export class TenantsService {
         await this.dataSource.query(`DROP DATABASE IF EXISTS "${dbName}"`);
         this.logger.log(`🗑️ Database dropped: ${dbName}`);
       } catch (dropErr) {
-        this.logger.error(`❌ Failed to drop database ${dbName}:`, dropErr.stack);
+        const err = this.toError(dropErr);
+        this.logger.error(`❌ Failed to drop database ${dbName}:`, err.stack);
         throw new InternalServerErrorException(`Failed to drop database "${dbName}"`);
       }
 
@@ -426,10 +624,11 @@ export class TenantsService {
         },
       };
     } catch (error) {
-      this.logger.error(`❌ Tenant deletion failed: ${error.message}`, error.stack);
+      const err = this.toError(error);
+      this.logger.error(`❌ Tenant deletion failed: ${err.message}`, err.stack);
 
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(`Failed to delete tenant: ${error.message}`);
+      throw new InternalServerErrorException(`Failed to delete tenant: ${err.message}`);
     }
   }
 
@@ -476,13 +675,14 @@ export class TenantsService {
         data: saved,
       };
     } catch (error) {
+      const err = this.toError(error);
       if (
           error instanceof BadRequestException ||
           error instanceof NotFoundException
       ) {
         throw error;
       }
-      this.logger.error(`❌ Failed to update tenant: ${error.message}`, error.stack);
+      this.logger.error(`❌ Failed to update tenant: ${err.message}`, err.stack);
 
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('An unexpected error occurred while updating tenant');

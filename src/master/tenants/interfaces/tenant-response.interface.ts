@@ -4,6 +4,7 @@ export interface ITenantResponse {
   success: boolean;
   message: string;
   data: {
+    id: number;
     name: string;
     database: string;
     subdomain: string;

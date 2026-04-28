@@ -1,6 +1,6 @@
 import {applyDecorators} from '@nestjs/common';
 import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse,} from '@nestjs/swagger';
-import {CreateTenantDto} from '../dto';
+import {CreateTenantDto, SendTenantCredentialsDto} from '../dto';
 
 export const TenantSwagger = {
     Auth: () => ApiBearerAuth('access-token'),
@@ -58,12 +58,13 @@ export const TenantSwagger = {
             ApiOperation({
                 summary: 'Create a new tenant',
                 description:
-                    'Creates a new tenant in the master database. This operation automatically provisions a tenant database, generates a subdomain, creates the first admin account, and assigns default permissions.',
+                    'Creates a new tenant in the master database. This operation automatically provisions a tenant database, generates a subdomain, creates the first admin account, and assigns default permissions. The response includes tenant `id` for follow-up actions like sending credentials.',
             }),
             ApiBody({
                 description:
                     'Tenant creation payload. The `name` field is required; `customDomain` is optional. ' +
-                    'Subdomain, database name, URLs, and admin credentials are auto-generated.',
+                    'Subdomain, database name, URLs, and admin credentials are auto-generated. ' +
+                    'Credentials can be sent later via the dedicated send-credentials endpoint.',
                 type: CreateTenantDto,
                 examples: {
                     valid_minimal: {
@@ -90,6 +91,7 @@ export const TenantSwagger = {
                         success: true,
                         message: 'Tenant "Travel Agency" created successfully',
                         data: {
+                            id: 1,
                             name: 'Travel Agency',
                             database: 'tenant_travel_agency',
                             subdomain: 'travel-agency',
@@ -133,6 +135,83 @@ export const TenantSwagger = {
                         statusCode: 500,
                         message:
                             'Failed to create tenant. Please try again later or contact support.',
+                        error: 'Internal Server Error',
+                    },
+                },
+            }),
+        ),
+
+    SendCredentials: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Send tenant credentials email',
+                description:
+                    'Sends tenant admin login credentials to the provided email address after tenant creation. Use the tenant `id` returned by create-tenant response as the route parameter.',
+            }),
+            ApiParam({
+                name: 'id',
+                type: Number,
+                required: true,
+                example: 1,
+                description: 'Tenant ID for which credentials will be sent.',
+            }),
+            ApiBody({
+                description: 'Recipient email from the modal input field.',
+                type: SendTenantCredentialsDto,
+                examples: {
+                    send_to_input_email: {
+                        summary: 'Send credentials to input email',
+                        value: {
+                            email: 'omais.kv@gmail.com',
+                        },
+                    },
+                },
+            } as any),
+            ApiResponse({
+                status: 201,
+                description: 'Credentials email sent successfully.',
+                schema: {
+                    example: {
+                        success: true,
+                        message: 'Tenant credentials email sent to omais.kv@gmail.com',
+                        data: {
+                            tenantId: 1,
+                            tenant: 'Travel Agency',
+                            recipient: 'omais.kv@gmail.com',
+                            login_email: 'admin@travel-agency.com',
+                        },
+                    },
+                },
+            }),
+            ApiResponse({
+                status: 404,
+                description: 'Tenant not found.',
+                schema: {
+                    example: {
+                        statusCode: 404,
+                        message: 'Tenant with ID 99 not found.',
+                        error: 'Not Found',
+                    },
+                },
+            }),
+            ApiResponse({
+                status: 400,
+                description: 'SMTP sender/config validation failed or provider rejected sender identity.',
+                schema: {
+                    example: {
+                        statusCode: 400,
+                        message: 'Unable to send tenant credentials email: Message failed: 550-From header sender domain not verified (yourdomain.com)',
+                        error: 'Bad Request',
+                    },
+                },
+            }),
+            ApiResponse({
+                status: 500,
+                description: 'Unexpected server error.',
+                schema: {
+                    example: {
+                        statusCode: 500,
+                        message: 'An unexpected error occurred while sending credentials email.',
                         error: 'Internal Server Error',
                     },
                 },
