@@ -40,6 +40,18 @@ export class TenantsService {
     return null;
   }
 
+  private getFrontendBaseUrl(): string {
+    const frontendUrl = this.getEnvValue('FRONTEND_URL', 'APP_FRONTEND_URL');
+    if (frontendUrl) {
+      return frontendUrl.replace(/\/+$/, '');
+    }
+
+    this.logger.warn(
+      'FRONTEND_URL is not configured. Falling back to default frontend URL for email links.',
+    );
+    return 'https://eusocial-admin.vercel.app';
+  }
+
   private resolveSmtpConfig() {
     const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
     const smtpUsername = this.getEnvValue('SMTP_USER', 'MAIL_USER');
@@ -84,9 +96,9 @@ export class TenantsService {
       );
     }
 
-    const loginUrl =
-      (process.env.FRONTEND_URL || '').trim() ||
-      `https://${payload.customDomain || payload.tenantSubdomain}.com`;
+    const frontendBaseUrl = this.getFrontendBaseUrl();
+    const logoUrl = `${frontendBaseUrl}/assets/eusocial-logo.png`;
+    const loginUrl = `${frontendBaseUrl}/tenant/login`;
 
     const transporter = nodemailer.createTransport({
       host: smtp.host,
@@ -109,7 +121,7 @@ export class TenantsService {
               <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
                 <tr>
                   <td style="padding:24px 28px;background:#0b2948;">
-                    <img src="${process.env.FRONTEND_URL}/assets/eusocial-logo.png" alt="EuSocial" style="height:44px;display:block;" />
+                    <img src="${logoUrl}" alt="EuSocial" style="height:44px;display:block;" />
                   </td>
                 </tr>
                 <tr>
@@ -119,10 +131,6 @@ export class TenantsService {
                       Your tenant <strong>${payload.tenantName}</strong> has been successfully created and is now active. Use the credentials below to log in.
                     </p>
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
-                      <tr style="border-bottom:1px solid #e8edf3;">
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Tenant Slug</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.tenantSubdomain}</td>
-                      </tr>
                       <tr style="border-bottom:1px solid #e8edf3;">
                         <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Admin Email</strong></td>
                         <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.loginEmail}</td>
