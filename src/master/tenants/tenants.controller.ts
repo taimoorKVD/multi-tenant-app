@@ -1,7 +1,7 @@
 import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query} from '@nestjs/common';
 import {TenantsService} from './tenants.service';
 import {Tenant} from './entities';
-import {CreateTenantDto} from './dto';
+import {CreateTenantDto, SendTenantCredentialsDto} from './dto';
 import {MasterAccess} from '../../common/decorators';
 import {ApiTags} from "@nestjs/swagger";
 import {TenantSwagger} from "./swagger";
@@ -25,6 +25,16 @@ export class TenantsController {
   @TenantSwagger.Create()
   async create(@Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto);
+  }
+
+  @Post(':id/send-credentials')
+  @MasterAccess('create-tenant')
+  @TenantSwagger.SendCredentials()
+  async sendCredentials(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SendTenantCredentialsDto,
+  ) {
+    return this.tenantsService.sendCredentials(id, dto.email);
   }
 
   // Get single user by numeric ID

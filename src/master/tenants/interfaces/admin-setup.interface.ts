@@ -4,4 +4,5 @@ import { User } from '../../../tenants/users/entities';
 export interface IAdminSetup {
   role: Role;
   user: User;
+  plainPassword: string;
 }
