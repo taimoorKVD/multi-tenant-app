@@ -5,10 +5,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
-  ValidateIf,
 } from 'class-validator';
-import { Match } from '../../../common/decorators';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -35,16 +32,8 @@ export class UpdateUserDto {
   @MaxLength(100, { message: 'Username must not exceed 100 characters.' })
   username?: string;
 
-  @IsOptional()
-  @IsString({ message: 'Password must be a string.' })
-  @MinLength(6, { message: 'Password must be at least 6 characters long.' })
-  @MaxLength(50, { message: 'Password must not exceed 50 characters.' })
   password?: string;
 
-  @ValidateIf((o) => !!o.password)
-  @IsString({ message: 'Confirm password must be a string.' })
-  @Match('password', { message: 'Passwords do not match.' })
-  @IsOptional()
   password_confirm?: string;
 
   @IsOptional()
