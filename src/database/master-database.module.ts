@@ -14,6 +14,7 @@ import {
   EmailTemplateRecipient,
   GlobalMailSetting,
 } from '../master/mail/entities';
+import { ActivityLog } from '../master/activity-logs/entities';
 
 @Global()
 @Module({
@@ -31,6 +32,7 @@ import {
       EmailTemplateRecipient,
       GlobalMailSetting,
       EmailLog,
+      ActivityLog,
     ]),
   ],
   exports: [TypeOrmModule],

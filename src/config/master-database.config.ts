@@ -12,6 +12,7 @@ import {
     EmailTemplateRecipient,
     GlobalMailSetting,
 } from '../master/mail/entities';
+import { ActivityLog } from '../master/activity-logs/entities';
 import {
   CreatePermissionsTable1701010000000,
   CreateRolesTable1701010001000,
@@ -24,6 +25,7 @@ import {
     CreateEmailTemplateRecipientsTable1701010008000,
     CreateGlobalMailSettingsTable1701010009000,
     CreateEmailLogsTable1701010010000,
+    CreateActivityLogsTable1701010011000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -58,6 +60,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
             EmailTemplateRecipient,
             GlobalMailSetting,
             EmailLog,
+            ActivityLog,
         ],
     migrations: [
       CreatePermissionsTable1701010000000,
@@ -67,10 +70,11 @@ export const masterDatabaseConfig: DataSourceOptions = {
       CreateTenantsTable1701010004000,
       CreateCountriesTable1701010005000,
       CreateStatesTable1701010006000,
-            CreateEmailTemplatesTable1701010007000,
-            CreateEmailTemplateRecipientsTable1701010008000,
-            CreateGlobalMailSettingsTable1701010009000,
-            CreateEmailLogsTable1701010010000,
+      CreateEmailTemplatesTable1701010007000,
+      CreateEmailTemplateRecipientsTable1701010008000,
+      CreateGlobalMailSettingsTable1701010009000,
+      CreateEmailLogsTable1701010010000,
+      CreateActivityLogsTable1701010011000,
     ],
     synchronize: false,
     // migrationsRun: true,

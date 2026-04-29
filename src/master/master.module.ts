@@ -1,4 +1,5 @@
 import {Module} from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import {MasterAuthModule} from './auth/auth.module';
 import {UsersModule} from './users/users.module';
 import {RoleModule} from './role/role.module';
@@ -11,6 +12,8 @@ import {JwtService} from "@nestjs/jwt";
 import {CountriesModule} from './countries/countries.module';
 import {StatesModule} from './states/states.module';
 import {MailAdminModule} from './mail/mail-admin.module';
+import { ActivityLogsModule } from './activity-logs';
+import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
 
 @Module({
   imports: [
@@ -24,8 +27,16 @@ import {MailAdminModule} from './mail/mail-admin.module';
     CountriesModule,
     StatesModule,
     MailAdminModule,
+    ActivityLogsModule,
   ],
-  providers: [TenantsService, JwtService],
+  providers: [
+    TenantsService,
+    JwtService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ActivityLogInterceptor,
+    },
+  ],
   exports: [TenantsService, JwtService],
 })
 export class MasterModule {}
