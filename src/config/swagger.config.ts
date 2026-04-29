@@ -9,6 +9,7 @@ import {JobPositionModule as MasterJobPositionModule} from '../master/job-positi
 import {CountriesModule as MasterCountriesModule} from '../master/countries/countries.module';
 import {StatesModule as MasterStatesModule} from '../master/states/states.module';
 import {MailAdminModule as MasterMailAdminModule} from '../master/mail/mail-admin.module';
+import {ActivityLogsModule as MasterActivityLogsModule} from '../master/activity-logs/activity-logs.module';
 import {TenantAuthModule} from '../tenants/auth/auth.module';
 import {UsersModule as TenantUsersModule} from '../tenants/users/users.module';
 import {RoleModule as TenantRoleModule} from '../tenants/role/role.module';
@@ -60,6 +61,7 @@ export function setupSwagger(app: INestApplication) {
             MasterCountriesModule,
             MasterStatesModule,
             MasterMailAdminModule,
+            MasterActivityLogsModule,
         ],
     });
 
@@ -104,6 +106,7 @@ export function setupSwagger(app: INestApplication) {
                     'Country Management',
                     'State Management',
                     'Email Management',
+                    'Activity Logs',
                     'Tenant Locations',
                 ];
                 const idxA = order.indexOf(a);

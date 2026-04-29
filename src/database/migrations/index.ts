@@ -9,3 +9,4 @@ export * from './1701010007000-CreateEmailTemplatesTable';
 export * from './1701010008000-CreateEmailTemplateRecipientsTable';
 export * from './1701010009000-CreateGlobalMailSettingsTable';
 export * from './1701010010000-CreateEmailLogsTable';
+export * from './1701010011000-CreateActivityLogsTable';
