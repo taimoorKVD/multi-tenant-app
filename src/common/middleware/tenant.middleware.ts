@@ -109,6 +109,10 @@ export class TenantMiddleware implements NestMiddleware {
   // }
   async use(req: Request, res: Response, next: NextFunction) {
     try {
+      if (req.method === 'OPTIONS') {
+        return next();
+      }
+
       const url = req.originalUrl.toLowerCase();
 
       // Skip routes that do not require tenant context.
