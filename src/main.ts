@@ -26,10 +26,29 @@ async function bootstrap() {
     }),
   );
 
+  // app.enableCors({
+  //   origin: [process.env.FRONTEND_URL || 'http://localhost:4200'],
+  //   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  //   allowedHeaders: ['Content-Type', 'Authorization'],
+  //   credentials: false,
+  // });
   app.enableCors({
-    origin: [process.env.FRONTEND_URL || 'http://localhost:4200'],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        'http://localhost:4200',
+      ];
+
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
     credentials: false,
   });
 
