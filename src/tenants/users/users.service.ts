@@ -22,6 +22,26 @@ export class UsersService extends TenantAbstractService<User> {
     super(dataSource.getRepository(User));
   }
 
+  private getFrontendBaseUrl(): string {
+    const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
+    if (frontendUrl) {
+      return frontendUrl.replace(/\/+$/, '');
+    }
+
+    return 'http://localhost:4200';
+  }
+
+  private getTenantLoginUrl(tenantId?: string | null): string {
+    const frontendBaseUrl = this.getFrontendBaseUrl();
+    const tenantSlug = (tenantId || '').trim();
+
+    if (tenantSlug) {
+      return `${frontendBaseUrl}/tenant/${tenantSlug}/login`;
+    }
+
+    return `${frontendBaseUrl}/tenant/login`;
+  }
+
   async create(req: any, dto: CreateUserDto): Promise<any> {
     try {
       const userRepo: Repository<User> = this.getRepo(req);
@@ -101,6 +121,9 @@ export class UsersService extends TenantAbstractService<User> {
           username: payload?.username,
           password,
           user_password: password,
+          tenant_slug: req?.tenantId || null,
+          tenant_login_url: this.getTenantLoginUrl(req?.tenantId || null),
+          logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
           role_name: payload?.role?.name || null,
           job_position_name: payload?.jobPosition?.name || null,
           location_name: payload?.location?.name || null,
@@ -234,6 +257,9 @@ export class UsersService extends TenantAbstractService<User> {
             username: payload?.username,
             password: dto.password || 'Not changed',
             user_password: dto.password || 'Not changed',
+            tenant_slug: req?.tenantId || null,
+            tenant_login_url: this.getTenantLoginUrl(req?.tenantId || null),
+            logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
             role_name: payload?.role?.name || null,
             job_position_name: payload?.jobPosition?.name || null,
             location_name: payload?.location?.name || null,

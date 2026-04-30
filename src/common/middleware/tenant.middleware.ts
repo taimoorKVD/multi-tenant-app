@@ -13,6 +13,17 @@ import { JwtService } from '@nestjs/jwt';
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   private readonly BASE_DOMAIN = 'eusocial.com';
+  private readonly PUBLIC_EMAIL_DOMAINS = new Set([
+    'gmail.com',
+    'yahoo.com',
+    'hotmail.com',
+    'outlook.com',
+    'live.com',
+    'icloud.com',
+    'aol.com',
+    'proton.me',
+    'protonmail.com',
+  ]);
 
   constructor(
     private readonly tenantsService: TenantsService,
@@ -185,6 +196,10 @@ export class TenantMiddleware implements NestMiddleware {
         tenant = String(req.headers['x-tenant']).toLowerCase();
       }
 
+      if (!tenant && req.headers['x-tenant-slug']) {
+        tenant = String(req.headers['x-tenant-slug']).toLowerCase();
+      }
+
       // =========================
       // ✅ 3. URL PARAM (optional)
       // =========================
@@ -194,15 +209,33 @@ export class TenantMiddleware implements NestMiddleware {
       }
 
       // =========================
-      // ✅ 4. LOGIN EMAIL (IMPORTANT)
+      // ✅ 4. BODY TENANT (login/body fallback)
       // =========================
-      if (!tenant && url.endsWith('/login') && req.body?.email) {
-        const domain = req.body.email.split('@')[1];
-        if (domain) tenant = domain.split('.')[0].toLowerCase();
+      if (!tenant) {
+        const bodyTenant = req.body?.tenant_slug || req.body?.tenantId || req.body?.tenant;
+        if (bodyTenant) {
+          tenant = String(bodyTenant).toLowerCase().trim();
+        }
       }
 
       // =========================
-      // ✅ 5. HOSTNAME (LAST RESORT ONLY)
+      // ✅ 5. LOGIN EMAIL (LAST HEURISTIC ONLY)
+      // =========================
+      if (!tenant && url.endsWith('/login') && req.body?.email) {
+        const domain = String(req.body.email).split('@')[1]?.toLowerCase().trim();
+        if (domain && !this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
+          const exactMatch = await this.tenantsService.findOneFlexible(domain).catch(() => null);
+
+          if (exactMatch?.subdomain) {
+            tenant = exactMatch.subdomain.toLowerCase();
+          } else {
+            tenant = domain.split('.')[0].toLowerCase();
+          }
+        }
+      }
+
+      // =========================
+      // ✅ 6. HOSTNAME (LAST RESORT ONLY)
       // =========================
       const hostname = (req.headers.host?.split(':')[0] || '').toLowerCase();
 
@@ -223,7 +256,7 @@ export class TenantMiddleware implements NestMiddleware {
       // =========================
       if (!tenant) {
         throw new BadRequestException(
-          'Tenant not resolved. Provide valid token or tenant context.',
+          'Unable to identify your workspace. Please use the tenant login link (e.g. /tenant/your-workspace/login) or contact your administrator.',
         );
       }
 

@@ -3,7 +3,6 @@ import {JwtService} from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import {DataSource} from 'typeorm';
 import {User} from '../users/entities';
-import {Permission} from '../permission/entities';
 
 @Injectable()
 export class TenantAuthService {
@@ -33,17 +32,7 @@ export class TenantAuthService {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      const roleName = user.role?.name?.trim().toLowerCase() ?? '';
-      const isTenantAdminUser =
-        roleName === 'admin' ||
-        roleName === 'super admin' ||
-        (typeof user.email === 'string' && user.email.toLowerCase().startsWith('admin@'));
-
-      let resolvedPermissions = user.role?.permissions ?? [];
-      if (isTenantAdminUser) {
-        // Tenant admins should always receive full tenant permissions in their auth context.
-        resolvedPermissions = await tenantConnection.getRepository(Permission).find();
-      }
+      const resolvedPermissions = user.role?.permissions ?? [];
 
       const permissionNames = resolvedPermissions.map((p) => p.name);
 

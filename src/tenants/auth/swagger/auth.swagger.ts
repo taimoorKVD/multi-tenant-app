@@ -7,10 +7,10 @@ export const TenantAuthLoginDocs = () =>
         ApiOperation({
             summary: 'Authenticate and obtain access token',
             description:
-                'Logs in a master user using email and password. Returns an access token and user details.',
+                'Logs in a tenant user using email and password. Use the tenant route or provide tenant_slug when calling the generic login endpoint.',
         }),
         ApiBody({
-            description: 'Credentials for master user login',
+            description: 'Credentials for tenant user login',
             type: LoginDto,
             examples: {
                 valid: {
@@ -18,6 +18,7 @@ export const TenantAuthLoginDocs = () =>
                     value: {
                         email: 'admin@kingdomvision.com',
                         password: 'Admin@123',
+                        tenant_slug: 'kingdomvision',
                     },
                 },
                 missingEmail: {

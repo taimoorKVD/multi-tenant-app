@@ -8,9 +8,20 @@ import { EmailResolverContext } from './email-template-resolver.interface';
 export class UserEmailResolver extends BaseEmailResolver {
   readonly module = 'users';
 
+  private getFrontendBaseUrl(): string {
+    const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
+    if (frontendUrl) {
+      return frontendUrl.replace(/\/+$/, '');
+    }
+
+    return 'http://localhost:4200';
+  }
+
   override async resolve(context: EmailResolverContext): Promise<Record<string, unknown>> {
     const resolved = await super.resolve(context);
     const data = { ...resolved, ...context.data };
+    const frontendBaseUrl = this.getFrontendBaseUrl();
+    const tenantSlug = String(data.tenant_slug ?? context.tenantId ?? '').trim();
     const userId = Number(data.user_id ?? data.userId ?? 0);
 
     if (context.tenantConnection && userId > 0) {
@@ -40,6 +51,20 @@ export class UserEmailResolver extends BaseEmailResolver {
 
     if (!data.full_name && typeof data.name === 'string') {
       data.full_name = data.name;
+    }
+
+    if (!data.tenant_slug) {
+      data.tenant_slug = tenantSlug || null;
+    }
+
+    if (!data.logo_url) {
+      data.logo_url = `${frontendBaseUrl}/assets/eusocial-logo.png`;
+    }
+
+    if (!data.tenant_login_url) {
+      data.tenant_login_url = tenantSlug
+        ? `${frontendBaseUrl}/tenant/${tenantSlug}/login`
+        : `${frontendBaseUrl}/tenant/login`;
     }
 
     return data;
