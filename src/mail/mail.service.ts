@@ -192,6 +192,19 @@ export class MailService {
     const normalizeProvider = (smtp: MailSmtpConfig): MailSmtpConfig => {
       const provider = (smtp.provider || '').toLowerCase();
 
+      if (provider === 'smtp2go') {
+        return {
+          ...smtp,
+          host: smtp.host || this.getEnvValue('SMTP2GO_HOST') || 'mail.smtp2go.com',
+          port: smtp.port || Number(this.getEnvValue('SMTP2GO_PORT') || 587),
+          secure: smtp.secure || false,
+          username:
+            smtp.username || this.getEnvValue('SMTP2GO_USER', 'SMTP2GO_USERNAME'),
+          password:
+            smtp.password || this.getEnvValue('SMTP2GO_PASS', 'SMTP2GO_PASSWORD'),
+        };
+      }
+
       if (provider === 'sendgrid') {
         const apiKey = smtp.password || this.getEnvValue('SENDGRID_API_KEY');
         return {
@@ -257,6 +270,24 @@ export class MailService {
           secure: this.getEnvValue('MAIL_SECURE') === 'true',
           username: this.getEnvValue('MAIL_USER') || 'apikey',
           password: this.getEnvValue('MAIL_PASS', 'SENDGRID_API_KEY'),
+          fromEmail,
+          fromName: this.getEnvValue('MAIL_FROM_NAME'),
+          replyTo: this.getEnvValue('MAIL_REPLY_TO'),
+        });
+      }
+
+      if ((provider || '').toLowerCase() === 'smtp2go') {
+        return normalizeProvider({
+          provider: 'smtp2go',
+          host:
+            this.getEnvValue('MAIL_HOST', 'SMTP_HOST', 'SMTP2GO_HOST') ||
+            'mail.smtp2go.com',
+          port: Number(this.getEnvValue('MAIL_PORT', 'SMTP2GO_PORT') || 587),
+          secure: this.getEnvValue('MAIL_SECURE') === 'true',
+          username:
+            this.getEnvValue('MAIL_USER', 'SMTP2GO_USER', 'SMTP2GO_USERNAME'),
+          password:
+            this.getEnvValue('MAIL_PASS', 'SMTP2GO_PASS', 'SMTP2GO_PASSWORD'),
           fromEmail,
           fromName: this.getEnvValue('MAIL_FROM_NAME'),
           replyTo: this.getEnvValue('MAIL_REPLY_TO'),

@@ -29,6 +29,7 @@ export class TenantAuthController {
 
   // ✅ Tenant-specific login (FIXED SWAGGER)
   @Post('tenant/:tenantId/login')
+  @Post(':tenantId/login')
   @ApiParam({
     name: 'tenantId',
     required: true,
