@@ -423,39 +423,33 @@ export class UsersService extends TenantAbstractService<User> {
         throw new NotFoundException(`User with ID ${id} not found.`);
       }
 
-      const tempPassword = dto.temporary_password || this.generateTemporaryPassword();
-      const templateActions =
-        dto.template_action === 'both'
-          ? (['create', 'update'] as const)
-          : ([dto.template_action || 'create'] as const);
+      const tempPassword = this.generateTemporaryPassword();
 
       user.password = tempPassword;
       await userRepo.save(user);
 
-      for (const action of templateActions) {
-        await this.mailService.sendTemplateMail(req, {
-          module: 'users',
-          action,
-          tenantId: req?.tenantId || null,
-          to: dto.recipient_email,
-          data: {
-            user_id: user.id,
-            name: user.name,
-            first_name: user.name?.split(' ')?.[0] || user.name,
-            full_name: user.name,
-            email: user.email,
-            username: user.username,
-            password: tempPassword,
-            user_password: tempPassword,
-            tenant_slug: req?.tenantId || null,
-            tenant_login_url: this.getTenantLoginUrl(),
-            logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
-            role_name: user.role?.name || null,
-            job_position_name: user.jobPosition?.name || null,
-            location_name: user.location?.name || null,
-          },
-        });
-      }
+      await this.mailService.sendTemplateMail(req, {
+        module: 'users',
+        action: 'create',
+        tenantId: req?.tenantId || null,
+        to: dto.recipient_email,
+        data: {
+          user_id: user.id,
+          name: user.name,
+          first_name: user.name?.split(' ')?.[0] || user.name,
+          full_name: user.name,
+          email: user.email,
+          username: user.username,
+          password: tempPassword,
+          user_password: tempPassword,
+          tenant_slug: req?.tenantId || null,
+          tenant_login_url: this.getTenantLoginUrl(),
+          logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
+          role_name: user.role?.name || null,
+          job_position_name: user.jobPosition?.name || null,
+          location_name: user.location?.name || null,
+        },
+      });
 
       return {
         success: true,
@@ -465,7 +459,6 @@ export class UsersService extends TenantAbstractService<User> {
           user_id: user.id,
           user_email: user.email,
           recipient: dto.recipient_email,
-          template_actions: templateActions,
           tenant_login_url: this.getTenantLoginUrl(),
         },
       };
