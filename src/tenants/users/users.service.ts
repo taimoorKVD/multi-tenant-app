@@ -12,6 +12,7 @@ import { CreateUserDto, SendUserCredentialsDto, UpdateUserDto } from './dto';
 import { JobPosition } from '../job-positions/entities';
 import { Location } from '../locations/entities';
 import { MailService } from '../../mail/mail.service';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -411,6 +412,29 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
+  private resolveSmtpConfig() {
+    const explicitFrom = process.env.SMTP_FROM?.trim() || process.env.EMAIL_FROM?.trim() || process.env.MAIL_FROM_EMAIL?.trim();
+    const smtpUsername = process.env.SMTP_USER?.trim() || process.env.MAIL_USER?.trim();
+    const fromEmail = explicitFrom || (smtpUsername?.includes('@') ? smtpUsername : null);
+
+    if (!fromEmail) return null;
+
+    const blockedDomains = ['yourdomain.com', 'example.com'];
+    const fromDomain = fromEmail.split('@')[1]?.toLowerCase() || '';
+    if (blockedDomains.includes(fromDomain)) return null;
+
+    return {
+      host: process.env.SMTP_HOST?.trim() || process.env.MAIL_HOST?.trim() || null,
+      port: Number(process.env.SMTP_PORT?.trim() || process.env.MAIL_PORT?.trim() || 587),
+      secure: (process.env.SMTP_SECURE?.trim() || process.env.MAIL_SECURE?.trim()) === 'true',
+      username: smtpUsername,
+      password: process.env.SMTP_PASS?.trim() || process.env.MAIL_PASS?.trim() || undefined,
+      fromEmail,
+      fromName: process.env.MAIL_FROM_NAME?.trim() || undefined,
+      replyTo: process.env.MAIL_REPLY_TO?.trim() || undefined,
+    };
+  }
+
   async sendCredentials(req: any, id: number, dto: SendUserCredentialsDto): Promise<any> {
     try {
       const userRepo: Repository<User> = this.getRepo(req);
@@ -423,33 +447,103 @@ export class UsersService extends TenantAbstractService<User> {
         throw new NotFoundException(`User with ID ${id} not found.`);
       }
 
-      const tempPassword = this.generateTemporaryPassword();
+      // --- Template-based email (commented out for now) ---
+      // await this.mailService.sendTemplateMail(req, {
+      //   module: 'users',
+      //   action: 'create',
+      //   tenantId: req?.tenantId || null,
+      //   to: dto.recipient_email,
+      //   data: {
+      //     user_id: user.id,
+      //     name: user.name,
+      //     first_name: user.name?.split(' ')?.[0] || user.name,
+      //     full_name: user.name,
+      //     email: user.email,
+      //     username: user.username,
+      //     password: tempPassword,
+      //     user_password: tempPassword,
+      //     tenant_slug: req?.tenantId || null,
+      //     tenant_login_url: this.getTenantLoginUrl(),
+      //     logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
+      //     role_name: user.role?.name || null,
+      //     job_position_name: user.jobPosition?.name || null,
+      //     location_name: user.location?.name || null,
+      //   },
+      // });
 
-      user.password = tempPassword;
-      await userRepo.save(user);
+      const smtp = this.resolveSmtpConfig();
+      if (!smtp?.host || !smtp.fromEmail) {
+        throw new BadRequestException(
+          'SMTP is not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASS and a verified SMTP_FROM.',
+        );
+      }
 
-      await this.mailService.sendTemplateMail(req, {
-        module: 'users',
-        action: 'create',
-        tenantId: req?.tenantId || null,
-        to: dto.recipient_email,
-        data: {
-          user_id: user.id,
-          name: user.name,
-          first_name: user.name?.split(' ')?.[0] || user.name,
-          full_name: user.name,
-          email: user.email,
-          username: user.username,
-          password: tempPassword,
-          user_password: tempPassword,
-          tenant_slug: req?.tenantId || null,
-          tenant_login_url: this.getTenantLoginUrl(),
-          logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
-          role_name: user.role?.name || null,
-          job_position_name: user.jobPosition?.name || null,
-          location_name: user.location?.name || null,
-        },
+      const frontendBaseUrl = this.getFrontendBaseUrl();
+      const logoUrl = `${frontendBaseUrl}/assets/eusocial-logo.png`;
+      const loginUrl = this.getTenantLoginUrl();
+
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.secure,
+        auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
       });
+
+      const subject = `Your login credentials`;
+      const html = `
+        <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
+            <tr>
+              <td align="center">
+                <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
+                  <tr>
+                    <td style="padding:24px 28px;background:#0b2948;">
+                      <img src="${logoUrl}" alt="EuSocial" style="height:44px;display:block;" />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:30px 28px 22px;color:#1f2d3d;">
+                      <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Your Login Credentials</h2>
+                      <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
+                        Hi <strong>${user.name}</strong>, here are your login credentials for the workspace.
+                      </p>
+                      <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
+                        <tr style="border-bottom:1px solid #e8edf3;">
+                          <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Email</strong></td>
+                          <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${user.email}</td>
+                        </tr>
+                        ${user.username ? `<tr style="border-bottom:1px solid #e8edf3;"><td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Username</strong></td><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${user.username}</td></tr>` : ''}
+                        <tr>
+                          <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
+                          <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>
+                        </tr>
+                      </table>
+                      <div style="background:#fef3cd;border-left:4px solid #ffc107;padding:12px 14px;border-radius:4px;margin:16px 0;">
+                        <p style="margin:0;font-size:13px;color:#856404;"><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
+                      </div>
+                      <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
+                        © 2026 EuSocial. All rights reserved.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </div>
+      `;
+
+      try {
+        await transporter.sendMail({
+          from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
+          to: dto.recipient_email,
+          replyTo: smtp.replyTo || undefined,
+          subject,
+          html,
+        });
+      } finally {
+        transporter.close();
+      }
 
       return {
         success: true,
@@ -459,7 +553,7 @@ export class UsersService extends TenantAbstractService<User> {
           user_id: user.id,
           user_email: user.email,
           recipient: dto.recipient_email,
-          tenant_login_url: this.getTenantLoginUrl(),
+          tenant_login_url: loginUrl,
         },
       };
     } catch (error) {
