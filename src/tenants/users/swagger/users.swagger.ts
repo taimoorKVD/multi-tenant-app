@@ -225,25 +225,9 @@ export const TenantUsersSwagger = {
         type: SendUserCredentialsDto,
         examples: {
           valid: {
-            summary: 'Send credentials request',
+            summary: 'Send credentials to recipient email',
             value: {
               recipient_email: 'owner@company.com',
-              temporary_password: 'TempPass123!',
-              template_action: 'create',
-            },
-          },
-          autoGeneratePassword: {
-            summary: 'Auto-generate temporary password',
-            value: {
-              recipient_email: 'owner@company.com',
-              template_action: 'update',
-            },
-          },
-          sendBothTemplates: {
-            summary: 'Send both create and update templates',
-            value: {
-              recipient_email: 'owner@company.com',
-              template_action: 'both',
             },
           },
         },
