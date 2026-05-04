@@ -63,6 +63,9 @@ export class User {
   @Column('simple-array', { name: 'availability_days', nullable: true })
   availabilityDays: string[] | null;
 
+  @Column({ name: 'is_system', type: 'boolean', default: false })
+  isSystem: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -522,10 +522,11 @@ export class TenantsService {
     const hashed = await argon2.hash(defaultPassword);
 
     const adminUser = userRepo.create({
-      name: 'Administrator',
+      name: subdomain,
       email: adminEmail,
       password: hashed,
       role: adminRole,
+      isSystem: true,
     });
     await userRepo.save(adminUser);
 
