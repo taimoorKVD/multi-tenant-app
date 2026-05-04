@@ -512,7 +512,10 @@ export class UsersService extends TenantAbstractService<User> {
                           <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Email</strong></td>
                           <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${user.email}</td>
                         </tr>
-                        ${user.username ? `<tr style="border-bottom:1px solid #e8edf3;"><td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Username</strong></td><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${user.username}</td></tr>` : ''}
+                        <tr style="border-bottom:1px solid #e8edf3;">
+                          <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Password</strong></td>
+                          <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;font-family:monospace;background:#fafbfc;">${dto.password}</td>
+                        </tr>
                         <tr>
                           <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
                           <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>

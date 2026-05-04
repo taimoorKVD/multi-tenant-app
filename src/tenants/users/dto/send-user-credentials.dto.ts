@@ -8,4 +8,11 @@ export class SendUserCredentialsDto {
   })
   @IsString()
   recipient_email!: string;
+
+  @ApiProperty({
+    example: 'MyP@ssword123',
+    description: 'Plaintext password to include in the credentials email (provided by caller).',
+  })
+  @IsString()
+  password!: string;
 }
