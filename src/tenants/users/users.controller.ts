@@ -1,7 +1,7 @@
 import {Body, Controller, Delete, Get, Param, Post, Put, Query, Req} from '@nestjs/common';
 import {UsersService} from './users.service';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
-import {CreateUserDto, UpdateUserDto} from './dto';
+import {CreateUserDto, SendUserCredentialsDto, UpdateUserDto} from './dto';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantUsersSwagger} from './swagger';
 
@@ -52,5 +52,12 @@ export class UsersController {
   @TenantUsersSwagger.Delete()
   remove(@Req() req, @Param('id') id: number) {
     return this.usersService.delete(req, id);
+  }
+
+  @TenantAccess('edit-user')
+  @Post(':id/send-credentials')
+  @TenantUsersSwagger.SendCredentials()
+  sendCredentials(@Req() req, @Param('id') id: number, @Body() dto: SendUserCredentialsDto) {
+    return this.usersService.sendCredentials(req, id, dto);
   }
 }

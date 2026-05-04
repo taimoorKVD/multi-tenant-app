@@ -8,7 +8,7 @@ import { DataSource, ILike, Not, Repository } from 'typeorm';
 import { User } from './entities';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
-import { CreateUserDto, UpdateUserDto } from './dto';
+import { CreateUserDto, SendUserCredentialsDto, UpdateUserDto } from './dto';
 import { JobPosition } from '../job-positions/entities';
 import { Location } from '../locations/entities';
 import { MailService } from '../../mail/mail.service';
@@ -34,6 +34,15 @@ export class UsersService extends TenantAbstractService<User> {
   private getTenantLoginUrl(): string {
     const frontendBaseUrl = this.getFrontendBaseUrl();
     return `${frontendBaseUrl}/tenant/login`;
+  }
+
+  private generateTemporaryPassword(length = 12): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+    let output = '';
+    for (let i = 0; i < length; i++) {
+      output += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return output;
   }
 
   override async findAll(req: any, relations: string[] = []): Promise<any> {
@@ -230,7 +239,8 @@ export class UsersService extends TenantAbstractService<User> {
       };
     } catch (error) {
       console.error('Tenant user creation failed:', error);
-      throw new InternalServerErrorException(`Failed to create tenant user: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new InternalServerErrorException(`Failed to create tenant user: ${errorMessage}`);
     }
   }
 
@@ -330,7 +340,8 @@ export class UsersService extends TenantAbstractService<User> {
       };
     } catch (error) {
       console.error('Tenant user update failed:', error);
-      throw new InternalServerErrorException(`Failed to update tenant user: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new InternalServerErrorException(`Failed to update tenant user: ${errorMessage}`);
     }
   }
 
@@ -395,7 +406,77 @@ export class UsersService extends TenantAbstractService<User> {
       };
     } catch (error) {
       console.error('Tenant user search failed:', error);
-      throw new InternalServerErrorException(`Failed to search tenant users: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new InternalServerErrorException(`Failed to search tenant users: ${errorMessage}`);
+    }
+  }
+
+  async sendCredentials(req: any, id: number, dto: SendUserCredentialsDto): Promise<any> {
+    try {
+      const userRepo: Repository<User> = this.getRepo(req);
+      const user = await userRepo.findOne({
+        where: { id, isSystem: Not(true) } as any,
+        relations: ['role', 'jobPosition', 'location'],
+      });
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found.`);
+      }
+
+      const tempPassword = dto.temporary_password || this.generateTemporaryPassword();
+      const templateActions =
+        dto.template_action === 'both'
+          ? (['create', 'update'] as const)
+          : ([dto.template_action || 'create'] as const);
+
+      user.password = tempPassword;
+      await userRepo.save(user);
+
+      for (const action of templateActions) {
+        await this.mailService.sendTemplateMail(req, {
+          module: 'users',
+          action,
+          tenantId: req?.tenantId || null,
+          to: dto.recipient_email,
+          data: {
+            user_id: user.id,
+            name: user.name,
+            first_name: user.name?.split(' ')?.[0] || user.name,
+            full_name: user.name,
+            email: user.email,
+            username: user.username,
+            password: tempPassword,
+            user_password: tempPassword,
+            tenant_slug: req?.tenantId || null,
+            tenant_login_url: this.getTenantLoginUrl(),
+            logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
+            role_name: user.role?.name || null,
+            job_position_name: user.jobPosition?.name || null,
+            location_name: user.location?.name || null,
+          },
+        });
+      }
+
+      return {
+        success: true,
+        message: `Tenant user credentials email sent to ${dto.recipient_email}`,
+        tenant: req.tenantConnection.options.database,
+        data: {
+          user_id: user.id,
+          user_email: user.email,
+          recipient: dto.recipient_email,
+          template_actions: templateActions,
+          tenant_login_url: this.getTenantLoginUrl(),
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      console.error('Tenant user send credentials failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Unable to send tenant user credentials: ${errorMessage}`);
     }
   }
 

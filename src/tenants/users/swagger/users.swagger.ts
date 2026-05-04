@@ -7,7 +7,7 @@ import {
   ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
-import { CreateUserDto, UpdateUserDto } from '../dto';
+import { CreateUserDto, SendUserCredentialsDto, UpdateUserDto } from '../dto';
 
 export const TenantUsersSwagger = {
   Auth: () => ApiBearerAuth('access-token'),
@@ -137,7 +137,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Update tenant user',
         description:
-          'Updates tenant user fields such as name, email, and role.',
+          'Updates tenant user fields such as name, email, and role. To send credentials email after updating, call POST /users/:id/send-credentials with template_action="update" (or "both").',
       }),
       ApiParam({
         name: 'id',
@@ -159,6 +159,14 @@ export const TenantUsersSwagger = {
               job_position_id: 1,
               location_id: 1,
               availability_days: ['Monday', 'Thursday', 'Saturday'],
+            },
+          },
+          updateWithPasswordResetContext: {
+            summary: 'Update user, then send update credentials template',
+            value: {
+              name: 'Madeline Smith',
+              email: 'madelinesmith@company.com',
+              role_id: 1,
             },
           },
         },
@@ -193,6 +201,60 @@ export const TenantUsersSwagger = {
       ApiResponse({
         status: 200,
         description: 'Tenant user deleted successfully.',
+      }),
+      ApiResponse({
+        status: 404,
+        description: 'Tenant user not found.',
+      }),
+    ),
+
+  SendCredentials: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Send tenant user credentials',
+        description:
+          'Resets the target tenant user password to a temporary password and sends credentials to any recipient email.',
+      }),
+      ApiParam({
+        name: 'id',
+        type: Number,
+        example: 1,
+        description: 'Tenant user ID',
+      }),
+      ApiBody({
+        type: SendUserCredentialsDto,
+        examples: {
+          valid: {
+            summary: 'Send credentials request',
+            value: {
+              recipient_email: 'owner@company.com',
+              temporary_password: 'TempPass123!',
+              template_action: 'create',
+            },
+          },
+          autoGeneratePassword: {
+            summary: 'Auto-generate temporary password',
+            value: {
+              recipient_email: 'owner@company.com',
+              template_action: 'update',
+            },
+          },
+          sendBothTemplates: {
+            summary: 'Send both create and update templates',
+            value: {
+              recipient_email: 'owner@company.com',
+              template_action: 'both',
+            },
+          },
+        },
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Tenant user credentials sent successfully.',
+      }),
+      ApiResponse({
+        status: 400,
+        description: 'Validation failed or credentials could not be sent.',
       }),
       ApiResponse({
         status: 404,
