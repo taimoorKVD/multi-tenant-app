@@ -213,7 +213,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Send tenant user credentials',
         description:
-          'Resets the target tenant user password to a temporary password and sends credentials to any recipient email.',
+          'Sends login credentials (email + provided password) to the specified recipient email. The user password in the database is NOT changed.',
       }),
       ApiParam({
         name: 'id',
