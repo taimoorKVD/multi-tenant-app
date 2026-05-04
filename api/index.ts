@@ -11,14 +11,33 @@ let cachedServer: any;
 async function bootstrap() {
     const expressApp = express();
 
+    const configuredOrigins = (process.env.CORS_ORIGINS || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    const allowedOrigins = new Set<string>([
+        'http://localhost:4200',
+        'https://eusocial-admin.vercel.app',
+        ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+        ...configuredOrigins,
+    ]);
+
     // GLOBAL CORS
     expressApp.use((req, res, next) => {
-        const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:4200';
+        const origin = req.headers.origin as string | undefined;
+        const allowedOrigin =
+            origin && allowedOrigins.has(origin)
+                ? origin
+                : (process.env.FRONTEND_URL || 'http://localhost:4200');
 
         res.header("Access-Control-Allow-Origin", allowedOrigin);
         res.header("Access-Control-Allow-Credentials", "true");
         res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
-        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
+        res.header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, Accept, X-Tenant-Slug, x-tenant-slug"
+        );
 
         if (req.method === "OPTIONS") {
             return res.sendStatus(200);
