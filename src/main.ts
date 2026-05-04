@@ -26,29 +26,30 @@ async function bootstrap() {
     }),
   );
 
-  // app.enableCors({
-  //   origin: [process.env.FRONTEND_URL || 'http://localhost:4200'],
-  //   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  //   allowedHeaders: ['Content-Type', 'Authorization'],
-  //   credentials: false,
-  // });
+  const configuredOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const allowedOrigins = new Set<string>([
+    'http://localhost:4200',
+    'https://eusocial-admin.vercel.app',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+    ...configuredOrigins,
+  ]);
+
   app.enableCors({
     origin: (origin, callback) => {
-      const allowedOrigins = [
-        process.env.FRONTEND_URL,
-        'http://localhost:4200',
-      ];
-
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.has(origin)) {
         return callback(null, true);
       }
 
       return callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug', 'x-tenant-slug'],
     credentials: false,
   });
 
