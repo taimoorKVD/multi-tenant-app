@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 
 export class SendUserCredentialsDto {
   @ApiProperty({
@@ -9,10 +9,11 @@ export class SendUserCredentialsDto {
   @IsString()
   recipient_email!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'MyP@ssword123',
-    description: 'Plaintext password to include in the credentials email (provided by caller).',
+    description: 'Plaintext password to include in the credentials email.',
   })
+  @IsOptional()
   @IsString()
-  password!: string;
+  password?: string;
 }
