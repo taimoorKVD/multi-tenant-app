@@ -31,14 +31,8 @@ export class UsersService extends TenantAbstractService<User> {
     return 'http://localhost:4200';
   }
 
-  private getTenantLoginUrl(tenantId?: string | null): string {
+  private getTenantLoginUrl(): string {
     const frontendBaseUrl = this.getFrontendBaseUrl();
-    const tenantSlug = (tenantId || '').trim();
-
-    if (tenantSlug) {
-      return `${frontendBaseUrl}/tenant/${tenantSlug}/login`;
-    }
-
     return `${frontendBaseUrl}/tenant/login`;
   }
 
@@ -122,7 +116,7 @@ export class UsersService extends TenantAbstractService<User> {
           password,
           user_password: password,
           tenant_slug: req?.tenantId || null,
-          tenant_login_url: this.getTenantLoginUrl(req?.tenantId || null),
+          tenant_login_url: this.getTenantLoginUrl(),
           logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
           role_name: payload?.role?.name || null,
           job_position_name: payload?.jobPosition?.name || null,
@@ -258,7 +252,7 @@ export class UsersService extends TenantAbstractService<User> {
             password: dto.password || 'Not changed',
             user_password: dto.password || 'Not changed',
             tenant_slug: req?.tenantId || null,
-            tenant_login_url: this.getTenantLoginUrl(req?.tenantId || null),
+            tenant_login_url: this.getTenantLoginUrl(),
             logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
             role_name: payload?.role?.name || null,
             job_position_name: payload?.jobPosition?.name || null,

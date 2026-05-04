@@ -204,7 +204,7 @@ export class TenantMiddleware implements NestMiddleware {
       // ✅ 3. URL PARAM (optional)
       // =========================
       if (!tenant) {
-        const match = req.originalUrl.match(/\/tenant\/([^\/]+)/);
+        const match = req.originalUrl.match(/\/tenant\/([^\/]+)\//);
         if (match?.[1]) tenant = match[1].toLowerCase();
       }
 
@@ -222,12 +222,18 @@ export class TenantMiddleware implements NestMiddleware {
       // ✅ 5. LOGIN EMAIL (LAST HEURISTIC ONLY)
       // =========================
       if (!tenant && url.endsWith('/login') && req.body?.email) {
-        const domain = String(req.body.email).split('@')[1]?.toLowerCase().trim();
-        if (domain && !this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
-          const exactMatch = await this.tenantsService.findOneFlexible(domain).catch(() => null);
+        const lookupEmail = String(req.body.email).toLowerCase().trim();
+        const domain = lookupEmail.split('@')[1]?.toLowerCase().trim();
 
-          if (exactMatch?.subdomain) {
-            tenant = exactMatch.subdomain.toLowerCase();
+        // For /api/login or /api/tenant/login, derive tenant from email when possible.
+        const byEmail = await this.tenantsService.findOneFlexible(lookupEmail).catch(() => null);
+        if (byEmail?.subdomain) {
+          tenant = byEmail.subdomain.toLowerCase();
+        } else if (domain && !this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
+          const byDomain = await this.tenantsService.findOneFlexible(domain).catch(() => null);
+
+          if (byDomain?.subdomain) {
+            tenant = byDomain.subdomain.toLowerCase();
           } else {
             tenant = domain.split('.')[0].toLowerCase();
           }
@@ -256,7 +262,7 @@ export class TenantMiddleware implements NestMiddleware {
       // =========================
       if (!tenant) {
         throw new BadRequestException(
-          'Unable to identify your workspace. Please use the tenant login link (e.g. /tenant/your-workspace/login) or contact your administrator.',
+          'Unable to identify your workspace. Please sign in using your company email on /tenant/login or contact your administrator.',
         );
       }
 

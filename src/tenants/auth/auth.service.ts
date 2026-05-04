@@ -6,11 +6,35 @@ import {User} from '../users/entities';
 
 @Injectable()
 export class TenantAuthService {
+  private readonly PUBLIC_EMAIL_DOMAINS = new Set([
+    'gmail.com',
+    'yahoo.com',
+    'hotmail.com',
+    'outlook.com',
+    'live.com',
+    'icloud.com',
+    'aol.com',
+    'proton.me',
+    'protonmail.com',
+  ]);
+
   constructor(private readonly jwtService: JwtService) {
+  }
+
+  private validateTenantLoginEmail(email: string) {
+    const domain = String(email || '').toLowerCase().trim().split('@')[1] || '';
+
+    if (!domain || this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
+      throw new BadRequestException(
+        'Please sign in using your company email address (for example, user@companyname.com).',
+      );
+    }
   }
 
   async login(req: any, dto: { email: string; password: string }) {
     try {
+      this.validateTenantLoginEmail(dto.email);
+
       const tenantConnection: DataSource = req.tenantConnection;
       if (!tenantConnection) {
         throw new BadRequestException('Missing tenant connection');

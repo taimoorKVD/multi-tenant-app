@@ -18,6 +18,7 @@ export class TenantAuthController {
 
   // ✅ Default login (auto tenant)
   @Post('login')
+  @Post('tenant/login')
   @TenantAuthLoginDocs()
   async loginDefault(@Req() req, @Body() dto: LoginDto) {
     const result = await this.authService.login(req, dto);
