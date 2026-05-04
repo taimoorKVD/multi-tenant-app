@@ -12,6 +12,22 @@ export async function getTenantDataSource(dbName: string): Promise<DataSource> {
   const dataSource = new DataSource(tenantDatabaseConfig(dbName));
   await dataSource.initialize();
 
+  // Retroactively mark any bootstrap admin users created before the isSystem column existed.
+  // Safe to run on every fresh connection — only affects rows that are not yet flagged.
+  try {
+    await dataSource.query(`
+      UPDATE users u
+      SET is_system = true
+      FROM roles r
+      WHERE u.role_id = r.id
+        AND r.name = 'Admin'
+        AND u.email LIKE 'admin@%.com'
+        AND u.is_system = false
+    `);
+  } catch {
+    // Column may not exist yet on very first sync; TypeORM synchronize will add it on next init.
+  }
+
   tenantConnections[dbName] = dataSource;
   console.log(`✅ Tenant DB connected: ${dbName}`);
 

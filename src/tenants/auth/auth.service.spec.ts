@@ -67,6 +67,19 @@ describe('TenantAuthService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('rejects public email domains for tenant login', async () => {
+    const req = createReq({
+      id: 10,
+      email: 'omais.kv@gmail.com',
+      password: 'hashed',
+      role: { name: 'Admin', permissions: [{ name: 'view-user' }] },
+    });
+
+    await expect(
+      service.login(req, { email: 'omais.kv@gmail.com', password: 'Secret123' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('throws when tenant user is not found', async () => {
     const req = createReq(null);
 

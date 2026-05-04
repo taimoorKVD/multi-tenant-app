@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, ILike, Repository } from 'typeorm';
+import { DataSource, ILike, Not, Repository } from 'typeorm';
 import { User } from './entities';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
@@ -31,15 +31,67 @@ export class UsersService extends TenantAbstractService<User> {
     return 'http://localhost:4200';
   }
 
-  private getTenantLoginUrl(tenantId?: string | null): string {
+  private getTenantLoginUrl(): string {
     const frontendBaseUrl = this.getFrontendBaseUrl();
-    const tenantSlug = (tenantId || '').trim();
-
-    if (tenantSlug) {
-      return `${frontendBaseUrl}/tenant/${tenantSlug}/login`;
-    }
-
     return `${frontendBaseUrl}/tenant/login`;
+  }
+
+  override async findAll(req: any, relations: string[] = []): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const data = await repo.find({ where: { isSystem: Not(true) } as any, relations });
+      const sanitized = this.sanitizeCollection(data as any[]);
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        count: sanitized.length,
+        data: sanitized,
+      };
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to retrieve users');
+    }
+  }
+
+  override async paginate(req: any, page = 1, relations: string[] = []): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const take = this.paginateLimit;
+      const [data, total] = await repo.findAndCount({
+        where: { isSystem: Not(true) } as any,
+        take,
+        skip: (page - 1) * take,
+        relations,
+        order: { id: 'DESC' } as any,
+      });
+      const sanitized = this.sanitizeCollection(data as any[]);
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        meta: { total, page, lastPage: Math.ceil(total / take) },
+        data: sanitized,
+      };
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to paginate users');
+    }
+  }
+
+  override async findOne(req: any, id: number, relations: string[] = []): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const entity = await repo.findOne({
+        where: { id, isSystem: Not(true) } as any,
+        relations,
+      });
+      if (!entity) throw new NotFoundException(`User with ID ${id} not found`);
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        data: this.sanitizeEntity(entity),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to retrieve user');
+    }
   }
 
   async create(req: any, dto: CreateUserDto): Promise<any> {
@@ -122,7 +174,7 @@ export class UsersService extends TenantAbstractService<User> {
           password,
           user_password: password,
           tenant_slug: req?.tenantId || null,
-          tenant_login_url: this.getTenantLoginUrl(req?.tenantId || null),
+          tenant_login_url: this.getTenantLoginUrl(),
           logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
           role_name: payload?.role?.name || null,
           job_position_name: payload?.jobPosition?.name || null,
@@ -195,6 +247,7 @@ export class UsersService extends TenantAbstractService<User> {
         relations: ['role', 'jobPosition', 'location'],
       });
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
+      if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
 
       if (dto.email && dto.email !== user.email) {
         const existing = await userRepo.findOne({
@@ -258,7 +311,7 @@ export class UsersService extends TenantAbstractService<User> {
             password: dto.password || 'Not changed',
             user_password: dto.password || 'Not changed',
             tenant_slug: req?.tenantId || null,
-            tenant_login_url: this.getTenantLoginUrl(req?.tenantId || null),
+            tenant_login_url: this.getTenantLoginUrl(),
             logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
             role_name: payload?.role?.name || null,
             job_position_name: payload?.jobPosition?.name || null,
@@ -298,10 +351,10 @@ export class UsersService extends TenantAbstractService<User> {
 
       const users = await userRepo.find({
         where: [
-          { name: ILike(`%${keyword}%`) },
-          // { email: ILike(`%${keyword}%`) },
-          { username: ILike(`%${keyword}%`) },
-          // { phoneNumber: ILike(`%${keyword}%`) },
+          { name: ILike(`%${keyword}%`), isSystem: Not(true) },
+          // { email: ILike(`%${keyword}%`), isSystem: Not(true) },
+          { username: ILike(`%${keyword}%`), isSystem: Not(true) },
+          // { phoneNumber: ILike(`%${keyword}%`), isSystem: Not(true) },
         ],
         relations: ['role', 'jobPosition', 'location'],
         order: { name: 'ASC' },
@@ -343,6 +396,26 @@ export class UsersService extends TenantAbstractService<User> {
     } catch (error) {
       console.error('Tenant user search failed:', error);
       throw new InternalServerErrorException(`Failed to search tenant users: ${error.message}`);
+    }
+  }
+
+  override async delete(req: any, id: number): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const entity = await repo.findOneBy({ id } as any);
+      if (!entity) throw new NotFoundException(`User with ID ${id} not found`);
+      if ((entity as any).isSystem) throw new BadRequestException('System users cannot be deleted.');
+
+      await repo.delete(id);
+      return {
+        success: true,
+        message: 'User deleted successfully',
+        tenant: req.tenantConnection.options.database,
+        deletedId: id,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new InternalServerErrorException('Failed to delete user');
     }
   }
 }

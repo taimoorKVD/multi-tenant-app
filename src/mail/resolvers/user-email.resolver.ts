@@ -62,9 +62,7 @@ export class UserEmailResolver extends BaseEmailResolver {
     }
 
     if (!data.tenant_login_url) {
-      data.tenant_login_url = tenantSlug
-        ? `${frontendBaseUrl}/tenant/${tenantSlug}/login`
-        : `${frontendBaseUrl}/tenant/login`;
+      data.tenant_login_url = `${frontendBaseUrl}/tenant/login`;
     }
 
     return data;
