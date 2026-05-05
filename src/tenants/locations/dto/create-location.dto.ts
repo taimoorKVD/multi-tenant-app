@@ -9,4 +9,6 @@ export class CreateLocationDto {
     @IsOptional() city?: string;
     @IsOptional() country?: string;
     @IsOptional() postalCode?: string;
+    @IsOptional() latitude?: string;
+    @IsOptional() longitude?: string;
 }
