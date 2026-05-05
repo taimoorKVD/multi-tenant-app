@@ -32,8 +32,10 @@ export class UpdateUserDto {
   @MaxLength(100, { message: 'Username must not exceed 100 characters.' })
   username?: string;
 
+  @IsOptional()
   password?: string;
 
+  @IsOptional()
   password_confirm?: string;
 
   @IsOptional()
