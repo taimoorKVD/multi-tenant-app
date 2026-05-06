@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 import {SeederRunner} from '../helpers/seeder-runner';
 import {
+  CitySeeder,
   CountrySeeder,
   JobPositionSeeder,
   LocationSeeder,
@@ -22,6 +23,7 @@ import {
     new LocationSeeder(),
     new CountrySeeder(),
     new StateSeeder(),
+    new CitySeeder(),
     new GlobalMailSettingSeeder(),
     new UserEmailTemplateSeeder(),
   ]);

@@ -20,8 +20,9 @@ export const TenantLocationsSwagger = {
             value: {
               name: 'Downtown Branch',
               address: '100 Main Street',
-              city: 'New York',
-              country: 'USA',
+              country_id: 1,
+              state_id: 1,
+              city_id: 1,
               postalCode: '10001',
             },
           },
@@ -45,7 +46,7 @@ export const TenantLocationsSwagger = {
       ApiOperation({
         summary: 'Search tenant locations',
         description:
-          'Searches tenant locations for dropdown selection by name, address, city, country, or postal code.',
+          'Searches tenant locations for dropdown selection by name, address, or postal code.',
       }),
       ApiQuery({
         name: 'q',
@@ -74,8 +75,9 @@ export const TenantLocationsSwagger = {
                 id: 2,
                 name: 'Downtown Branch',
                 address: '250 Broadway Ave',
-                city: 'New York',
-                country: 'USA',
+                country_id: 1,
+                state_id: 1,
+                city_id: 1,
                 postalCode: '10007',
                 latitude: null,
                 longitude: null,
@@ -112,8 +114,9 @@ export const TenantLocationsSwagger = {
             value: {
               name: 'Airport Branch',
               address: '22 Airport Road',
-              city: 'Los Angeles',
-              country: 'USA',
+              country_id: 1,
+              state_id: 5,
+              city_id: 12,
               postalCode: '90045',
             },
           },

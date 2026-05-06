@@ -4,6 +4,7 @@ import {Role} from '../master/role/entities';
 import {Permission} from '../master/permission/entities';
 import {Tenant} from '../master/tenants/entities';
 import {JobPosition} from '../master/job-position/entities';
+import {City} from '../master/cities/entities';
 import {Country} from '../master/countries/entities';
 import {State} from '../master/states/entities';
 import {
@@ -21,6 +22,7 @@ import {
   CreateTenantsTable1701010004000,
   CreateCountriesTable1701010005000,
   CreateStatesTable1701010006000,
+    CreateCitiesTable1701010006500,
     CreateEmailTemplatesTable1701010007000,
     CreateEmailTemplateRecipientsTable1701010008000,
     CreateGlobalMailSettingsTable1701010009000,
@@ -54,6 +56,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
             Permission,
             Tenant,
             JobPosition,
+            City,
             Country,
             State,
             EmailTemplate,
@@ -70,6 +73,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
       CreateTenantsTable1701010004000,
       CreateCountriesTable1701010005000,
       CreateStatesTable1701010006000,
+    CreateCitiesTable1701010006500,
       CreateEmailTemplatesTable1701010007000,
       CreateEmailTemplateRecipientsTable1701010008000,
       CreateGlobalMailSettingsTable1701010009000,
