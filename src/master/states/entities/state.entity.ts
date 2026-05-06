@@ -1,4 +1,15 @@
-import {Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn} from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import {City} from '../../cities/entities';
 import {Country} from '../../countries/entities';
 
 @Entity('states')
@@ -16,6 +27,9 @@ export class State {
   @ManyToOne(() => Country, (country) => country.states, {onDelete: 'CASCADE'})
   @JoinColumn({name: 'country_id'})
   country!: Country;
+
+  @OneToMany(() => City, (city) => city.state)
+  cities!: City[];
 
   @CreateDateColumn({name: 'created_at'})
   createdAt!: Date;

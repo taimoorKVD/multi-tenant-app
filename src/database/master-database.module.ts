@@ -6,6 +6,7 @@ import {Role} from '../master/role/entities';
 import {Permission} from '../master/permission/entities';
 import {masterDatabaseConfig} from '../config/master-database.config';
 import {JobPosition} from '../master/job-position/entities';
+import {City} from '../master/cities/entities';
 import {Country} from '../master/countries/entities';
 import {State} from '../master/states/entities';
 import {
@@ -26,6 +27,7 @@ import { ActivityLog } from '../master/activity-logs/entities';
       User,
       Tenant,
       JobPosition,
+      City,
       Country,
       State,
       EmailTemplate,

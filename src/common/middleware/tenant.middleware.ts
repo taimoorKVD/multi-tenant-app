@@ -131,6 +131,7 @@ export class TenantMiddleware implements NestMiddleware {
         '/api/master',
         '/api/countries',
         '/api/states',
+        '/api/cities',
         '/api/collection',
         '/api/docs',
       ];

@@ -10,6 +10,7 @@ import {MasterDatabaseModule} from "../database";
 import {TenantsService} from "./tenants/tenants.service";
 import {JwtService} from "@nestjs/jwt";
 import {CountriesModule} from './countries/countries.module';
+import {CitiesModule} from './cities/cities.module';
 import {StatesModule} from './states/states.module';
 import {MailAdminModule} from './mail/mail-admin.module';
 import { ActivityLogsModule } from './activity-logs';
@@ -25,6 +26,7 @@ import { ActivityLogInterceptor } from '../common/interceptors/activity-log.inte
     TenantsModule,
     JobPositionModule,
     CountriesModule,
+    CitiesModule,
     StatesModule,
     MailAdminModule,
     ActivityLogsModule,
