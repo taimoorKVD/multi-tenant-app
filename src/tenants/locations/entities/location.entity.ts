@@ -11,11 +11,14 @@ export class Location {
     @Column({nullable: true})
     address: string;
 
-    @Column({nullable: true})
-    city: string;
+    @Column({ name: 'country_id', type: 'int', nullable: true })
+    countryId?: number;
 
-    @Column({nullable: true})
-    country: string;
+    @Column({ name: 'state_id', type: 'int', nullable: true })
+    stateId?: number;
+
+    @Column({ name: 'city_id', type: 'int', nullable: true })
+    cityId?: number;
 
     @Column({nullable: true})
     postalCode: string;
