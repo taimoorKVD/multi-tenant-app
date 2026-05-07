@@ -51,4 +51,30 @@ export const PermissionSwagger = {
                 },
             }),
         ),
+
+    Search: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Search master permissions',
+                description: 'Filters master permissions using explicit field-by-field filters.',
+            }),
+            ApiQuery({
+                name: 'name',
+                required: false,
+                type: String,
+                example: 'view-user',
+                description: 'Filter by permission name.',
+            }),
+            ApiQuery({
+                name: 'limit',
+                required: false,
+                type: Number,
+                example: 15,
+                description: 'Maximum number of records to return (1-50). Default is 15.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Matching permissions fetched successfully.',
+            }),
+        ),
 };

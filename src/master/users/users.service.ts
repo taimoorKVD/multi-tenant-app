@@ -1,4 +1,4 @@
-import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {Repository} from 'typeorm';
 import {MasterAbstractService} from '../../common/abstract';
@@ -54,7 +54,8 @@ export class UsersService extends MasterAbstractService<User> {
         data: saved,
       };
     } catch (error) {
-      throw new BadRequestException(`Failed to create user: ${error.message}`);
+      const err = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Failed to create user: ${err}`);
     }
   }
 
@@ -100,7 +101,53 @@ export class UsersService extends MasterAbstractService<User> {
         data: saved,
       };
     } catch (error) {
-      throw new BadRequestException(`Failed to update user: ${error.message}`);
+      const err = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Failed to update user: ${err}`);
+    }
+  }
+
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      email?: string;
+      roleId?: number;
+    },
+  ) {
+    try {
+      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const name = filters?.name?.trim();
+      const email = filters?.email?.trim();
+      const roleId = filters?.roleId;
+      const hasFilters = Boolean(name || email || roleId);
+
+      if (!hasFilters) {
+        return {success: true, count: 0, data: []};
+      }
+
+      const qb = this.userRepo
+        .createQueryBuilder('user')
+        .leftJoinAndSelect('user.role', 'role');
+
+      if (name) {
+        qb.andWhere('user.name ILIKE :name', {name: `%${name}%`});
+      }
+
+      if (email) {
+        qb.andWhere('user.email ILIKE :email', {email: `%${email}%`});
+      }
+
+      if (roleId) {
+        qb.andWhere('role.id = :roleId', {roleId});
+      }
+
+      const data = await qb.orderBy('user.id', 'DESC').take(take).getMany();
+      data.forEach((item: any) => delete item.password);
+
+      return {success: true, count: data.length, data};
+    } catch (error) {
+      console.error('Master user search failed:', error);
+      throw new InternalServerErrorException('Failed to search users');
     }
   }
 }

@@ -215,6 +215,67 @@ export class TenantsService {
     }
   }
 
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      dbName?: string;
+      subdomain?: string;
+      customDomain?: string;
+    },
+  ): Promise<ApiResponse<Partial<Tenant>>> {
+    try {
+      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const name = filters?.name?.trim();
+      const dbName = filters?.dbName?.trim();
+      const subdomain = filters?.subdomain?.trim();
+      const customDomain = filters?.customDomain?.trim();
+      const hasFilters = Boolean(name || dbName || subdomain || customDomain);
+
+      if (!hasFilters) {
+        return {
+          success: true,
+          message: 'No filters provided',
+          data: [],
+          meta: { total: 0, page: 1, lastPage: 1 },
+        };
+      }
+
+      const qb = this.tenantRepo.createQueryBuilder('tenant');
+
+      if (name) {
+        qb.andWhere('tenant.name ILIKE :name', {name: `%${name}%`});
+      }
+
+      if (dbName) {
+        qb.andWhere('tenant.dbName ILIKE :dbName', {dbName: `%${dbName}%`});
+      }
+
+      if (subdomain) {
+        qb.andWhere('tenant.subdomain ILIKE :subdomain', {subdomain: `%${subdomain}%`});
+      }
+
+      if (customDomain) {
+        qb.andWhere('tenant.customDomain ILIKE :customDomain', {
+          customDomain: `%${customDomain}%`,
+        });
+      }
+
+      const data = await qb.orderBy('tenant.id', 'DESC').take(take).getMany();
+
+      return {
+        success: true,
+        message: data.length > 0 ? 'Matching tenants fetched successfully' : 'No matching tenants found',
+        data,
+        meta: { total: data.length, page: 1, lastPage: 1 },
+      };
+    } catch (error) {
+      const err = this.toError(error);
+      this.logger.error(`❌ Tenant search failed: ${err.message}`, err.stack);
+      throw new InternalServerErrorException('An unexpected error occurred while searching tenants.');
+    }
+  }
+
   async findOne(
       identifier: number | string,
       relations: string[] = [],

@@ -17,8 +17,15 @@ export class CountriesController {
 
   @Get('search')
   @CountriesSwagger.Search()
-  search(@Query('q') q: string, @Query('limit') limit?: number) {
-    return this.countriesService.search(q, limit);
+  search(
+    @Query('name') name?: string,
+    @Query('code') code?: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.countriesService.search(limit !== undefined ? Number(limit) : undefined, {
+      name,
+      code,
+    });
   }
 
   @Get()

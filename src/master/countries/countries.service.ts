@@ -65,20 +65,33 @@ export class CountriesService {
     };
   }
 
-  async search(q: string, limit = 15) {
-    const keyword = (q || '').trim();
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      code?: string;
+    },
+  ) {
     const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 15;
+    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 15;
+    const name = filters?.name?.trim();
+    const code = filters?.code?.trim();
 
-    if (!keyword) {
+    if (!name && !code) {
       return {success: true, count: 0, data: []};
     }
 
-    const data = await this.countryRepo.find({
-      where: [{name: ILike(`%${keyword}%`)}, {code: ILike(`%${keyword}%`)}],
-      order: {name: 'ASC'},
-      take,
-    });
+    const qb = this.countryRepo.createQueryBuilder('country');
+
+    if (name) {
+      qb.andWhere('country.name ILIKE :name', {name: `%${name}%`});
+    }
+
+    if (code) {
+      qb.andWhere('country.code ILIKE :code', {code: `%${code}%`});
+    }
+
+    const data = await qb.orderBy('country.id', 'DESC').take(take).getMany();
 
     return {success: true, count: data.length, data};
   }

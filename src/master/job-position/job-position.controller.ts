@@ -20,6 +20,20 @@ export class JobPositionController {
     return this.jobPositionService.paginate(page, [], limit !== undefined ? Number(limit) : undefined);
   }
 
+  @Get('search')
+  @MasterAccess('view-jobposition')
+  @JobPositionSwagger.Search()
+  async search(
+    @Query('name') name?: string,
+    @Query('description') description?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.jobPositionService.search(limit ? Number(limit) : undefined, {
+      name,
+      description,
+    });
+  }
+
   @Post()
   @MasterAccess('create-jobposition')
   @JobPositionSwagger.Create()

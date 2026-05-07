@@ -34,6 +34,20 @@ export class RoleController {
     return this.roleService.create(dto as any);
   }
 
+  @Get('search')
+  @MasterAccess('view-role')
+  @RoleSwagger.Search()
+  async search(
+    @Query('name') name?: string,
+    @Query('permission_id') permissionId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.roleService.search(limit ? Number(limit) : undefined, {
+      name,
+      permissionId: permissionId ? Number(permissionId) : undefined,
+    });
+  }
+
   // Get single role by ID
   @Get(':id')
   @RoleSwagger.GetOne()

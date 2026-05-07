@@ -1,4 +1,4 @@
-import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {DeepPartial, Repository} from 'typeorm';
 import {ApiResponse, MasterAbstractService} from '../../common/abstract';
@@ -115,6 +115,43 @@ export class RoleService extends MasterAbstractService<Role> {
       };
     } catch (error: any) {
       throw new BadRequestException(`Failed to update role: ${error.message}`);
+    }
+  }
+
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      permissionId?: number;
+    },
+  ) {
+    try {
+      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const name = filters?.name?.trim();
+      const permissionId = filters?.permissionId;
+      const hasFilters = Boolean(name || permissionId);
+
+      if (!hasFilters) {
+        return {success: true, count: 0, data: []};
+      }
+
+      const qb = this.roleRepo
+        .createQueryBuilder('role')
+        .leftJoinAndSelect('role.permissions', 'permission');
+
+      if (name) {
+        qb.andWhere('role.name ILIKE :name', {name: `%${name}%`});
+      }
+
+      if (permissionId) {
+        qb.andWhere('permission.id = :permissionId', {permissionId});
+      }
+
+      const data = await qb.orderBy('role.id', 'DESC').take(take).getMany();
+      return {success: true, count: data.length, data};
+    } catch (error) {
+      console.error('Master role search failed:', error);
+      throw new InternalServerErrorException('Failed to search roles');
     }
   }
 }
