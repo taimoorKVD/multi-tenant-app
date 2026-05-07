@@ -180,15 +180,20 @@ export class TenantsService {
       private dataSource: DataSource,
   ) {}
 
-  async paginate(page = 1): Promise<ApiResponse<Partial<Tenant>>> {
+  async paginate(page = 1, limit?: number): Promise<ApiResponse<Partial<Tenant>>> {
     try {
-      const take = this.paginateLimit || 10;
-      const skip = (page - 1) * take;
+      const parsedLimit = Number(limit);
+      const take =
+        limit === undefined
+          ? this.paginateLimit || 10
+          : parsedLimit <= 0
+            ? undefined
+            : Math.min(Math.max(parsedLimit, 1), 100);
+      const skip = take ? (page - 1) * take : 0;
 
       const [data, total] = await this.tenantRepo.findAndCount({
         order: { id: 'DESC' },
-        take,
-        skip,
+        ...(take ? {take, skip} : {}),
       });
 
       return {
@@ -198,7 +203,7 @@ export class TenantsService {
             ? `${data.length} tenant${data.length > 1 ? 's' : ''} retrieved successfully`
             : 'No tenants found',
         data,
-        meta: { total, page, lastPage: Math.ceil(total / take) },
+        meta: { total, page, lastPage: take ? Math.ceil(total / take) : 1 },
       };
     } catch (error) {
       const err = this.toError(error);

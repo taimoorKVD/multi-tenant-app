@@ -16,8 +16,8 @@ export class TenantsController {
   @Get()
   @MasterAccess('view-tenant')
   @TenantSwagger.FindAll()
-  async findAll(@Query('page') page: number = 1) {
-    return this.tenantsService.paginate(page);
+  async findAll(@Query('page') page: number = 1, @Query('limit') limit?: number) {
+    return this.tenantsService.paginate(page, limit !== undefined ? Number(limit) : undefined);
   }
 
   @Post()

@@ -45,8 +45,8 @@ export class UsersController {
   @Get()
   @MasterAccess('view-user')
   @UsersSwagger.GetAll()
-  async all(@Query('page') page: number = 1) {
-    return this.usersService.paginate(page, ['role']);
+  async all(@Query('page') page: number = 1, @Query('limit') limit?: number) {
+    return this.usersService.paginate(page, ['role'], limit !== undefined ? Number(limit) : undefined);
   }
 
   // Create a new user (Admin only)

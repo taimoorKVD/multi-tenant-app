@@ -23,8 +23,14 @@ export class CountriesController {
 
   @Get()
   @CountriesSwagger.FindAll()
-  findAll(@Query('page') page = 1, @Query('limit') limit = 15) {
-    return this.countriesService.findAll(Number(page), Number(limit));
+  findAll(@Query('page') page?: number, @Query('limit') limit?: number) {
+    const parsedPage = Number(page);
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+
+    return this.countriesService.findAll(
+      Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get(':id')

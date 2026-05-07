@@ -24,7 +24,8 @@ export const StatesSwagger = {
     applyDecorators(
       ApiOperation({
         summary: 'List states',
-        description: 'Returns paginated states sorted by name ASC. Filter by country_id is optional.',
+        description:
+          'Returns states sorted by name ASC. Filter by country_id is optional. Use limit for pagination, or limit=0 to return all records.',
       }),
       ApiQuery({name: 'country_id', required: false, type: Number, example: 1}),
       ApiQuery({name: 'page', required: false, type: Number, example: 1}),
@@ -40,7 +41,7 @@ export const StatesSwagger = {
       }),
       ApiQuery({name: 'q', required: true, type: String, example: 'sin'}),
       ApiQuery({name: 'country_id', required: false, type: Number, example: 1}),
-      ApiQuery({name: 'limit', required: false, type: Number, example: 10}),
+      ApiQuery({name: 'limit', required: false, type: Number, example: 15}),
       ApiResponse({status: 200, description: 'States search completed.'}),
     ),
 

@@ -42,17 +42,22 @@ export class CitiesService {
     return {success: true, message: 'City created successfully', data: saved};
   }
 
-  async findAll(page = 1, limit = 15, stateId?: number) {
-    const take = Math.min(Math.max(Number(limit) || 15, 1), 100);
+  async findAll(page = 1, limit?: number, stateId?: number) {
+    const parsedLimit = Number(limit);
+    const take =
+      limit === undefined
+        ? undefined
+        : parsedLimit <= 0
+          ? undefined
+          : Math.min(Math.max(parsedLimit, 1), 100);
     const currentPage = Math.max(Number(page) || 1, 1);
 
     const where = stateId ? ({stateId} as any) : undefined;
 
     const [data, total] = await this.cityRepo.findAndCount({
       where,
-      order: {name: 'ASC'},
-      take,
-      skip: (currentPage - 1) * take,
+      order: {id: 'DESC'},
+      ...(take ? {take, skip: (currentPage - 1) * take} : {}),
       relations: ['state', 'state.country'],
     });
 
@@ -62,14 +67,15 @@ export class CitiesService {
       meta: {
         total,
         page: currentPage,
-        lastPage: Math.ceil(total / take) || 1,
+        lastPage: take ? Math.ceil(total / take) || 1 : 1,
       },
     };
   }
 
-  async search(q: string, limit = 10, stateId?: number) {
+  async search(q: string, limit = 15, stateId?: number) {
     const keyword = (q || '').trim();
-    const take = Math.min(Math.max(Number(limit) || 10, 1), 100);
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 15;
 
     if (!keyword) {
       return {success: true, count: 0, data: []};

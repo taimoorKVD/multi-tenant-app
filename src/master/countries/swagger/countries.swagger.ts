@@ -21,7 +21,11 @@ export const CountriesSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({summary: 'List countries', description: 'Returns paginated countries sorted by name ASC.'}),
+      ApiOperation({
+        summary: 'List countries',
+        description:
+          'Returns countries sorted by name ASC. Use limit for pagination, or limit=0 to return all records.',
+      }),
       ApiQuery({name: 'page', required: false, type: Number, example: 1}),
       ApiQuery({name: 'limit', required: false, type: Number, example: 15}),
       ApiResponse({status: 200, description: 'Countries fetched successfully.'}),
@@ -31,7 +35,7 @@ export const CountriesSwagger = {
     applyDecorators(
       ApiOperation({summary: 'Search countries', description: 'Search by country name or code.'}),
       ApiQuery({name: 'q', required: true, type: String, example: 'pak'}),
-      ApiQuery({name: 'limit', required: false, type: Number, example: 10}),
+      ApiQuery({name: 'limit', required: false, type: Number, example: 15}),
       ApiResponse({status: 200, description: 'Countries search completed.'}),
     ),
 

@@ -39,14 +39,19 @@ export class CountriesService {
     return {success: true, message: 'Country created successfully', data: saved};
   }
 
-  async findAll(page = 1, limit = 15) {
-    const take = Math.min(Math.max(Number(limit) || 15, 1), 100);
+  async findAll(page = 1, limit?: number) {
+    const parsedLimit = Number(limit);
+    const take =
+      limit === undefined
+        ? undefined
+        : parsedLimit <= 0
+          ? undefined
+          : Math.min(Math.max(parsedLimit, 1), 100);
     const currentPage = Math.max(Number(page) || 1, 1);
 
     const [data, total] = await this.countryRepo.findAndCount({
-      order: {name: 'ASC'},
-      take,
-      skip: (currentPage - 1) * take,
+      order: {id: 'DESC'},
+      ...(take ? {take, skip: (currentPage - 1) * take} : {}),
     });
 
     return {
@@ -55,14 +60,15 @@ export class CountriesService {
       meta: {
         total,
         page: currentPage,
-        lastPage: Math.ceil(total / take) || 1,
+        lastPage: take ? Math.ceil(total / take) || 1 : 1,
       },
     };
   }
 
-  async search(q: string, limit = 10) {
+  async search(q: string, limit = 15) {
     const keyword = (q || '').trim();
-    const take = Math.min(Math.max(Number(limit) || 10, 1), 100);
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 15;
 
     if (!keyword) {
       return {success: true, count: 0, data: []};

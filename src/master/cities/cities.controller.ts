@@ -22,19 +22,26 @@ export class CitiesController {
     @Query('state_id') stateId?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.citiesService.search(q, Number(limit) || 10, stateId ? Number(stateId) : undefined);
+    return this.citiesService.search(
+      q,
+      limit !== undefined ? Number(limit) : undefined,
+      stateId ? Number(stateId) : undefined,
+    );
   }
 
   @Get()
   @CitiesSwagger.FindAll()
   findAll(
     @Query('state_id') stateId?: number,
-    @Query('page') page = 1,
-    @Query('limit') limit = 15,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
+    const parsedPage = Number(page);
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+
     return this.citiesService.findAll(
-      Number(page),
-      Number(limit),
+      Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
       stateId ? Number(stateId) : undefined,
     );
   }

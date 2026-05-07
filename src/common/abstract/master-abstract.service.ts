@@ -21,13 +21,23 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
 
   protected constructor(protected readonly repository: Repository<T>) {}
 
-  async paginate(page = 1, relations: string[] = []): Promise<ApiResponse<Partial<T>>> {
+  async paginate(
+    page = 1,
+    relations: string[] = [],
+    limit?: number,
+  ): Promise<ApiResponse<Partial<T>>> {
     try {
-      const take = this.paginateLimit;
+      const parsedLimit = Number(limit);
+      const take =
+        limit === undefined
+          ? this.paginateLimit
+          : parsedLimit <= 0
+            ? undefined
+            : Math.min(Math.max(parsedLimit, 1), 100);
       const [data, total] = await this.repository.findAndCount({
-        take,
-        skip: (page - 1) * take,
+        ...(take ? {take, skip: (page - 1) * take} : {}),
         relations,
+        order: {id: 'DESC'} as any,
       });
 
       const sanitized = data.map((item) => {
@@ -43,7 +53,7 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
       return {
         success: true,
         data: sanitized,
-        meta: { total, page, lastPage: Math.ceil(total / take) },
+        meta: { total, page, lastPage: take ? Math.ceil(total / take) : 1 },
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to paginate records');
@@ -52,7 +62,10 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
 
   async findAll(relations: string[] = []): Promise<ApiResponse<Partial<T>>> {
     try {
-      const data = await this.repository.find({ relations });
+      const data = await this.repository.find({
+        relations,
+        order: {id: 'DESC'} as any,
+      });
       const sanitized = data.map((item) => {
         const clone = { ...item };
         delete (clone as any).password;
