@@ -29,8 +29,26 @@ export class UsersController {
   @TenantAccess('view-user')
   @Get('search')
   @TenantUsersSwagger.Search()
-  search(@Req() req, @Query('q') q: string, @Query('limit') limit?: string) {
-    return this.usersService.search(req, q, limit ? Number(limit) : 15);
+  search(
+    @Req() req,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('username') username?: string,
+    @Query('phone_number') phoneNumber?: string,
+    @Query('role_id') roleId?: string,
+    @Query('job_position_id') jobPositionId?: string,
+    @Query('location_id') locationId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.usersService.search(req, limit ? Number(limit) : undefined, {
+      name,
+      email,
+      username,
+      phoneNumber,
+      roleId: roleId ? Number(roleId) : undefined,
+      jobPositionId: jobPositionId ? Number(jobPositionId) : undefined,
+      locationId: locationId ? Number(locationId) : undefined,
+    });
   }
 
   @TenantAccess('view-user')

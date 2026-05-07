@@ -26,14 +26,14 @@ export class Vendor {
   @Column({type: 'varchar', length: 255, nullable: true})
   address!: string | null;
 
-  @Column({type: 'varchar', length: 100, nullable: true})
-  city!: string | null;
-
   @Column({name: 'country_id', type: 'int', nullable: true})
   countryId!: number | null;
 
   @Column({name: 'state_id', type: 'int', nullable: true})
   stateId!: number | null;
+
+  @Column({name: 'city_id', type: 'int', nullable: true})
+  cityId!: number | null;
 
   @Column({type: 'varchar', length: 30, nullable: true})
   phoneNumber!: string | null;

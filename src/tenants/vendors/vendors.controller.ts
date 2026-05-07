@@ -28,8 +28,26 @@ export class VendorsController {
   @TenantAccess('view-vendor')
   @Get('search')
   @TenantVendorsSwagger.Search()
-  search(@Req() req, @Query('q') q: string, @Query('limit') limit?: string) {
-    return this.vendorsService.search(req, q, limit ? Number(limit) : 15);
+  search(
+    @Req() req,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('username') username?: string,
+    @Query('phone_number') phoneNumber?: string,
+    @Query('country_id') countryId?: string,
+    @Query('state_id') stateId?: string,
+    @Query('city_id') cityId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.vendorsService.search(req, limit ? Number(limit) : undefined, {
+      name,
+      email,
+      username,
+      phoneNumber,
+      countryId: countryId ? Number(countryId) : undefined,
+      stateId: stateId ? Number(stateId) : undefined,
+      cityId: cityId ? Number(cityId) : undefined,
+    });
   }
 
   @TenantAccess('view-vendor')
