@@ -17,7 +17,44 @@ export const TenantRoleSwagger = {
         example: 1,
         description: 'Page number (default 1).',
       }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 15,
+        description: 'Maximum number of records to return per page.',
+      }),
       ApiResponse({status: 200, description: 'Tenant roles fetched successfully.'}),
+    ),
+
+  Search: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Search tenant roles',
+        description: 'Filters tenant roles by explicit field filters.',
+      }),
+      ApiQuery({
+        name: 'name',
+        required: false,
+        type: String,
+        example: 'Manager',
+        description: 'Filter by role name.',
+      }),
+      ApiQuery({
+        name: 'permission_id',
+        required: false,
+        type: Number,
+        example: 1,
+        description: 'Filter by permission ID.',
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 15,
+        description: 'Maximum number of records to return (1-50). Default is 15.',
+      }),
+      ApiResponse({status: 200, description: 'Matching tenant roles fetched successfully.'}),
     ),
 
   Create: () =>

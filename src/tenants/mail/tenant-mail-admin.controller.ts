@@ -54,6 +54,45 @@ export class TenantMailAdminController {
     );
   }
 
+  @Get('templates/search')
+  @TenantAccess()
+  @ApiOperation({ summary: 'Search tenant email templates' })
+  @ApiQuery({ name: 'name', required: false, type: String, description: 'Filter by template name.' })
+  @ApiQuery({ name: 'module', required: false, type: String, description: 'Filter by module.' })
+  @ApiQuery({ name: 'action', required: false, type: String, description: 'Filter by action.' })
+  @ApiQuery({ name: 'role', required: false, type: String, description: 'Filter by role.' })
+  @ApiQuery({ name: 'status', required: false, type: String, description: 'Filter by status.' })
+  @ApiQuery({ name: 'subject', required: false, type: String, description: 'Filter by subject.' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Maximum number of records to return (1-50). Default is 15.',
+  })
+  searchTemplates(
+    @Req() req: any,
+    @Query('name') name?: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('role') role?: string,
+    @Query('status') status?: string,
+    @Query('subject') subject?: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.tenantMailAdminService.searchTemplates(
+      req,
+      limit !== undefined ? Number(limit) : undefined,
+      {
+        name,
+        module,
+        action,
+        role,
+        status,
+        subject,
+      },
+    );
+  }
+
   @Get('templates/:id')
   @TenantAccess()
   @ApiOperation({ summary: 'Get one tenant email template' })

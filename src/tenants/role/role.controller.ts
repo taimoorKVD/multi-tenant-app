@@ -56,6 +56,21 @@ export class RoleController {
     };
   }
 
+  @Get('search')
+  @TenantAccess('view-role')
+  @TenantRoleSwagger.Search()
+  async search(
+    @Req() req,
+    @Query('name') name?: string,
+    @Query('permission_id') permissionId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.roleService.search(req, limit ? Number(limit) : undefined, {
+      name,
+      permissionId: permissionId ? Number(permissionId) : undefined,
+    });
+  }
+
   /**
    * Get single role by ID
    */
