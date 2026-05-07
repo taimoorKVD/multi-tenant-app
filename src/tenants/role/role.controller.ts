@@ -28,8 +28,13 @@ export class RoleController {
   @Get()
   @TenantAccess('view-role')
   @TenantRoleSwagger.FindAll()
-  async all(@Req() req, @Query('page') page: number = 1) {
-    return await this.roleService.paginate(req, +page, ['permissions']);
+  async all(@Req() req, @Query('page') page: number = 1, @Query('limit') limit?: number) {
+    return await this.roleService.paginate(
+      req,
+      +page,
+      ['permissions'],
+      limit !== undefined ? Number(limit) : undefined,
+    );
   }
 
   /**

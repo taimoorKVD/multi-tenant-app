@@ -86,7 +86,10 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
   async findAll(req: any, relations: string[] = []): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const data = await repo.find({ relations });
+      const data = await repo.find({
+        relations,
+        order: {id: 'DESC'} as any,
+      });
       const sanitized = this.sanitizeCollection(data as any[]);
 
       return {
@@ -104,13 +107,23 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
   /**
    * Paginated list
    */
-  async paginate(req: any, page = this.pageDefault, relations: string[] = []): Promise<any> {
+  async paginate(
+    req: any,
+    page = this.pageDefault,
+    relations: string[] = [],
+    limit?: number,
+  ): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const take = this.paginateLimit;
+      const parsedLimit = Number(limit);
+      const take =
+        limit === undefined
+          ? this.paginateLimit
+          : parsedLimit <= 0
+            ? undefined
+            : Math.min(Math.max(parsedLimit, 1), 100);
       const [data, total] = await repo.findAndCount({
-        take,
-        skip: (page - 1) * take,
+        ...(take ? {take, skip: (page - 1) * take} : {}),
         relations,
         order: { id: 'DESC' } as any,
       });
@@ -122,7 +135,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
         meta: {
           total,
           page,
-          lastPage: Math.ceil(total / take),
+          lastPage: take ? Math.ceil(total / take) : 1,
         },
         data: sanitized,
       };

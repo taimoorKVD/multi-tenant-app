@@ -19,15 +19,21 @@ export class TenantMailAdminService {
     return req.tenantConnection.getRepository(TenantMailSetting);
   }
 
-  async listTemplates(req: any, page = 1, limit = 15, module?: string, action?: string) {
+  async listTemplates(req: any, page = 1, limit?: number, module?: string, action?: string) {
     const templateRepo = this.getTemplateRepo(req);
-    const take = Math.min(Math.max(Number(limit) || 15, 1), 100);
+    const parsedLimit = Number(limit);
+    const take =
+      limit === undefined
+        ? undefined
+        : parsedLimit <= 0
+          ? undefined
+          : Math.min(Math.max(parsedLimit, 1), 100);
     const currentPage = Math.max(Number(page) || 1, 1);
-    const qb = templateRepo
-      .createQueryBuilder('template')
-      .orderBy('template.id', 'DESC')
-      .take(take)
-      .skip((currentPage - 1) * take);
+    const qb = templateRepo.createQueryBuilder('template').orderBy('template.id', 'DESC');
+
+    if (take) {
+      qb.take(take).skip((currentPage - 1) * take);
+    }
 
     if (module?.trim()) {
       qb.andWhere('LOWER(template.module) = LOWER(:module)', { module: module.trim() });
@@ -44,7 +50,7 @@ export class TenantMailAdminService {
       meta: {
         total,
         page: currentPage,
-        lastPage: Math.max(Math.ceil(total / take), 1),
+        lastPage: take ? Math.max(Math.ceil(total / take), 1) : 1,
       },
     };
   }

@@ -18,8 +18,12 @@ export class RoleController {
   @Get()
   @MasterAccess('view-role')
   @RoleSwagger.GetAll()
-  async all(@Query('page') page: number = 1) {
-    return this.roleService.paginate(page, ['permissions']);
+  async all(@Query('page') page: number = 1, @Query('limit') limit?: number) {
+    return this.roleService.paginate(
+      page,
+      ['permissions'],
+      limit !== undefined ? Number(limit) : undefined,
+    );
   }
 
   // Create new role

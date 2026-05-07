@@ -16,8 +16,8 @@ export class JobPositionController {
   @Get()
   @MasterAccess('view-jobposition')
   @JobPositionSwagger.GetAll()
-  async all(@Query('page') page: number = 1) {
-    return this.jobPositionService.paginate(page);
+  async all(@Query('page') page: number = 1, @Query('limit') limit?: number) {
+    return this.jobPositionService.paginate(page, [], limit !== undefined ? Number(limit) : undefined);
   }
 
   @Post()

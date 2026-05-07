@@ -42,11 +42,16 @@ export class MailAdminController {
   @ApiQuery({ name: 'action', required: false, type: String })
   listTemplates(
     @Query('page') page = 1,
-    @Query('limit') limit = 15,
+    @Query('limit') limit?: number,
     @Query('module') module?: string,
     @Query('action') action?: string,
   ) {
-    return this.mailAdminService.listTemplates(Number(page), Number(limit), module, action);
+    return this.mailAdminService.listTemplates(
+      Number(page),
+      limit !== undefined ? Number(limit) : undefined,
+      module,
+      action,
+    );
   }
 
   @Get('templates/:id')

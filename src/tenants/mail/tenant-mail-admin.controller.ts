@@ -41,11 +41,17 @@ export class TenantMailAdminController {
   listTemplates(
     @Req() req: any,
     @Query('page') page = 1,
-    @Query('limit') limit = 15,
+    @Query('limit') limit?: number,
     @Query('module') module?: string,
     @Query('action') action?: string,
   ) {
-    return this.tenantMailAdminService.listTemplates(req, Number(page), Number(limit), module, action);
+    return this.tenantMailAdminService.listTemplates(
+      req,
+      Number(page),
+      limit !== undefined ? Number(limit) : undefined,
+      module,
+      action,
+    );
   }
 
   @Get('templates/:id')
