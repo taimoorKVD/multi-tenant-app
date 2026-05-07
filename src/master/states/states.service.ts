@@ -72,21 +72,31 @@ export class StatesService {
     };
   }
 
-  async search(q: string, limit = 15, countryId?: number) {
-    const keyword = (q || '').trim();
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      countryId?: number;
+    },
+  ) {
     const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 15;
+    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 15;
+    const name = filters?.name?.trim();
+    const countryId = filters?.countryId;
 
-    if (!keyword) {
+    if (!name && !countryId) {
       return {success: true, count: 0, data: []};
     }
 
     const qb = this.stateRepo
       .createQueryBuilder('state')
       .leftJoinAndSelect('state.country', 'country')
-      .where('state.name ILIKE :keyword', {keyword: `%${keyword}%`})
-      .orderBy('state.name', 'ASC')
+      .orderBy('state.id', 'DESC')
       .take(take);
+
+    if (name) {
+      qb.andWhere('state.name ILIKE :name', {name: `%${name}%`});
+    }
 
     if (countryId) {
       qb.andWhere('state.countryId = :countryId', {countryId});

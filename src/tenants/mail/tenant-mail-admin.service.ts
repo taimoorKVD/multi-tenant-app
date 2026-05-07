@@ -55,6 +55,72 @@ export class TenantMailAdminService {
     };
   }
 
+  async searchTemplates(
+    req: any,
+    limit = 15,
+    filters?: {
+      name?: string;
+      module?: string;
+      action?: string;
+      role?: string;
+      status?: string;
+      subject?: string;
+    },
+  ) {
+    const templateRepo = this.getTemplateRepo(req);
+    const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+    const name = filters?.name?.trim();
+    const module = filters?.module?.trim();
+    const action = filters?.action?.trim();
+    const role = filters?.role?.trim();
+    const status = filters?.status?.trim();
+    const subject = filters?.subject?.trim();
+    const hasFilters = Boolean(name || module || action || role || status || subject);
+
+    if (!hasFilters) {
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        count: 0,
+        data: [],
+      };
+    }
+
+    const qb = templateRepo.createQueryBuilder('template');
+
+    if (name) {
+      qb.andWhere('template.name ILIKE :name', { name: `%${name}%` });
+    }
+
+    if (module) {
+      qb.andWhere('template.module ILIKE :module', { module: `%${module}%` });
+    }
+
+    if (action) {
+      qb.andWhere('template.action ILIKE :action', { action: `%${action}%` });
+    }
+
+    if (role) {
+      qb.andWhere('template.role ILIKE :role', { role: `%${role}%` });
+    }
+
+    if (status) {
+      qb.andWhere('template.status ILIKE :status', { status: `%${status}%` });
+    }
+
+    if (subject) {
+      qb.andWhere('template.subject ILIKE :subject', { subject: `%${subject}%` });
+    }
+
+    const data = await qb.orderBy('template.id', 'DESC').take(take).getMany();
+    return {
+      success: true,
+      tenant: req.tenantConnection.options.database,
+      count: data.length,
+      data,
+    };
+  }
+
   async getTemplate(req: any, id: number) {
     const templateRepo = this.getTemplateRepo(req);
     const template = await templateRepo.findOne({ where: { id } });

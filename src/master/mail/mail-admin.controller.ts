@@ -54,6 +54,43 @@ export class MailAdminController {
     );
   }
 
+  @Get('templates/search')
+  @MasterAccess('view-tenant')
+  @ApiOperation({ summary: 'Search master email templates' })
+  @ApiQuery({ name: 'name', required: false, type: String })
+  @ApiQuery({ name: 'module', required: false, type: String })
+  @ApiQuery({ name: 'action', required: false, type: String })
+  @ApiQuery({ name: 'role', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'subject', required: false, type: String })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Maximum number of records to return (1-50). Default is 15.',
+  })
+  searchTemplates(
+    @Query('name') name?: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('role') role?: string,
+    @Query('status') status?: string,
+    @Query('subject') subject?: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.mailAdminService.searchTemplates(
+      limit !== undefined ? Number(limit) : undefined,
+      {
+        name,
+        module,
+        action,
+        role,
+        status,
+        subject,
+      },
+    );
+  }
+
   @Get('templates/:id')
   @MasterAccess('view-tenant')
   @ApiOperation({ summary: 'Get one master email template' })

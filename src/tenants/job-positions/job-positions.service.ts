@@ -112,4 +112,62 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
             throw new InternalServerErrorException('Failed to update record');
         }
     }
+
+    async search(
+        req: any,
+        limit = 15,
+        filters?: {
+            name?: string;
+            description?: string;
+            permissionId?: number;
+        },
+    ): Promise<any> {
+        try {
+            const repo = this.getRepo(req);
+            const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+            const name = filters?.name?.trim();
+            const description = filters?.description?.trim();
+            const permissionId = filters?.permissionId;
+            const hasFilters = Boolean(name || description || permissionId);
+
+            if (!hasFilters) {
+                return {
+                    success: true,
+                    tenant: req.tenantConnection.options.database,
+                    count: 0,
+                    data: [],
+                };
+            }
+
+            const qb = repo
+                .createQueryBuilder('jobPosition')
+                .leftJoinAndSelect('jobPosition.permissions', 'permission');
+
+            if (name) {
+                qb.andWhere('jobPosition.name ILIKE :name', {name: `%${name}%`});
+            }
+
+            if (description) {
+                qb.andWhere('jobPosition.description ILIKE :description', {
+                    description: `%${description}%`,
+                });
+            }
+
+            if (permissionId) {
+                qb.andWhere('permission.id = :permissionId', {permissionId});
+            }
+
+            const data = await qb.orderBy('jobPosition.id', 'DESC').take(take).getMany();
+
+            return {
+                success: true,
+                tenant: req.tenantConnection.options.database,
+                count: data.length,
+                data,
+            };
+        } catch (error) {
+            console.error('Tenant job position search failed:', error);
+            throw new InternalServerErrorException('Failed to search job positions');
+        }
+    }
 }

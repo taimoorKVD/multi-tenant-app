@@ -20,6 +20,24 @@ export class TenantsController {
     return this.tenantsService.paginate(page, limit !== undefined ? Number(limit) : undefined);
   }
 
+  @Get('search')
+  @MasterAccess('view-tenant')
+  @TenantSwagger.Search()
+  async search(
+    @Query('name') name?: string,
+    @Query('db_name') dbName?: string,
+    @Query('subdomain') subdomain?: string,
+    @Query('custom_domain') customDomain?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.tenantsService.search(limit ? Number(limit) : undefined, {
+      name,
+      dbName,
+      subdomain,
+      customDomain,
+    });
+  }
+
   @Post()
   @MasterAccess('create-tenant')
   @TenantSwagger.Create()

@@ -28,8 +28,24 @@ export class LocationsController {
     @TenantAccess('view-location')
     @Get('search')
     @TenantLocationsSwagger.Search()
-    search(@Req() req, @Query('q') q: string, @Query('limit') limit?: string) {
-        return this.locationsService.search(req, q, limit ? Number(limit) : 15);
+    search(
+        @Req() req,
+        @Query('name') name?: string,
+        @Query('address') address?: string,
+        @Query('postal_code') postalCode?: string,
+        @Query('country_id') countryId?: string,
+        @Query('state_id') stateId?: string,
+        @Query('city_id') cityId?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.locationsService.search(req, limit ? Number(limit) : undefined, {
+            name,
+            address,
+            postalCode,
+            countryId: countryId ? Number(countryId) : undefined,
+            stateId: stateId ? Number(stateId) : undefined,
+            cityId: cityId ? Number(cityId) : undefined,
+        });
     }
 
     @TenantAccess('view-location')

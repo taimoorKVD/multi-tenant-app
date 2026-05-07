@@ -37,11 +37,17 @@ export const StatesSwagger = {
     applyDecorators(
       ApiOperation({
         summary: 'Search states',
-        description: 'Search states by name with optional country filter.',
+        description: 'Filter states by explicit fields.',
       }),
-      ApiQuery({name: 'q', required: true, type: String, example: 'sin'}),
+      ApiQuery({name: 'name', required: false, type: String, example: 'sin'}),
       ApiQuery({name: 'country_id', required: false, type: Number, example: 1}),
-      ApiQuery({name: 'limit', required: false, type: Number, example: 15}),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 15,
+        description: 'Maximum number of records to return (1-50). Default is 15.',
+      }),
       ApiResponse({status: 200, description: 'States search completed.'}),
     ),
 

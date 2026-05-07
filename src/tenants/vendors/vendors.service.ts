@@ -1,6 +1,12 @@
 import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {DataSource, Raw, Repository} from 'typeorm';
 import {
+  CreateVendorContactDto,
+  CreateVendorDto,
+  CreateVendorOrderDeadlineDto,
+  UpdateVendorDto,
+} from './dto';
+import {
   Vendor,
   VendorContact,
   VendorOrderDay,
@@ -8,12 +14,6 @@ import {
   VendorPaymentMethod,
 } from './entities';
 import {TenantAbstractService} from '../../common/abstract';
-import {
-  CreateVendorContactDto,
-  CreateVendorDto,
-  CreateVendorOrderDeadlineDto,
-  UpdateVendorDto,
-} from './dto';
 
 @Injectable()
 export class VendorsService extends TenantAbstractService<Vendor> {
@@ -101,22 +101,6 @@ export class VendorsService extends TenantAbstractService<Vendor> {
     });
   }
 
-  // private formatVendor(vendor: Vendor) {
-  //   return this.sanitizeEntity({
-  //     ...vendor,
-  //     contacts: (vendor.contacts ?? []).map((contact) => ({
-  //       id: contact.id,
-  //       name: contact.name,
-  //       phone_number: contact.phoneNumber,
-  //       email: contact.email,
-  //       is_primary: contact.isPrimary,
-  //     })),
-  //     order_deadlines: (vendor.orderDeadlines ?? []).map((deadline) => ({
-  //       id: deadline.id,
-  //       day: deadline.day,
-  //     })),
-  //   });
-  // }
   private formatVendor(vendor: Vendor) {
     const {
       contacts,
@@ -124,6 +108,7 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       phoneNumber,
       countryId,
       stateId,
+      cityId,
       paymentMethods,
       minOrder,
       createdAt,
@@ -136,6 +121,7 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       phone_number: phoneNumber,
       country_id: countryId,
       state_id: stateId,
+      city_id: cityId,
       payment_methods: paymentMethods,
       min_order: minOrder,
       created_at: createdAt,
@@ -166,9 +152,9 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       const entity = repo.create({
         name,
         address: dto.address ?? null,
-        city: dto.city ?? null,
         countryId: dto.country_id ?? null,
         stateId: dto.state_id ?? null,
+        cityId: dto.city_id ?? null,
         phoneNumber: dto.phone_number ?? null,
         email: dto.email ?? null,
         website: dto.website ?? null,
@@ -221,9 +207,9 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       }
 
       if (dto.address !== undefined) existing.address = dto.address;
-      if (dto.city !== undefined) existing.city = dto.city;
       if (dto.country_id !== undefined) existing.countryId = dto.country_id;
       if (dto.state_id !== undefined) existing.stateId = dto.state_id;
+      if (dto.city_id !== undefined) existing.cityId = dto.city_id;
       if (dto.phone_number !== undefined) existing.phoneNumber = dto.phone_number;
       if (dto.email !== undefined) existing.email = dto.email;
       if (dto.website !== undefined) existing.website = dto.website;
@@ -256,7 +242,7 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       if (dto.order_deadlines !== undefined || dto.order_deadline_days !== undefined) {
         const deadlineRepo = repo.manager.getRepository(VendorOrderDeadline);
         await deadlineRepo.delete({
-          vendor: { id },
+          vendor: {id},
         });
         existing.orderDeadlines = this.buildOrderDeadlines(dto);
       }
@@ -280,13 +266,34 @@ export class VendorsService extends TenantAbstractService<Vendor> {
     }
   }
 
-  async search(req: any, query: string, limit = 15): Promise<any> {
+  async search(
+    req: any,
+    limit = 15,
+    filters?: {
+      name?: string;
+      email?: string;
+      username?: string;
+      phoneNumber?: string;
+      countryId?: number;
+      stateId?: number;
+      cityId?: number;
+    },
+  ): Promise<any> {
     try {
       const vendorRepo = this.getRepo(req);
-      const keyword = (query || '').trim();
       const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const name = filters?.name?.trim();
+      const email = filters?.email?.trim();
+      const username = filters?.username?.trim();
+      const phoneNumber = filters?.phoneNumber?.trim();
+      const countryId = filters?.countryId;
+      const stateId = filters?.stateId;
+      const cityId = filters?.cityId;
+      const hasFilters = Boolean(
+        name || email || username || phoneNumber || countryId || stateId || cityId,
+      );
 
-      if (!keyword) {
+      if (!hasFilters) {
         return {
           success: true,
           tenant: req.tenantConnection.options.database,
@@ -295,28 +302,51 @@ export class VendorsService extends TenantAbstractService<Vendor> {
         };
       }
 
-      const vendors = await vendorRepo
+      const qb = vendorRepo
         .createQueryBuilder('vendor')
         .leftJoinAndSelect('vendor.contacts', 'contact')
-        .where('vendor.name ILIKE :keyword', {keyword: `%${keyword}%`})
-        // .orWhere('vendor.email ILIKE :keyword', {keyword: `%${keyword}%`})
-        // .orWhere('vendor.phoneNumber ILIKE :keyword', {keyword: `%${keyword}%`})
-        // .orWhere('contact.name ILIKE :keyword', {keyword: `%${keyword}%`})
-        // .orWhere('contact.email ILIKE :keyword', {keyword: `%${keyword}%`})
-        // .orWhere('contact.phoneNumber ILIKE :keyword', {keyword: `%${keyword}%`})
-        .orderBy('vendor.name', 'ASC')
-        .distinct(true)
-        .take(take)
-        .getMany();
+        .distinct(true);
+
+      if (name) {
+        qb.andWhere('vendor.name ILIKE :name', {name: `%${name}%`});
+      }
+
+      if (email) {
+        qb.andWhere('vendor.email ILIKE :email', {email: `%${email}%`});
+      }
+
+      if (username) {
+        qb.andWhere('vendor.username ILIKE :username', {username: `%${username}%`});
+      }
+
+      if (phoneNumber) {
+        qb.andWhere('vendor.phoneNumber ILIKE :phoneNumber', {
+          phoneNumber: `%${phoneNumber}%`,
+        });
+      }
+
+      if (countryId) {
+        qb.andWhere('vendor.country_id = :countryId', {countryId});
+      }
+
+      if (stateId) {
+        qb.andWhere('vendor.state_id = :stateId', {stateId});
+      }
+
+      if (cityId) {
+        qb.andWhere('vendor.city_id = :cityId', {cityId});
+      }
+
+      const vendors = await qb.orderBy('vendor.id', 'DESC').take(take).getMany();
 
       const data = vendors.map((vendor) => ({
         id: vendor.id,
         name: vendor.name,
         email: vendor.email,
         phone_number: vendor.phoneNumber,
-        city: vendor.city,
         country_id: vendor.countryId,
         state_id: vendor.stateId,
+        city_id: vendor.cityId,
         payment_methods: vendor.paymentMethods ?? [],
         contacts: (vendor.contacts ?? []).map((contact) => ({
           id: contact.id,

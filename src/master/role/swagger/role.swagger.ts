@@ -57,6 +57,39 @@ export const RoleSwagger = {
             }),
         ),
 
+    Search: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Search master roles',
+                description: 'Filters master roles using explicit field-by-field filters.',
+            }),
+            ApiQuery({
+                name: 'name',
+                required: false,
+                type: String,
+                example: 'Manager',
+                description: 'Filter by role name.',
+            }),
+            ApiQuery({
+                name: 'permission_id',
+                required: false,
+                type: Number,
+                example: 1,
+                description: 'Filter by permission ID.',
+            }),
+            ApiQuery({
+                name: 'limit',
+                required: false,
+                type: Number,
+                example: 15,
+                description: 'Maximum number of records to return (1-50). Default is 15.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Matching roles fetched successfully.',
+            }),
+        ),
+
     Create: () =>
         applyDecorators(
             ApiOperation({

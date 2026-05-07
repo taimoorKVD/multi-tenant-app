@@ -72,12 +72,19 @@ export class CitiesService {
     };
   }
 
-  async search(q: string, limit = 15, stateId?: number) {
-    const keyword = (q || '').trim();
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      stateId?: number;
+    },
+  ) {
     const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 15;
+    const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 15;
+    const name = filters?.name?.trim();
+    const stateId = filters?.stateId;
 
-    if (!keyword) {
+    if (!name && !stateId) {
       return {success: true, count: 0, data: []};
     }
 
@@ -85,9 +92,12 @@ export class CitiesService {
       .createQueryBuilder('city')
       .leftJoinAndSelect('city.state', 'state')
       .leftJoinAndSelect('state.country', 'country')
-      .where('city.name ILIKE :keyword', {keyword: `%${keyword}%`})
-      .orderBy('city.name', 'ASC')
+      .orderBy('city.id', 'DESC')
       .take(take);
+
+    if (name) {
+      qb.andWhere('city.name ILIKE :name', {name: `%${name}%`});
+    }
 
     if (stateId) {
       qb.andWhere('city.stateId = :stateId', {stateId});

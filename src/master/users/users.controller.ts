@@ -57,6 +57,22 @@ export class UsersController {
     return this.usersService.create(dto);
   }
 
+  @Get('search')
+  @MasterAccess('view-user')
+  @UsersSwagger.Search()
+  async search(
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('role_id') roleId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.usersService.search(limit ? Number(limit) : undefined, {
+      name,
+      email,
+      roleId: roleId ? Number(roleId) : undefined,
+    });
+  }
+
   // Update current logged-in user's own profile
   // Must appear BEFORE `@Put(':id')` to avoid routing conflicts
   @UseGuards(MasterAuthGuard)

@@ -16,4 +16,11 @@ export class PermissionController {
   async all(@Query('page') page: number = 1, @Query('limit') limit?: number) {
     return this.permissionService.paginate(page, [], limit !== undefined ? Number(limit) : undefined);
   }
+
+  @Get('search')
+  @MasterAccess('view-permission')
+  @PermissionSwagger.Search()
+  async search(@Query('name') name?: string, @Query('limit') limit?: string) {
+    return this.permissionService.search(limit ? Number(limit) : undefined, {name});
+  }
 }

@@ -20,9 +20,9 @@ export const TenantVendorsSwagger = {
             value: {
               name: 'Fresh Foods Supplier',
               address: '250 Market Street',
-              city: 'Los Angeles',
               country_id: 1,
               state_id: 1,
+              city_id: 5301,
               phone_number: '+1 310 555 0100',
               email: 'orders@freshfoods.com',
               contact_person: 'John Carter',
@@ -68,21 +68,63 @@ export const TenantVendorsSwagger = {
     applyDecorators(
       ApiOperation({
         summary: 'Search tenant vendors',
-        description: 'Searches vendors by name, email, contact person, or phone number.',
+        description: 'Filters tenant vendors using explicit field-by-field filters.',
       }),
       ApiQuery({
-        name: 'q',
-        required: true,
+        name: 'name',
+        required: false,
         type: String,
         example: 'fresh',
-        description: 'Search keyword for vendor lookup.',
+        description: 'Filter by vendor name.',
+      }),
+      ApiQuery({
+        name: 'email',
+        required: false,
+        type: String,
+        example: 'freshfoods.com',
+        description: 'Filter by vendor email.',
+      }),
+      ApiQuery({
+        name: 'username',
+        required: false,
+        type: String,
+        example: 'freshfoods_vendor',
+        description: 'Filter by vendor username.',
+      }),
+      ApiQuery({
+        name: 'phone_number',
+        required: false,
+        type: String,
+        example: '+1 310',
+        description: 'Filter by vendor phone number.',
+      }),
+      ApiQuery({
+        name: 'country_id',
+        required: false,
+        type: Number,
+        example: 186,
+        description: 'Filter by country ID.',
+      }),
+      ApiQuery({
+        name: 'state_id',
+        required: false,
+        type: Number,
+        example: 530,
+        description: 'Filter by state ID.',
+      }),
+      ApiQuery({
+        name: 'city_id',
+        required: false,
+        type: Number,
+        example: 5301,
+        description: 'Filter by city ID.',
       }),
       ApiQuery({
         name: 'limit',
         required: false,
         type: Number,
         example: 15,
-        description: 'Maximum records to return (1-50).',
+        description: 'Maximum number of records to return (1-50). Default is 15.',
       }),
       ApiResponse({
         status: 200,
@@ -114,7 +156,7 @@ export const TenantVendorsSwagger = {
           valid: {
             summary: 'Update vendor example',
             value: {
-              city: 'San Diego',
+              city_id: 5202,
               payment_methods: ['eft'],
               contacts: [
                 {

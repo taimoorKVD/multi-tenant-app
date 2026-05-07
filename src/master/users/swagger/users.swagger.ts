@@ -73,6 +73,46 @@ export const UsersSwagger = {
             }),
         ),
 
+    Search: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Search master users',
+                description: 'Filters master users using explicit field-by-field filters.',
+            }),
+            ApiQuery({
+                name: 'name',
+                required: false,
+                type: String,
+                example: 'john',
+                description: 'Filter by user name.',
+            }),
+            ApiQuery({
+                name: 'email',
+                required: false,
+                type: String,
+                example: 'example.com',
+                description: 'Filter by email.',
+            }),
+            ApiQuery({
+                name: 'role_id',
+                required: false,
+                type: Number,
+                example: 2,
+                description: 'Filter by role ID.',
+            }),
+            ApiQuery({
+                name: 'limit',
+                required: false,
+                type: Number,
+                example: 15,
+                description: 'Maximum number of records to return (1-50). Default is 15.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Matching users fetched successfully.',
+            }),
+        ),
+
     Create: () =>
         applyDecorators(
             ApiOperation({

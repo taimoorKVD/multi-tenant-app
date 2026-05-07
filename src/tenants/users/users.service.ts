@@ -346,13 +346,34 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
-  async search(req: any, query: string, limit = 15): Promise<any> {
+  async search(
+    req: any,
+    limit = 15,
+    filters?: {
+      name?: string;
+      email?: string;
+      username?: string;
+      phoneNumber?: string;
+      roleId?: number;
+      jobPositionId?: number;
+      locationId?: number;
+    },
+  ): Promise<any> {
     try {
       const userRepo: Repository<User> = this.getRepo(req);
-      const keyword = (query || '').trim();
       const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const name = filters?.name?.trim();
+      const email = filters?.email?.trim();
+      const username = filters?.username?.trim();
+      const phoneNumber = filters?.phoneNumber?.trim();
+      const roleId = filters?.roleId;
+      const jobPositionId = filters?.jobPositionId;
+      const locationId = filters?.locationId;
+      const hasFilters = Boolean(
+        name || email || username || phoneNumber || roleId || jobPositionId || locationId,
+      );
 
-      if (!keyword) {
+      if (!hasFilters) {
         return {
           success: true,
           tenant: req.tenantConnection.options.database,
@@ -361,17 +382,44 @@ export class UsersService extends TenantAbstractService<User> {
         };
       }
 
-      const users = await userRepo.find({
-        where: [
-          { name: ILike(`%${keyword}%`), isSystem: Not(true) },
-          // { email: ILike(`%${keyword}%`), isSystem: Not(true) },
-          { username: ILike(`%${keyword}%`), isSystem: Not(true) },
-          // { phoneNumber: ILike(`%${keyword}%`), isSystem: Not(true) },
-        ],
-        relations: ['role', 'jobPosition', 'location'],
-        order: { name: 'ASC' },
-        take,
-      });
+      const qb = userRepo
+        .createQueryBuilder('user')
+        .leftJoinAndSelect('user.role', 'role')
+        .leftJoinAndSelect('user.jobPosition', 'jobPosition')
+        .leftJoinAndSelect('user.location', 'location')
+        .where('user.isSystem = :isSystem', {isSystem: false});
+
+      if (name) {
+        qb.andWhere('user.name ILIKE :name', {name: `%${name}%`});
+      }
+
+      if (email) {
+        qb.andWhere('user.email ILIKE :email', {email: `%${email}%`});
+      }
+
+      if (username) {
+        qb.andWhere('user.username ILIKE :username', {username: `%${username}%`});
+      }
+
+      if (phoneNumber) {
+        qb.andWhere('user.phone_number ILIKE :phoneNumber', {phoneNumber: `%${phoneNumber}%`});
+      }
+
+      if (roleId) {
+        qb.andWhere('role.id = :roleId', {roleId});
+      }
+
+      if (jobPositionId) {
+        qb.andWhere('jobPosition.id = :jobPositionId', {jobPositionId});
+      }
+
+      if (locationId) {
+        qb.andWhere('location.id = :locationId', {locationId});
+      }
+
+      qb.orderBy('user.id', 'DESC').take(take);
+
+      const users = await qb.getMany();
 
       const data = users.map((user) => ({
         id: user.id,

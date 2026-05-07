@@ -46,14 +46,49 @@ export const TenantLocationsSwagger = {
       ApiOperation({
         summary: 'Search tenant locations',
         description:
-          'Searches tenant locations for dropdown selection by name, address, or postal code.',
+          'Filters tenant locations using explicit field-by-field filters.',
       }),
       ApiQuery({
-        name: 'q',
-        required: true,
+        name: 'name',
+        required: false,
         type: String,
         example: 'Downtown',
-        description: 'Search keyword for existing location lookup.',
+        description: 'Filter by location name.',
+      }),
+      ApiQuery({
+        name: 'address',
+        required: false,
+        type: String,
+        example: 'Main Street',
+        description: 'Filter by address.',
+      }),
+      ApiQuery({
+        name: 'postal_code',
+        required: false,
+        type: String,
+        example: '10001',
+        description: 'Filter by postal code.',
+      }),
+      ApiQuery({
+        name: 'country_id',
+        required: false,
+        type: Number,
+        example: 186,
+        description: 'Filter by country ID.',
+      }),
+      ApiQuery({
+        name: 'state_id',
+        required: false,
+        type: Number,
+        example: 530,
+        description: 'Filter by state ID.',
+      }),
+      ApiQuery({
+        name: 'city_id',
+        required: false,
+        type: Number,
+        example: 1234,
+        description: 'Filter by city ID.',
       }),
       ApiQuery({
         name: 'limit',

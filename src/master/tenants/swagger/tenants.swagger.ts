@@ -1,5 +1,5 @@
 import {applyDecorators} from '@nestjs/common';
-import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse,} from '@nestjs/swagger';
+import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse,} from '@nestjs/swagger';
 import {CreateTenantDto, SendTenantCredentialsDto} from '../dto';
 
 export const TenantSwagger = {
@@ -50,6 +50,53 @@ export const TenantSwagger = {
                         error: 'Internal Server Error',
                     },
                 },
+            }),
+        ),
+
+    Search: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Search master tenants',
+                description: 'Filters master tenants using explicit field-by-field filters.',
+            }),
+            ApiQuery({
+                name: 'name',
+                required: false,
+                type: String,
+                example: 'Travel',
+                description: 'Filter by tenant name.',
+            }),
+            ApiQuery({
+                name: 'db_name',
+                required: false,
+                type: String,
+                example: 'tenant_travel_agency',
+                description: 'Filter by tenant database name.',
+            }),
+            ApiQuery({
+                name: 'subdomain',
+                required: false,
+                type: String,
+                example: 'travel-agency',
+                description: 'Filter by subdomain.',
+            }),
+            ApiQuery({
+                name: 'custom_domain',
+                required: false,
+                type: String,
+                example: 'travelagency.co.uk',
+                description: 'Filter by custom domain.',
+            }),
+            ApiQuery({
+                name: 'limit',
+                required: false,
+                type: Number,
+                example: 15,
+                description: 'Maximum number of records to return (1-50). Default is 15.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Matching tenants fetched successfully.',
             }),
         ),
 

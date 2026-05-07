@@ -1,4 +1,4 @@
-import {Controller, Get, InternalServerErrorException, Req} from '@nestjs/common';
+import {Controller, Get, InternalServerErrorException, Query, Req} from '@nestjs/common';
 import {PermissionService} from './permission.service';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantPermissionSwagger} from './swagger';
@@ -28,5 +28,18 @@ export class PermissionController {
       console.error('❌ Failed to fetch permissions:', error);
       throw new InternalServerErrorException('Failed to fetch permissions');
     }
+  }
+
+  @Get('search')
+  @TenantAccess('view-permission')
+  @TenantPermissionSwagger.Search()
+  async search(
+    @Req() req,
+    @Query('name') name?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.permissionService.search(req, limit ? Number(limit) : undefined, {
+      name,
+    });
   }
 }

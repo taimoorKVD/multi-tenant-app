@@ -54,11 +54,6 @@ export class CreateVendorDto {
   address?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  city?: string;
-
-  @IsOptional()
   @Type(() => Number)
   @IsInt({message: 'country_id must be an integer.'})
   country_id?: number;
@@ -67,6 +62,11 @@ export class CreateVendorDto {
   @Type(() => Number)
   @IsInt({message: 'state_id must be an integer.'})
   state_id?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({message: 'city_id must be an integer.'})
+  city_id?: number;
 
   @IsOptional()
   @IsString()

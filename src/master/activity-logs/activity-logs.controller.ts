@@ -34,6 +34,23 @@ export class ActivityLogsController {
     });
   }
 
+  @Get('search')
+  @MasterAccess('view-tenant')
+  @ActivityLogsSwagger.FindAll()
+  searchLogs(@Query() query: ListActivityLogsDto) {
+    return this.activityLogsService.listLogs({
+      page: 1,
+      limit: query.limit,
+      module: query.module,
+      action: query.action,
+      method: query.method,
+      statusCode: query.statusCode,
+      userId: query.userId,
+      endpoint: query.endpoint,
+      tenant: query.tenant,
+    });
+  }
+
   @Get(':id')
   @MasterAccess('view-tenant')
   @ActivityLogsSwagger.FindOne()

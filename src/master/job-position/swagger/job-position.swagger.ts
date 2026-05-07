@@ -51,6 +51,39 @@ export const JobPositionSwagger = {
             }),
         ),
 
+    Search: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Search master job positions',
+                description: 'Filters master job positions using explicit field-by-field filters.',
+            }),
+            ApiQuery({
+                name: 'name',
+                required: false,
+                type: String,
+                example: 'Engineer',
+                description: 'Filter by job position name.',
+            }),
+            ApiQuery({
+                name: 'description',
+                required: false,
+                type: String,
+                example: 'operations',
+                description: 'Filter by description.',
+            }),
+            ApiQuery({
+                name: 'limit',
+                required: false,
+                type: Number,
+                example: 15,
+                description: 'Maximum number of records to return (1-50). Default is 15.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Matching job positions fetched successfully.',
+            }),
+        ),
+
     Create: () =>
         applyDecorators(
             ApiOperation({

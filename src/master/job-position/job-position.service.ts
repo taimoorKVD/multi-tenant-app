@@ -1,4 +1,4 @@
-import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
 import {DataSource, In, QueryRunner, Repository} from 'typeorm';
 import {MasterAbstractService} from '../../common/abstract';
@@ -193,6 +193,42 @@ export class JobPositionService extends MasterAbstractService<JobPosition> {
       Logger.info(`🗄️ Creating job_positions table for tenant: ${tenantDS.options.database}`);
       await tenantDS.synchronize();
       Logger.info(`✅ job_positions table created successfully.`);
+    }
+  }
+
+  async search(
+    limit = 15,
+    filters?: {
+      name?: string;
+      description?: string;
+    },
+  ) {
+    try {
+      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const name = filters?.name?.trim();
+      const description = filters?.description?.trim();
+
+      if (!name && !description) {
+        return {success: true, count: 0, data: []};
+      }
+
+      const qb = this.jobPositionRepo.createQueryBuilder('jobPosition');
+
+      if (name) {
+        qb.andWhere('jobPosition.name ILIKE :name', {name: `%${name}%`});
+      }
+
+      if (description) {
+        qb.andWhere('jobPosition.description ILIKE :description', {
+          description: `%${description}%`,
+        });
+      }
+
+      const data = await qb.orderBy('jobPosition.id', 'DESC').take(take).getMany();
+      return {success: true, count: data.length, data};
+    } catch (error) {
+      console.error('Master job position search failed:', error);
+      throw new InternalServerErrorException('Failed to search job positions');
     }
   }
 }

@@ -1,4 +1,4 @@
-import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Req} from '@nestjs/common';
+import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req} from '@nestjs/common';
 import {JobPositionsService} from './job-positions.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 import {CreateJobPositionDto, UpdateJobPositionDto} from "./dto";
@@ -23,6 +23,23 @@ export class JobPositionController {
     @TenantJobPositionsSwagger.FindAll()
     findAll(@Req() req) {
         return this.jobPositionService.findAll(req);
+    }
+
+    @TenantAccess('view-job-position')
+    @Get('search')
+    @TenantJobPositionsSwagger.Search()
+    search(
+        @Req() req,
+        @Query('name') name?: string,
+        @Query('description') description?: string,
+        @Query('permission_id') permissionId?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.jobPositionService.search(req, limit ? Number(limit) : undefined, {
+            name,
+            description,
+            permissionId: permissionId ? Number(permissionId) : undefined,
+        });
     }
 
     @TenantAccess('view-job-position')

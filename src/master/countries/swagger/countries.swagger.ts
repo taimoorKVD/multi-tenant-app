@@ -33,9 +33,16 @@ export const CountriesSwagger = {
 
   Search: () =>
     applyDecorators(
-      ApiOperation({summary: 'Search countries', description: 'Search by country name or code.'}),
-      ApiQuery({name: 'q', required: true, type: String, example: 'pak'}),
-      ApiQuery({name: 'limit', required: false, type: Number, example: 15}),
+      ApiOperation({summary: 'Search countries', description: 'Filter countries by explicit fields.'}),
+      ApiQuery({name: 'name', required: false, type: String, example: 'pak'}),
+      ApiQuery({name: 'code', required: false, type: String, example: 'PK'}),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 15,
+        description: 'Maximum number of records to return (1-50). Default is 15.',
+      }),
       ApiResponse({status: 200, description: 'Countries search completed.'}),
     ),
 

@@ -18,14 +18,16 @@ export class CitiesController {
   @Get('search')
   @CitiesSwagger.Search()
   search(
-    @Query('q') q: string,
+    @Query('name') name?: string,
     @Query('state_id') stateId?: number,
     @Query('limit') limit?: number,
   ) {
     return this.citiesService.search(
-      q,
       limit !== undefined ? Number(limit) : undefined,
-      stateId ? Number(stateId) : undefined,
+      {
+        name,
+        stateId: stateId ? Number(stateId) : undefined,
+      },
     );
   }
 
