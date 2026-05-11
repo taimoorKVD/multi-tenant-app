@@ -62,14 +62,25 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
-  override async paginate(req: any, page = 1, relations: string[] = []): Promise<any> {
+  override async paginate(
+    req: any,
+    page = 1,
+    relations: string[] = [],
+    limit?: number,
+  ): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const take = this.paginateLimit;
+      const parsedLimit = Number(limit);
+      const take =
+        limit === undefined
+          ? this.paginateLimit || 10
+          : parsedLimit <= 0
+            ? undefined
+            : Math.min(Math.max(parsedLimit, 1), 100);
+      const currentPage = Math.max(Number(page) || 1, 1);
       const [data, total] = await repo.findAndCount({
         where: { isSystem: Not(true) } as any,
-        take,
-        skip: (page - 1) * take,
+        ...(take ? { take, skip: (currentPage - 1) * take } : {}),
         relations,
         order: { id: 'DESC' } as any,
       });
@@ -77,7 +88,7 @@ export class UsersService extends TenantAbstractService<User> {
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        meta: { total, page, lastPage: Math.ceil(total / take) },
+        meta: { total, page: currentPage, lastPage: take ? Math.ceil(total / take) || 1 : 1 },
         data: sanitized,
       };
     } catch (error) {

@@ -21,8 +21,16 @@ export class LocationsController {
     @TenantAccess('view-location')
     @Get()
     @TenantLocationsSwagger.FindAll()
-    findAll(@Req() req) {
-        return this.locationsService.findAll(req);
+    findAll(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
+        const parsedPage = Number(page);
+        const parsedLimit = limit === undefined ? undefined : Number(limit);
+
+        return this.locationsService.paginate(
+            req,
+            Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+            [],
+            Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+        );
     }
 
     @TenantAccess('view-location')

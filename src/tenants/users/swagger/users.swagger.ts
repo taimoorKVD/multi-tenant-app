@@ -55,7 +55,21 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Get tenant users',
         description:
-          'Returns all users for the current tenant.',
+          'Returns tenant users with optional pagination.',
+      }),
+      ApiQuery({
+        name: 'page',
+        required: false,
+        type: Number,
+        example: 1,
+        description: 'Optional page number. Defaults to 1 when provided as invalid.',
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 10,
+        description: 'Optional page size. Defaults to 15 when omitted; use limit=0 to return all records.',
       }),
       ApiResponse({
         status: 200,

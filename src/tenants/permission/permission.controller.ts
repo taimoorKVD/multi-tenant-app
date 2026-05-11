@@ -17,9 +17,16 @@ export class PermissionController {
   @Get()
   @TenantAccess('view-permission')
   @TenantPermissionSwagger.FindAll()
-  async all(@Req() req) {
+  async all(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
     try {
-      const result = await this.permissionService.findAll(req); // optional relation
+      const parsedPage = Number(page);
+      const parsedLimit = limit === undefined ? undefined : Number(limit);
+      const result = await this.permissionService.paginate(
+        req,
+        Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+        [],
+        Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+      );
       return {
         ...result,
         message: 'Permissions fetched successfully',
