@@ -73,20 +73,26 @@ export class MasterAuthService {
   }
 
   private buildRefreshTokenPayload(user: User, emailVerified: boolean) {
+    const permissions = (user.role?.permissions || []).map((permission) => permission.name);
+
     return {
       sub: user.id,
       email: user.email,
       role: user.role?.name,
+      permissions,
       emailVerified,
       type: 'refresh',
     };
   }
 
   private buildAccessTokenPayload(user: User, emailVerified: boolean) {
+    const permissions = (user.role?.permissions || []).map((permission) => permission.name);
+
     return {
       sub: user.id,
       email: user.email,
       role: user.role?.name,
+      permissions,
       emailVerified,
     };
   }
