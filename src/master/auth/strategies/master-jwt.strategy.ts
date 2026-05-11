@@ -7,6 +7,7 @@ export interface MasterJwtPayload {
   sub: number; // user ID
   email: string;
   role?: string;
+  permissions?: string[];
   iat?: number;
   exp?: number;
 }
@@ -36,7 +37,10 @@ export class MasterJwtStrategy extends PassportStrategy(Strategy, 'master-jwt') 
     return {
       id: payload.sub,
       email: payload.email,
-      role: payload.role ?? 'User',
+      role: {
+        name: payload.role ?? 'User',
+        permissions: payload.permissions ?? [],
+      },
     };
   }
 }
