@@ -21,8 +21,16 @@ export class VendorsController {
   @TenantAccess('view-vendor')
   @Get()
   @TenantVendorsSwagger.FindAll()
-  findAll(@Req() req) {
-    return this.vendorsService.findAll(req);
+  findAll(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
+    const parsedPage = Number(page);
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+
+    return this.vendorsService.paginate(
+      req,
+      Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+      ['contacts', 'orderDeadlines'],
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @TenantAccess('view-vendor')

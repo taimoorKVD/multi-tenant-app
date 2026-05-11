@@ -378,6 +378,19 @@ export class VendorsService extends TenantAbstractService<Vendor> {
     };
   }
 
+  override async paginate(
+    req: any,
+    page = 1,
+    relations: string[] = ['contacts', 'orderDeadlines'],
+    limit?: number,
+  ): Promise<any> {
+    const response = await super.paginate(req, page, relations, limit);
+    return {
+      ...response,
+      data: response.data.map((vendor) => this.formatVendor(vendor)),
+    };
+  }
+
   async findOne(req: any, id: number): Promise<any> {
     const response = await super.findOne(req, id, ['contacts', 'orderDeadlines']);
     return {

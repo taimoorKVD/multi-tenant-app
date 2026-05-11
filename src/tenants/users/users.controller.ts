@@ -22,8 +22,16 @@ export class UsersController {
   @TenantAccess('view-user')
   @Get()
   @TenantUsersSwagger.FindAll()
-  findAll(@Req() req) {
-    return this.usersService.findAll(req, ['role', 'jobPosition', 'location']);
+  findAll(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
+    const parsedPage = Number(page);
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+
+    return this.usersService.paginate(
+      req,
+      Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+      ['role', 'jobPosition', 'location'],
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @TenantAccess('view-user')

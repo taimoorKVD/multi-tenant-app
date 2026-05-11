@@ -122,8 +122,9 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
           : parsedLimit <= 0
             ? undefined
             : Math.min(Math.max(parsedLimit, 1), 100);
+      const currentPage = Math.max(Number(page) || 1, 1);
       const [data, total] = await repo.findAndCount({
-        ...(take ? {take, skip: (page - 1) * take} : {}),
+        ...(take ? {take, skip: (currentPage - 1) * take} : {}),
         relations,
         order: { id: 'DESC' } as any,
       });
@@ -134,7 +135,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
         tenant: req.tenantConnection.options.database,
         meta: {
           total,
-          page,
+          page: currentPage,
           lastPage: take ? Math.ceil(total / take) : 1,
         },
         data: sanitized,

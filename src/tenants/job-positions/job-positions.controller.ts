@@ -3,6 +3,7 @@ import {JobPositionsService} from './job-positions.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 import {CreateJobPositionDto, UpdateJobPositionDto} from "./dto";
 import {TenantJobPositionsSwagger} from './swagger';
+import { JobPosition } from './entities';
 
 @TenantJobPositionsSwagger.Tags()
 @TenantJobPositionsSwagger.Auth()
@@ -21,8 +22,16 @@ export class JobPositionController {
     @TenantAccess('view-job-position')
     @Get()
     @TenantJobPositionsSwagger.FindAll()
-    findAll(@Req() req) {
-        return this.jobPositionService.findAll(req);
+    findAll(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
+        const parsedPage = Number(page);
+        const parsedLimit = limit === undefined ? undefined : Number(limit);
+
+        return this.jobPositionService.paginate(
+            req,
+            Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+            ['permissions'],
+            Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+        );
     }
 
     @TenantAccess('view-job-position')

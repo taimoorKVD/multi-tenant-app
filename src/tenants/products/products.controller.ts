@@ -1,4 +1,4 @@
-import {Body, Controller, Delete, Get, Param, Post, Put, Req} from '@nestjs/common';
+import {Body, Controller, Delete, Get, Param, Post, Put, Query, Req} from '@nestjs/common';
 import {ProductsService} from './products.service';
 import {Product} from './entities';
 
@@ -13,8 +13,20 @@ export class ProductsController {
   }
 
   @Get()
-  findAll(@Req() req, @Param('tenantId') tenantId: string) {
-    return this.productsService.findAll(req);
+  findAll(
+    @Req() req,
+    @Param('tenantId') tenantId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const parsedPage = Number(page);
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+
+    return this.productsService.paginate(
+      req,
+      Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    );
   }
 
   @Get(':id')

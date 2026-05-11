@@ -63,6 +63,39 @@ export class ProductsService {
     }
   }
 
+  async paginate(req: any, page = 1, limit?: number) {
+    try {
+      const repo = this.getRepo(req);
+      const parsedLimit = Number(limit);
+      const take =
+        limit === undefined
+          ? 15
+          : parsedLimit <= 0
+            ? undefined
+            : Math.min(Math.max(parsedLimit, 1), 100);
+      const currentPage = Math.max(Number(page) || 1, 1);
+
+      const [products, total] = await repo.findAndCount({
+        order: { id: 'DESC' },
+        ...(take ? { take, skip: (currentPage - 1) * take } : {}),
+      });
+
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        meta: {
+          total,
+          page: currentPage,
+          lastPage: take ? Math.ceil(total / take) || 1 : 1,
+        },
+        data: products,
+      };
+    } catch (error) {
+      console.error('❌ Failed to paginate products:', error);
+      throw new InternalServerErrorException('Failed to retrieve products');
+    }
+  }
+
   /**
    * Get a single product by ID
    */

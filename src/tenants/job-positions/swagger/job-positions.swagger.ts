@@ -40,7 +40,21 @@ export const TenantJobPositionsSwagger = {
         applyDecorators(
             ApiOperation({
                 summary: 'List tenant job positions',
-                description: 'Returns all job positions for the current tenant with related permissions.',
+                description: 'Returns tenant job positions with optional pagination and related permissions.',
+            }),
+            ApiQuery({
+                name: 'page',
+                required: false,
+                type: Number,
+                example: 1,
+                description: 'Optional page number. Defaults to 1 when provided as invalid.',
+            }),
+            ApiQuery({
+                name: 'limit',
+                required: false,
+                type: Number,
+                example: 10,
+                description: 'Optional page size. Defaults to 15 when omitted; use limit=0 to return all records.',
             }),
             ApiResponse({
                 status: 200,

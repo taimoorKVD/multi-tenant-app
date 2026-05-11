@@ -59,7 +59,21 @@ export const TenantVendorsSwagger = {
     applyDecorators(
       ApiOperation({
         summary: 'List tenant vendors',
-        description: 'Returns all vendors for the current tenant.',
+        description: 'Returns tenant vendors with optional pagination.',
+      }),
+      ApiQuery({
+        name: 'page',
+        required: false,
+        type: Number,
+        example: 1,
+        description: 'Optional page number. Defaults to 1 when provided as invalid.',
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 10,
+        description: 'Optional page size. Defaults to 15 when omitted; use limit=0 to return all records.',
       }),
       ApiResponse({status: 200, description: 'Vendors fetched successfully.'}),
     ),
