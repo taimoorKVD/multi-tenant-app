@@ -7,6 +7,11 @@ import {JobPosition} from "../tenants/job-positions/entities";
 import {Location} from "../tenants/locations/entities";
 import {Vendor, VendorContact, VendorOrderDeadline} from '../tenants/vendors/entities';
 import { TenantEmailTemplate, TenantMailSetting } from '../tenants/mail/entities';
+import {
+  EmailVerificationToken,
+  PasswordResetToken,
+  RefreshToken,
+} from '../tenants/auth/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
   const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -66,6 +71,9 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       VendorOrderDeadline,
       TenantMailSetting,
       TenantEmailTemplate,
+      PasswordResetToken,
+      EmailVerificationToken,
+      RefreshToken,
     ],
     synchronize: true,
     logging,

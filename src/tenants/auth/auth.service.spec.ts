@@ -1,13 +1,28 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { TenantAuthService } from './auth.service';
+import {
+  EmailVerificationToken,
+  PasswordResetToken,
+  RefreshToken,
+} from './entities';
+import { User } from '../users/entities';
 
 describe('TenantAuthService', () => {
   const mockJwtService = {
     sign: jest.fn(),
+    verify: jest.fn(),
   };
 
   let service: TenantAuthService;
+
+  const createDeleteQueryBuilder = () => ({
+    delete: jest.fn().mockReturnThis(),
+    from: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue(undefined),
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -17,15 +32,37 @@ describe('TenantAuthService', () => {
   function createReq(user: any, tenantId = 'test') {
     const userRepo = {
       findOne: jest.fn().mockResolvedValue(user),
+      save: jest.fn().mockImplementation(async (entity: any) => entity),
+    };
+    const passwordResetTokenRepo = {
+      save: jest.fn().mockImplementation(async (entity: any) => entity),
+      createQueryBuilder: jest.fn(),
+    };
+    const emailVerificationTokenRepo = {
+      save: jest.fn().mockImplementation(async (entity: any) => entity),
+      createQueryBuilder: jest.fn(),
+    };
+    const refreshTokenRepo = {
+      save: jest.fn().mockImplementation(async (entity: any) => entity),
+      createQueryBuilder: jest.fn(),
     };
 
     return {
       tenantId,
       tenantConnection: {
         options: { database: `tenant_${tenantId}` },
-        getRepository: jest.fn().mockReturnValue(userRepo),
+        getRepository: jest.fn().mockImplementation((entity: any) => {
+          if (entity === User) return userRepo;
+          if (entity === PasswordResetToken) return passwordResetTokenRepo;
+          if (entity === EmailVerificationToken) return emailVerificationTokenRepo;
+          if (entity === RefreshToken) return refreshTokenRepo;
+          throw new Error(`Unexpected repository request: ${entity?.name}`);
+        }),
       },
       _userRepo: userRepo,
+      _passwordResetTokenRepo: passwordResetTokenRepo,
+      _emailVerificationTokenRepo: emailVerificationTokenRepo,
+      _refreshTokenRepo: refreshTokenRepo,
     } as any;
   }
 
@@ -43,7 +80,10 @@ describe('TenantAuthService', () => {
     });
 
     jest.spyOn(argon2, 'verify').mockResolvedValue(true as never);
-    mockJwtService.sign.mockReturnValue('tenant-jwt');
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'tenant-jwt', refreshToken: 'refresh-jwt' });
 
     const result = await service.login(req, {
       email: 'admin@test.com',
@@ -54,11 +94,7 @@ describe('TenantAuthService', () => {
     expect(result.accessToken).toBe('tenant-jwt');
     expect(result.tenant_slug).toBe('test');
     expect(result.user.role.permissions).toEqual([{ name: 'view-user' }, { name: 'edit-user' }]);
-
-    expect(mockJwtService.sign).toHaveBeenCalledWith(
-      expect.objectContaining({ permissions: ['view-user', 'edit-user'] }),
-      expect.any(Object),
-    );
+    expect(result.user.email_verified).toBe(true);
   });
 
   it('throws when tenant connection is missing', async () => {
@@ -101,5 +137,155 @@ describe('TenantAuthService', () => {
     await expect(
       service.login(req, { email: 'admin@test.com', password: 'wrong' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('forgotPassword returns success for unknown tenant email', async () => {
+    const req = createReq(null);
+    req._userRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.forgotPassword(req, { email: 'missing@test.com' } as any);
+
+    expect(result.success).toBe(true);
+    expect(req._passwordResetTokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('forgotPassword returns success when tenant connection is missing', async () => {
+    const result = await service.forgotPassword(
+      { tenantConnection: null },
+      { email: 'omais.kv@gmail.com' } as any,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('If the account exists');
+  });
+
+  it('forgotPassword does not throw when tenant reset email dispatch fails', async () => {
+    const req = createReq({
+      id: 1,
+      email: 'admin@test.com',
+      name: 'Tenant Admin',
+    });
+    req._passwordResetTokenRepo.createQueryBuilder.mockReturnValue(createDeleteQueryBuilder());
+    jest.spyOn<any, any>(service as any, 'sendResetPasswordEmail').mockRejectedValue(new Error('smtp unavailable'));
+
+    const result = await service.forgotPassword(req, { email: 'admin@test.com' } as any);
+
+    expect(result.success).toBe(true);
+    expect(req._passwordResetTokenRepo.save).toHaveBeenCalled();
+  });
+
+  it('verifyResetToken throws on invalid token', async () => {
+    const req = createReq(null);
+    const qb = {
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    };
+    req._passwordResetTokenRepo.createQueryBuilder.mockReturnValue(qb);
+
+    await expect(
+      service.verifyResetToken(req, { email: 'admin@test.com', token: 'bad-token' } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('resetPassword updates hash and invalidates tenant token tables', async () => {
+    const user = {
+      id: 1,
+      email: 'admin@test.com',
+      password: 'old-hash',
+    };
+    const req = createReq(user);
+    const selectQb = {
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({ user }),
+    };
+    const resetDeleteQb = createDeleteQueryBuilder();
+    const refreshDeleteQb = createDeleteQueryBuilder();
+    req._passwordResetTokenRepo.createQueryBuilder
+      .mockReturnValueOnce(selectQb)
+      .mockReturnValueOnce(resetDeleteQb);
+    req._refreshTokenRepo.createQueryBuilder.mockReturnValue(refreshDeleteQb);
+    jest.spyOn(argon2, 'hash').mockResolvedValue('new-hash' as never);
+
+    const result = await service.resetPassword(req, {
+      email: 'admin@test.com',
+      token: 'valid-token',
+      password: 'NewStrongPassword123!',
+      password_confirm: 'NewStrongPassword123!',
+    } as any);
+
+    expect(result.success).toBe(true);
+    expect(user.password).toBe('new-hash');
+    expect(req._userRepo.save).toHaveBeenCalledWith(user);
+    expect(resetDeleteQb.execute).toHaveBeenCalled();
+    expect(refreshDeleteQb.execute).toHaveBeenCalled();
+  });
+
+  it('sendEmailVerification returns success for unknown tenant email', async () => {
+    const req = createReq(null);
+    req._userRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.sendEmailVerification(req, { email: 'missing@test.com' } as any);
+
+    expect(result.success).toBe(true);
+    expect(req._emailVerificationTokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('verifyEmail marks tenant email token as verified', async () => {
+    const req = createReq({ id: 1, email: 'admin@test.com' });
+    const token = {
+      verifiedAt: null,
+      user: { id: 1, email: 'admin@test.com' },
+    };
+    const qb = {
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(token),
+    };
+    req._emailVerificationTokenRepo.createQueryBuilder.mockReturnValue(qb);
+
+    const result = await service.verifyEmail(req, {
+      email: 'admin@test.com',
+      token: 'valid-token',
+    } as any);
+
+    expect(result.success).toBe(true);
+    expect(token.verifiedAt).toBeInstanceOf(Date);
+    expect(req._emailVerificationTokenRepo.save).toHaveBeenCalledWith(token);
+  });
+
+  it('refreshToken rotates tenant access and refresh tokens', async () => {
+    const user = {
+      id: 1,
+      email: 'admin@test.com',
+      name: 'Tenant Admin',
+      role: {
+        name: 'Admin',
+        permissions: [{ name: 'view-user' }],
+      },
+    };
+    const req = createReq(user);
+    const refreshQb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({ expiresAt: new Date(Date.now() + 1000) }),
+    };
+    req._refreshTokenRepo.createQueryBuilder.mockReturnValue(refreshQb);
+    req._userRepo.findOne.mockResolvedValue(user);
+    mockJwtService.verify.mockReturnValue({ sub: 1, type: 'refresh' });
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'tenant-access', refreshToken: 'tenant-refresh' });
+
+    const result = await service.refreshToken(req, { refresh_token: 'tenant-refresh-token' } as any);
+
+    expect(result.success).toBe(true);
+    expect(result.accessToken).toBe('tenant-access');
+    expect(result.refreshToken).toBe('tenant-refresh');
   });
 });

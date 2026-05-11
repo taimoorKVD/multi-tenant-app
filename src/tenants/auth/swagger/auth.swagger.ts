@@ -1,6 +1,6 @@
 import {ApiBearerAuth, ApiBody, ApiOperation, ApiResponse,} from '@nestjs/swagger';
 import {applyDecorators} from '@nestjs/common';
-import {LoginDto} from '../dto';
+import {ForgotPasswordDto, LoginDto, RefreshTokenDto, ResetPasswordDto, VerifyEmailDto, VerifyResetTokenDto} from '../dto';
 
 export const TenantAuthLoginDocs = () =>
     applyDecorators(
@@ -127,5 +127,176 @@ export const TenantAuthGetUserDocs = () =>
                     success: false,
                 },
             },
+        }),
+    );
+
+export const TenantAuthForgotPasswordDocs = () =>
+    applyDecorators(
+        ApiOperation({
+            summary: 'Send password reset email',
+            description:
+                'Generates a one-time password reset token for tenant or tenant-user login and sends a reset email if the account exists.',
+        }),
+        ApiBody({
+            type: ForgotPasswordDto,
+            description: 'Email address for password reset.',
+            examples: {
+                valid: {
+                    summary: 'Forgot password request',
+                    value: {
+                        email: 'admin@kingdomvision.com',
+                    },
+                },
+            },
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: 'Reset email request accepted.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Password reset link has been sent to the registered email.',
+                },
+            },
+        }),
+    );
+
+export const TenantAuthVerifyResetTokenDocs = () =>
+    applyDecorators(
+        ApiOperation({
+            summary: 'Verify password reset token',
+            description: 'Verifies whether the password reset token is valid and not expired.',
+        }),
+        ApiBody({
+            type: VerifyResetTokenDto,
+            description: 'Email and reset token to verify.',
+            examples: {
+                valid: {
+                    summary: 'Verify reset token request',
+                    value: {
+                        email: 'admin@kingdomvision.com',
+                        token: 'd11b0d6f84bb14d1470f6da0f5ea0de31fa53c53cb8bd0b37c2f67ff7d5a9f66',
+                    },
+                },
+            },
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: 'Reset token is valid.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Reset token is valid.',
+                },
+            },
+        }),
+        ApiResponse({
+            status: 400,
+            description: 'Reset token is invalid or expired.',
+        }),
+    );
+
+export const TenantAuthResetPasswordDocs = () =>
+    applyDecorators(
+        ApiOperation({
+            summary: 'Reset password',
+            description:
+                'Resets tenant account password using a valid one-time token. Token is invalidated after successful reset.',
+        }),
+        ApiBody({
+            type: ResetPasswordDto,
+            description: 'Email, reset token, and new password details.',
+            examples: {
+                valid: {
+                    summary: 'Reset password request',
+                    value: {
+                        email: 'admin@kingdomvision.com',
+                        token: 'd11b0d6f84bb14d1470f6da0f5ea0de31fa53c53cb8bd0b37c2f67ff7d5a9f66',
+                        password: 'NewStrongPassword123!',
+                        password_confirm: 'NewStrongPassword123!',
+                    },
+                },
+            },
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: 'Password reset completed.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Password reset successful. You can now log in with your new password.',
+                },
+            },
+        }),
+        ApiResponse({
+            status: 400,
+            description: 'Reset token is invalid/expired or password confirmation failed.',
+        }),
+    );
+
+export const TenantAuthEmailVerificationDocs = (mode: 'send' | 'verify') =>
+    applyDecorators(
+        ApiOperation({
+            summary: mode === 'send' ? 'Send email verification link' : 'Verify email address',
+            description:
+                mode === 'send'
+                    ? 'Generates a one-time email verification token for tenant or tenant-user login and sends a verification email if the account exists.'
+                    : 'Marks the tenant account email as verified when a valid verification token is provided.',
+        }),
+        ApiBody({
+            type: mode === 'send' ? ForgotPasswordDto : VerifyEmailDto,
+            description: mode === 'send' ? 'Email address for verification.' : 'Email and verification token.',
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: mode === 'send' ? 'Verification email request accepted.' : 'Email verified successfully.',
+            schema: {
+                example:
+                    mode === 'send'
+                        ? {
+                            success: true,
+                            message: 'If the account exists, an email verification link has been sent to the registered email.',
+                        }
+                        : {
+                            success: true,
+                            message: 'Email verified successfully.',
+                        },
+            },
+        }),
+        ApiResponse({
+            status: 400,
+            description: 'Verification token is invalid or expired.',
+        }),
+    );
+
+export const TenantAuthRefreshTokenDocs = () =>
+    applyDecorators(
+        ApiOperation({
+            summary: 'Rotate refresh token',
+            description: 'Exchanges a valid tenant refresh token for a new access token and a rotated refresh token.',
+        }),
+        ApiBody({
+            type: RefreshTokenDto,
+            description: 'Refresh token payload.',
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: 'Tokens refreshed successfully.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Token refreshed successfully.',
+                    tenant_slug: 'kingdomvision',
+                    tenant: 'tenant_kingdomvision',
+                    accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access',
+                    refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh',
+                    expires_in: '2h',
+                    refresh_expires_in_days: 7,
+                },
+            },
+        }),
+        ApiResponse({
+            status: 401,
+            description: 'Refresh token is invalid or expired.',
         }),
     );
