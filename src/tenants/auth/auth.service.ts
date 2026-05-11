@@ -51,7 +51,7 @@ export class TenantAuthService {
       return frontendUrl.replace(/\/+$/, '');
     }
 
-    return 'http://localhost:4200';
+    return 'http://localhost:4200'; // Default fallback, should ideally be overridden in production via env variable
   }
 
   private buildTokenHash(token: string): string {
