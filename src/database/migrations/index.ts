@@ -11,3 +11,6 @@ export * from './1701010008000-CreateEmailTemplateRecipientsTable';
 export * from './1701010009000-CreateGlobalMailSettingsTable';
 export * from './1701010010000-CreateEmailLogsTable';
 export * from './1701010011000-CreateActivityLogsTable';
+export * from './1701010015000-CreatePasswordResetTokensTable';
+export * from './1701010016000-CreateEmailVerificationTokensTable';
+export * from './1701010017000-CreateRefreshTokensTable';

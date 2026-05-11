@@ -220,17 +220,28 @@ export class TenantMiddleware implements NestMiddleware {
       }
 
       // =========================
-      // ✅ 5. LOGIN EMAIL (LAST HEURISTIC ONLY)
+      // ✅ 5. EMAIL HEURISTIC (AUTH PUBLIC FLOWS)
       // =========================
-      if (!tenant && url.endsWith('/login') && req.body?.email) {
+      const isAuthEmailRoute =
+        url.endsWith('/login') ||
+        url.endsWith('/forgot-password') ||
+        url.endsWith('/send-email-verification') ||
+        url.endsWith('/verify-email') ||
+        url.endsWith('/verify-reset-token') ||
+        url.endsWith('/reset-password');
+
+      if (!tenant && isAuthEmailRoute && req.body?.email) {
         const lookupEmail = String(req.body.email).toLowerCase().trim();
         const domain = lookupEmail.split('@')[1]?.toLowerCase().trim();
 
-        // For /api/login or /api/tenant/login, derive tenant from email when possible.
+        // For auth public endpoints, derive tenant from email when possible.
         const byEmail = await this.tenantsService.findOneFlexible(lookupEmail).catch(() => null);
         if (byEmail?.subdomain) {
           tenant = byEmail.subdomain.toLowerCase();
-        } else if (domain && !this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
+        // TEMPORARY: public-email restriction disabled during setup to allow any email.
+        // Re-enable the old check when company-domain-only flow is ready:
+        // else if (domain && !this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
+        } else if (domain) {
           const byDomain = await this.tenantsService.findOneFlexible(domain).catch(() => null);
 
           if (byDomain?.subdomain) {
@@ -262,6 +273,15 @@ export class TenantMiddleware implements NestMiddleware {
       // ❌ FINAL CHECK
       // =========================
       if (!tenant) {
+        // TEMPORARY: allow email-driven public recovery/verification requests to continue without tenant context.
+        // This enables testing with personal emails before company domains are onboarded.
+        if (
+          req.method === 'POST' &&
+          (url.endsWith('/forgot-password') || url.endsWith('/send-email-verification'))
+        ) {
+          return next();
+        }
+
         throw new BadRequestException(
           'Unable to identify your workspace. Please sign in using your company email on /tenant/login or contact your administrator.',
         );
@@ -270,7 +290,19 @@ export class TenantMiddleware implements NestMiddleware {
       // =========================
       // ✅ CONNECT DB
       // =========================
-      const connection = await this.tenantsService.getTenantConnection(tenant);
+      let connection;
+      try {
+        connection = await this.tenantsService.getTenantConnection(tenant);
+      } catch (error) {
+        // TEMPORARY: during setup, allow email-driven public requests to continue even if tenant slug is unresolved.
+        if (
+          req.method === 'POST' &&
+          (url.endsWith('/forgot-password') || url.endsWith('/send-email-verification'))
+        ) {
+          return next();
+        }
+        throw error;
+      }
 
       req['tenantId'] = tenant;
       req['tenantConnection'] = connection;

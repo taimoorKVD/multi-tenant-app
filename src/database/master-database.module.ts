@@ -16,6 +16,11 @@ import {
   GlobalMailSetting,
 } from '../master/mail/entities';
 import { ActivityLog } from '../master/activity-logs/entities';
+import {
+  EmailVerificationToken,
+  PasswordResetToken,
+  RefreshToken,
+} from '../master/auth/entities';
 
 @Global()
 @Module({
@@ -35,6 +40,9 @@ import { ActivityLog } from '../master/activity-logs/entities';
       GlobalMailSetting,
       EmailLog,
       ActivityLog,
+      PasswordResetToken,
+      EmailVerificationToken,
+      RefreshToken,
     ]),
   ],
   exports: [TypeOrmModule],
