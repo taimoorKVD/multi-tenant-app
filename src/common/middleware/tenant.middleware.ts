@@ -30,6 +30,17 @@ export class TenantMiddleware implements NestMiddleware {
     private readonly jwtService: JwtService,
   ) {}
 
+  private getTenantSlugFromEmail(email: string): string | null {
+    const normalizedEmail = String(email || '').toLowerCase().trim();
+    const domain = normalizedEmail.split('@')[1]?.trim();
+
+    if (!domain || this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
+      return null;
+    }
+
+    return domain.split('.')[0]?.trim() || null;
+  }
+
   // async use(req: Request, res: Response, next: NextFunction) {
   //   try {
   //     const url = req.originalUrl.toLowerCase();
@@ -233,6 +244,7 @@ export class TenantMiddleware implements NestMiddleware {
       if (!tenant && isAuthEmailRoute && req.body?.email) {
         const lookupEmail = String(req.body.email).toLowerCase().trim();
         const domain = lookupEmail.split('@')[1]?.toLowerCase().trim();
+        const slugFromEmail = this.getTenantSlugFromEmail(lookupEmail);
 
         // For auth public endpoints, derive tenant from email when possible.
         const byEmail = await this.tenantsService.findOneFlexible(lookupEmail).catch(() => null);
@@ -246,8 +258,8 @@ export class TenantMiddleware implements NestMiddleware {
 
           if (byDomain?.subdomain) {
             tenant = byDomain.subdomain.toLowerCase();
-          } else {
-            tenant = domain.split('.')[0].toLowerCase();
+          } else if (slugFromEmail) {
+            tenant = slugFromEmail;
           }
         }
       }
@@ -273,15 +285,6 @@ export class TenantMiddleware implements NestMiddleware {
       // ❌ FINAL CHECK
       // =========================
       if (!tenant) {
-        // TEMPORARY: allow email-driven public recovery/verification requests to continue without tenant context.
-        // This enables testing with personal emails before company domains are onboarded.
-        if (
-          req.method === 'POST' &&
-          (url.endsWith('/forgot-password') || url.endsWith('/send-email-verification'))
-        ) {
-          return next();
-        }
-
         throw new BadRequestException(
           'Unable to identify your workspace. Please sign in using your company email on /tenant/login or contact your administrator.',
         );

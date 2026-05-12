@@ -145,6 +145,7 @@ export const TenantAuthForgotPasswordDocs = () =>
                     summary: 'Forgot password request',
                     value: {
                         email: 'admin@kingdomvision.com',
+                        tenant_slug: 'kingdomvision',
                     },
                 },
             },
@@ -176,6 +177,7 @@ export const TenantAuthVerifyResetTokenDocs = () =>
                     value: {
                         email: 'admin@kingdomvision.com',
                         token: 'd11b0d6f84bb14d1470f6da0f5ea0de31fa53c53cb8bd0b37c2f67ff7d5a9f66',
+                        tenant_slug: 'kingdomvision',
                     },
                 },
             },
@@ -214,6 +216,7 @@ export const TenantAuthResetPasswordDocs = () =>
                         token: 'd11b0d6f84bb14d1470f6da0f5ea0de31fa53c53cb8bd0b37c2f67ff7d5a9f66',
                         password: 'NewStrongPassword123!',
                         password_confirm: 'NewStrongPassword123!',
+                        tenant_slug: 'kingdomvision',
                     },
                 },
             },
