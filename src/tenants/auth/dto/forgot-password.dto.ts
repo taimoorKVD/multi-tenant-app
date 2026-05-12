@@ -1,5 +1,5 @@
-import { IsEmail, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ForgotPasswordDto {
   @ApiProperty({
@@ -8,5 +8,13 @@ export class ForgotPasswordDto {
   })
   @IsEmail({}, { message: 'Email must be a valid email address.' })
   @IsNotEmpty({ message: 'Email is required.' })
-  email: string;
+  email!: string;
+
+  @ApiPropertyOptional({
+    example: 'kingdomvision',
+    description: 'Tenant slug for generic auth endpoints when no tenant route or header is used.',
+  })
+  @IsOptional()
+  @IsString({ message: 'Tenant slug must be a string.' })
+  tenant_slug?: string;
 }
