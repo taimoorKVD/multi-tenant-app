@@ -1,8 +1,20 @@
-import {Controller, Get, InternalServerErrorException, Query, Req} from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  InternalServerErrorException,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+} from '@nestjs/common';
 import {PermissionService} from './permission.service';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantPermissionSwagger} from './swagger';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
+import { CreatePermissionDto, UpdatePermissionDto } from './dto/index';
 
 @ApiTags('Permission Management')
 @TenantPermissionSwagger.Auth()
@@ -48,5 +60,37 @@ export class PermissionController {
     return this.permissionService.search(req, limit ? Number(limit) : undefined, {
       name,
     });
+  }
+
+  @Post()
+  @TenantAccess('create-permission')
+  @TenantPermissionSwagger.Create()
+  async create(@Req() req, @Body() dto: CreatePermissionDto) {
+    return this.permissionService.create(req, dto as any);
+  }
+
+  @Get(':id')
+  @TenantAccess('view-permission')
+  @TenantPermissionSwagger.FindOne()
+  async get(@Req() req, @Param('id') id: number) {
+    return this.permissionService.findOne(req, +id);
+  }
+
+  @Put(':id')
+  @TenantAccess('edit-permission')
+  @TenantPermissionSwagger.Update()
+  async update(
+    @Req() req,
+    @Param('id') id: number,
+    @Body() dto: UpdatePermissionDto,
+  ) {
+    return this.permissionService.update(req, +id, dto as any);
+  }
+
+  @Delete(':id')
+  @TenantAccess('delete-permission')
+  @TenantPermissionSwagger.Delete()
+  async delete(@Req() req, @Param('id') id: number) {
+    return this.permissionService.delete(req, +id);
   }
 }
