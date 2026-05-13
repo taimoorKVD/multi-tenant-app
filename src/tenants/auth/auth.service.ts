@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -542,10 +543,7 @@ export class TenantAuthService {
   async forgotPassword(req: any, dto: ForgotPasswordDto, scope: 'tenant' | 'tenant-user' = 'tenant') {
     const tenantConnection: DataSource = req.tenantConnection;
     if (!tenantConnection) {
-      return {
-        success: true,
-        message: 'If the account exists, a password reset link has been sent to the registered email.',
-      };
+      throw new BadRequestException('Missing tenant connection');
     }
 
     const email = dto.email.trim().toLowerCase();
@@ -553,10 +551,7 @@ export class TenantAuthService {
     const user = await userRepo.findOne({ where: { email } });
 
     if (!user) {
-      return {
-        success: true,
-        message: 'If the account exists, a password reset link has been sent to the registered email.',
-      };
+      throw new NotFoundException('Account not found with this email.');
     }
 
     const rawToken = await this.issuePasswordResetToken(tenantConnection, user, req);
@@ -569,7 +564,7 @@ export class TenantAuthService {
 
     return {
       success: true,
-      message: 'If the account exists, a password reset link has been sent to the registered email.',
+      message: 'Password reset link has been sent to the registered email.',
     };
   }
 

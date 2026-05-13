@@ -135,7 +135,7 @@ export const TenantAuthForgotPasswordDocs = () =>
         ApiOperation({
             summary: 'Send password reset email',
             description:
-                'Generates a one-time password reset token for tenant or tenant-user login and sends a reset email if the account exists.',
+                'Generates a one-time password reset token and sends a reset email for an existing tenant account.',
         }),
         ApiBody({
             type: ForgotPasswordDto,
@@ -159,6 +159,10 @@ export const TenantAuthForgotPasswordDocs = () =>
                     message: 'Password reset link has been sent to the registered email.',
                 },
             },
+        }),
+        ApiResponse({
+            status: 404,
+            description: 'Account not found for the provided email.',
         }),
     );
 

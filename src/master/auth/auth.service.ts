@@ -430,10 +430,7 @@ export class MasterAuthService {
     const user = await this.userRepo.findOne({ where: { email } });
 
     if (!user) {
-      return {
-        success: true,
-        message: 'If the account exists, a password reset link has been sent to the registered email.',
-      };
+      throw new NotFoundException('Account not found with this email.');
     }
 
     const rawToken = await this.issuePasswordResetToken(user, req);
@@ -446,7 +443,7 @@ export class MasterAuthService {
 
     return {
       success: true,
-      message: 'If the account exists, a password reset link has been sent to the registered email.',
+      message: 'Password reset link has been sent to the registered email.',
     };
   }
 

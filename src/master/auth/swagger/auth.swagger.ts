@@ -123,7 +123,7 @@ export const MasterAuthForgotPasswordDocs = () =>
         ApiOperation({
             summary: 'Send password reset email',
             description:
-                'Generates a one-time password reset token and sends a reset email if the account exists.',
+                'Generates a one-time password reset token and sends a reset email for an existing account.',
         }),
         ApiBody({
             type: ForgotPasswordDto,
@@ -143,9 +143,13 @@ export const MasterAuthForgotPasswordDocs = () =>
             schema: {
                 example: {
                     success: true,
-                    message: 'If the account exists, a password reset link has been sent to the registered email.',
+                    message: 'Password reset link has been sent to the registered email.',
                 },
             },
+        }),
+        ApiResponse({
+            status: 404,
+            description: 'Account not found for the provided email.',
         }),
     );
 
