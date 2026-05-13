@@ -20,8 +20,8 @@ import {
   RefreshToken,
 } from '../master/auth/entities';
 import {
-    CreatePermissionsTable1701010000000,
-    CreateRolesTable1701010001000,
+    CreatePermissionsTable1701010001000,
+    CreateRolesTable1701010000000,
     CreateUsersTable1701010002000,
     CreateJobPositionsTable1701010003000,
     CreateTenantsTable1701010004000,
@@ -77,8 +77,8 @@ export const masterDatabaseConfig: DataSourceOptions = {
             RefreshToken,
         ],
         migrations: [
-                CreatePermissionsTable1701010000000,
-                CreateRolesTable1701010001000,
+                CreatePermissionsTable1701010001000,
+                CreateRolesTable1701010000000,
                 CreateUsersTable1701010002000,
                 CreateJobPositionsTable1701010003000,
                 CreateTenantsTable1701010004000,
