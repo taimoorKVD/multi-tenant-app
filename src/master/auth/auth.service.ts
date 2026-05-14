@@ -59,12 +59,12 @@ export class MasterAuthService {
   }
 
   private getMasterResetUrl(email: string, token: string): string {
-    const base = `${this.getFrontendBaseUrl()}/master/reset-password`;
+    const base = `${this.getFrontendBaseUrl()}/reset-password`;
     return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
   }
 
   private getMasterVerifyEmailUrl(email: string, token: string): string {
-    const base = `${this.getFrontendBaseUrl()}/master/verify-email`;
+    const base = `${this.getFrontendBaseUrl()}/verify-email`;
     return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
   }
 
