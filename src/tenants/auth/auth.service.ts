@@ -300,8 +300,8 @@ export class TenantAuthService {
             <td align="center">
               <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
                 <tr>
-                  <td style="padding:24px 28px;background:#0b2948;">
-                    <img src="${logoUrl}" alt="EuSocial" style="height:44px;display:block;" />
+                  <td style="padding:24px 28px;background:#101820;">
+                    <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
                   </td>
                 </tr>
                 <tr>
@@ -310,7 +310,7 @@ export class TenantAuthService {
                     <p style="margin:0 0 16px;">Hello ${name || 'there'},</p>
                     <p style="margin:0 0 16px;">We received a request to reset your tenant account password.</p>
                     <p style="margin:24px 0;">
-                      <a href="${resetUrl}" style="background:#0b73e6;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Reset password</a>
+                      <a href="${resetUrl}" style="background:#ff9900;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Reset password</a>
                     </p>
                     <p style="margin:0 0 12px;">This link expires in ${this.resetTokenTtlMinutes} minutes and can be used only once.</p>
                     <p style="margin:0;">If you did not request a password reset, you can safely ignore this email.</p>
@@ -366,8 +366,8 @@ export class TenantAuthService {
             <td align="center">
               <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
                 <tr>
-                  <td style="padding:24px 28px;background:#0b2948;">
-                    <img src="${logoUrl}" alt="EuSocial" style="height:44px;display:block;" />
+                  <td style="padding:24px 28px;background:#101820;">
+                    <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
                   </td>
                 </tr>
                 <tr>
@@ -376,7 +376,7 @@ export class TenantAuthService {
                     <p style="margin:0 0 16px;">Hello ${name || 'there'},</p>
                     <p style="margin:0 0 16px;">Please confirm your email address to complete your tenant account verification.</p>
                     <p style="margin:24px 0;">
-                      <a href="${verifyUrl}" style="background:#0b73e6;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Verify email</a>
+                      <a href="${verifyUrl}" style="background:#ff9900;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Verify email</a>
                     </p>
                     <p style="margin:0 0 12px;">This link expires in ${this.emailVerificationTokenTtlMinutes} minutes.</p>
                     <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">© 2026 EuSocial. All rights reserved.</p>
