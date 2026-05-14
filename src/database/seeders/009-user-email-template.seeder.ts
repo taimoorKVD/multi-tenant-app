@@ -11,8 +11,8 @@ function getUsersCreateTemplateHtml(loginUrl: string) {
         <td align="center">
           <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
             <tr>
-              <td style="padding:24px 28px;background:#0b2948;">
-                <img src="{logo_url}" alt="EuSocial" style="height:44px;display:block;" />
+              <td style="padding:24px 28px;background:#101820;">
+                <img src="{logo_url}" alt="EuSocial" style="height:50px;display:block;" />
               </td>
             </tr>
             <tr>
@@ -31,7 +31,7 @@ function getUsersCreateTemplateHtml(loginUrl: string) {
                 <p style="margin:0 0 16px;font-size:14px;line-height:22px;color:#334e68;">
                   Use your email and password above to sign in to your workspace.
                 </p>
-                <a href="${loginUrl}" style="display:inline-block;padding:10px 20px;border-radius:8px;background:#0b2948;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Sign In to Your Workspace</a>
+                <a href="${loginUrl}" style="display:inline-block;padding:10px 20px;border-radius:8px;background:#ff9900;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Sign In to Your Workspace</a>
                 <p style="margin:0;font-size:13px;line-height:20px;color:#7b8794;">
                   © 2026 EuSocial. All rights reserved.
                 </p>
@@ -52,8 +52,8 @@ function getUsersUpdateTemplateHtml(loginUrl: string) {
         <td align="center">
           <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
             <tr>
-              <td style="padding:24px 28px;background:#123c69;">
-                <img src="{logo_url}" alt="EuSocial" style="height:44px;display:block;" />
+              <td style="padding:24px 28px;background:#101820;">
+                <img src="{logo_url}" alt="EuSocial" style="height:50px;display:block;" />
               </td>
             </tr>
             <tr>
@@ -72,7 +72,7 @@ function getUsersUpdateTemplateHtml(loginUrl: string) {
                 <p style="margin:0 0 16px;font-size:14px;line-height:22px;color:#334e68;">
                   Use your updated credentials to sign in to your workspace.
                 </p>
-                <a href="${loginUrl}" style="display:inline-block;padding:10px 20px;border-radius:8px;background:#123c69;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Sign In to Your Workspace</a>
+                <a href="${loginUrl}" style="display:inline-block;padding:10px 20px;border-radius:8px;background:#ff9900;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Sign In to Your Workspace</a>
                 <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
                   © 2026 EuSocial. All rights reserved.
                 </p>

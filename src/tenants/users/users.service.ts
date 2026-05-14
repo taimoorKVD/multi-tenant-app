@@ -556,8 +556,8 @@ export class UsersService extends TenantAbstractService<User> {
               <td align="center">
                 <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
                   <tr>
-                    <td style="padding:24px 28px;background:#0b2948;">
-                      <img src="${logoUrl}" alt="EuSocial" style="height:44px;display:block;" />
+                    <td style="padding:24px 28px;background:#101820;">
+                      <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
                     </td>
                   </tr>
                   <tr>
