@@ -572,6 +572,10 @@ export class TenantsService {
       'edit-item',
       'view-item',
       'delete-item',
+      'create-permission',
+      'edit-permission',
+      'view-permission',
+      'delete-permission',
     ];
 
     const permissions = await Promise.all(
