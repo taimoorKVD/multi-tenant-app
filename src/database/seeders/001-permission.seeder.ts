@@ -32,7 +32,7 @@ export class PermissionSeeder implements ISeeder {
         description: 'Tenant management permissions',
       },
       {
-        module: 'jobposition',
+        module: 'job-position',
         actions: ['create', 'view', 'edit', 'delete'],
         description: 'Job position management permissions',
       },

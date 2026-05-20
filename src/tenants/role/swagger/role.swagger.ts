@@ -41,6 +41,13 @@ export const TenantRoleSwagger = {
         description: 'Filter by role name.',
       }),
       ApiQuery({
+        name: 'role_id',
+        required: false,
+        type: Number,
+        example: 1,
+        description: 'Filter by role ID (for dropdown selection).',
+      }),
+      ApiQuery({
         name: 'permission_id',
         required: false,
         type: Number,
