@@ -20,6 +20,9 @@ import {LocationsModule as TenantLocationsModule} from '../tenants/locations/loc
 import {VendorsModule as TenantVendorsModule} from '../tenants/vendors/vendors.module';
 import {MailModule} from '../mail/mail.module';
 import { TenantMailAdminModule } from '../tenants/mail/tenant-mail-admin.module';
+import { ReportingGroupsModule as TenantReportingGroupsModule } from '../tenants/reporting-groups/reporting-groups.module';
+import { ReportingCategoriesModule as TenantReportingCategoriesModule } from '../tenants/reporting-categories/reporting-categories.module';
+import { ItemsModule as TenantItemsModule } from '../tenants/items/items.module';
 
 export function setupSwagger(app: INestApplication) {
 
@@ -76,6 +79,9 @@ export function setupSwagger(app: INestApplication) {
             TenantJobPositionModule,
             TenantLocationsModule,
             TenantVendorsModule,
+            TenantReportingGroupsModule,
+            TenantReportingCategoriesModule,
+            TenantItemsModule,
             MailModule,
             TenantMailAdminModule,
         ],
@@ -142,6 +148,9 @@ export function setupSwagger(app: INestApplication) {
                     'Job Position Management',
                     'Location Management',
                     'Vendor Management',
+                    'Reporting Group Management',
+                    'Reporting Category Management',
+                    'Item Management',
                     'Email Management',
                     'Email Testing',
                 ];

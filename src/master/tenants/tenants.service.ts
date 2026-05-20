@@ -560,6 +560,18 @@ export class TenantsService {
       'edit-vendor',
       'view-vendor',
       'delete-vendor',
+      'create-reporting-group',
+      'edit-reporting-group',
+      'view-reporting-group',
+      'delete-reporting-group',
+      'create-reporting-category',
+      'edit-reporting-category',
+      'view-reporting-category',
+      'delete-reporting-category',
+      'create-item',
+      'edit-item',
+      'view-item',
+      'delete-item',
     ];
 
     const permissions = await Promise.all(
