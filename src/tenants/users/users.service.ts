@@ -179,7 +179,8 @@ export class UsersService extends TenantAbstractService<User> {
         where: { id: saved.id },
         relations: ['role', 'jobPosition', 'location'],
       });
-      delete (payload as any)?.password;
+      // Do NOT delete password from payload for now (per request)
+      // delete (payload as any)?.password;
       const mailPayload = {
         module: 'users',
         action: 'create',
@@ -246,7 +247,10 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         message: 'Tenant user created successfully',
         tenant: req.tenantConnection.options.database,
-        data: payload,
+        data: {
+          ...payload,
+          password: dto.password,
+        },
         ...(isDevelopment ? { email_notification: emailNotification } : {}),
       };
     } catch (error) {
@@ -315,7 +319,8 @@ export class UsersService extends TenantAbstractService<User> {
         where: { id: updated.id },
         relations: ['role', 'jobPosition', 'location'],
       });
-      delete (payload as any)?.password;
+      // Do NOT delete password from payload for now (per request)
+      // delete (payload as any)?.password;
 
       void this.mailService
         .sendTemplateMail(req, {
@@ -348,7 +353,10 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         message: 'Tenant user updated successfully',
         tenant: req.tenantConnection.options.database,
-        data: payload,
+        data: {
+          ...payload,
+          password: dto.password ? dto.password : undefined,
+        },
       };
     } catch (error) {
       console.error('Tenant user update failed:', error);

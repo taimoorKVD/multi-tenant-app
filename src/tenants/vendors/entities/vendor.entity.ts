@@ -62,7 +62,7 @@ export class Vendor {
   })
   paymentMethods!: VendorPaymentMethod[] | null;
 
-  @Column({type: 'varchar', length: 100, nullable: true})
+  @Column({type: 'varchar', nullable: true})
   instructions!: string | null;
 
   @OneToMany(() => VendorContact, (contact) => contact.vendor, {
