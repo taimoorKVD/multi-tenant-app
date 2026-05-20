@@ -153,6 +153,5 @@ export class CreateVendorDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
   instructions?: string;
 }
