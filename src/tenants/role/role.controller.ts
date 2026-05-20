@@ -61,12 +61,12 @@ export class RoleController {
   @TenantRoleSwagger.Search()
   async search(
     @Req() req,
-    @Query('name') name?: string,
+    @Query('role_id') roleId?: string,
     @Query('permission_id') permissionId?: string,
     @Query('limit') limit?: string,
   ) {
     return this.roleService.search(req, limit ? Number(limit) : undefined, {
-      name,
+      roleId: roleId ? Number(roleId) : undefined,
       permissionId: permissionId ? Number(permissionId) : undefined,
     });
   }

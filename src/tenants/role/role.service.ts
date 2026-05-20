@@ -13,16 +13,16 @@ export class RoleService extends TenantAbstractService<Role> {
     req: any,
     limit = 15,
     filters?: {
-      name?: string;
+      roleId?: number;
       permissionId?: number;
     },
   ): Promise<any> {
     try {
       const repo = this.getRepo(req);
       const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
-      const name = filters?.name?.trim();
+      const roleId = filters?.roleId;
       const permissionId = filters?.permissionId;
-      const hasFilters = Boolean(name || permissionId);
+      const hasFilters = Boolean(roleId || permissionId);
 
       if (!hasFilters) {
         return {
@@ -37,8 +37,8 @@ export class RoleService extends TenantAbstractService<Role> {
         .createQueryBuilder('role')
         .leftJoinAndSelect('role.permissions', 'permission');
 
-      if (name) {
-        qb.andWhere('role.name ILIKE :name', { name: `%${name}%` });
+      if (roleId) {
+        qb.andWhere('role.id = :roleId', { roleId });
       }
 
       if (permissionId) {
