@@ -7,6 +7,9 @@ import {LocationsModule} from "./locations/locations.module";
 import {JobPositionsModule} from "./job-positions/job-positions.module";
 import {VendorsModule} from './vendors/vendors.module';
 import { TenantMailAdminModule } from './mail/tenant-mail-admin.module';
+import { ReportingGroupsModule } from './reporting-groups/reporting-groups.module';
+import { ReportingCategoriesModule } from './reporting-categories/reporting-categories.module';
+import { ItemsModule } from './items/items.module';
 
 @Module({
   imports: [
@@ -18,6 +21,9 @@ import { TenantMailAdminModule } from './mail/tenant-mail-admin.module';
     JobPositionsModule,
     VendorsModule,
     TenantMailAdminModule,
+    ReportingGroupsModule,
+    ReportingCategoriesModule,
+    ItemsModule,
   ],
 })
 export class TenantsModule {

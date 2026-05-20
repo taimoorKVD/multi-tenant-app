@@ -6,6 +6,9 @@ import {Product} from '../tenants/products/entities';
 import {JobPosition} from "../tenants/job-positions/entities";
 import {Location} from "../tenants/locations/entities";
 import {Vendor, VendorContact, VendorOrderDeadline} from '../tenants/vendors/entities';
+import { ReportingGroup } from '../tenants/reporting-groups/entities';
+import { ReportingCategory } from '../tenants/reporting-categories/entities';
+import { Item } from '../tenants/items/entities';
 import { TenantEmailTemplate, TenantMailSetting } from '../tenants/mail/entities';
 import {
   EmailVerificationToken,
@@ -69,6 +72,9 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       Vendor,
       VendorContact,
       VendorOrderDeadline,
+      ReportingGroup,
+      ReportingCategory,
+      Item,
       TenantMailSetting,
       TenantEmailTemplate,
       PasswordResetToken,

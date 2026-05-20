@@ -46,6 +46,21 @@ export class PermissionSeeder implements ISeeder {
         actions: ['create', 'view', 'edit', 'delete'],
         description: 'Vendor management permissions',
       },
+      {
+        module: 'reporting-group',
+        actions: ['create', 'view', 'edit', 'delete'],
+        description: 'Reporting group management permissions',
+      },
+      {
+        module: 'reporting-category',
+        actions: ['create', 'view', 'edit', 'delete'],
+        description: 'Reporting category management permissions',
+      },
+      {
+        module: 'item',
+        actions: ['create', 'view', 'edit', 'delete'],
+        description: 'Item management permissions',
+      },
     ];
 
     const allPermissions = modules.flatMap((mod) =>
