@@ -543,7 +543,7 @@ export class TenantAuthService {
   async forgotPassword(req: any, dto: ForgotPasswordDto, scope: 'tenant' | 'tenant-user' = 'tenant') {
     const tenantConnection: DataSource = req.tenantConnection;
     if (!tenantConnection) {
-      throw new BadRequestException('Missing tenant connection');
+      throw new NotFoundException('Email not found.');
     }
 
     const email = dto.email.trim().toLowerCase();
@@ -551,7 +551,7 @@ export class TenantAuthService {
     const user = await userRepo.findOne({ where: { email } });
 
     if (!user) {
-      throw new NotFoundException('Account not found with this email.');
+      throw new NotFoundException('Email not found.');
     }
 
     const rawToken = await this.issuePasswordResetToken(tenantConnection, user, req);
