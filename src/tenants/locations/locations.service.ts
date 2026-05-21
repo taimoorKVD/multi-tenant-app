@@ -46,7 +46,8 @@ export class LocationsService extends TenantAbstractService<Location> {
     ): Promise<any> {
         try {
             const locationRepo = this.getRepo(req);
-            const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+            const parsedLimit = Number(limit);
+            const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
             const name = filters?.name?.trim();
             const address = filters?.address?.trim();
             const postalCode = filters?.postalCode?.trim();

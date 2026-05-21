@@ -62,6 +62,39 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
+  // override async paginate(
+  //   req: any,
+  //   page = 1,
+  //   relations: string[] = [],
+  //   limit?: number,
+  // ): Promise<any> {
+  //   try {
+  //     const repo = this.getRepo(req);
+  //     const parsedLimit = Number(limit);
+  //     const take =
+  //       limit === undefined
+  //         ? this.paginateLimit || 10
+  //         : parsedLimit <= 0
+  //           ? undefined
+  //           : Math.min(Math.max(parsedLimit, 1), 100);
+  //     const currentPage = Math.max(Number(page) || 1, 1);
+  //     const [data, total] = await repo.findAndCount({
+  //       where: { isSystem: Not(true) } as any,
+  //       ...(take ? { take, skip: (currentPage - 1) * take } : {}),
+  //       relations,
+  //       order: { id: 'DESC' } as any,
+  //     });
+  //     const sanitized = this.sanitizeCollection(data as any[]);
+  //     return {
+  //       success: true,
+  //       tenant: req.tenantConnection.options.database,
+  //       meta: { total, page: currentPage, lastPage: take ? Math.ceil(total / take) || 1 : 1 },
+  //       data: sanitized,
+  //     };
+  //   } catch (error) {
+  //     throw new InternalServerErrorException('Failed to paginate users');
+  //   }
+  // }
   override async paginate(
     req: any,
     page = 1,
@@ -70,25 +103,31 @@ export class UsersService extends TenantAbstractService<User> {
   ): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const parsedLimit = Number(limit);
-      const take =
-        limit === undefined
-          ? this.paginateLimit || 10
-          : parsedLimit <= 0
-            ? undefined
-            : Math.min(Math.max(parsedLimit, 1), 100);
+      const parsedLimit =
+        limit !== undefined ? Number(limit) : undefined;
       const currentPage = Math.max(Number(page) || 1, 1);
-      const [data, total] = await repo.findAndCount({
+      const queryOptions: any = {
         where: { isSystem: Not(true) } as any,
-        ...(take ? { take, skip: (currentPage - 1) * take } : {}),
         relations,
         order: { id: 'DESC' } as any,
-      });
+      };
+      // Apply pagination only when limit is provided
+      if (parsedLimit && parsedLimit > 0) {
+        queryOptions.take = Math.min(Math.max(parsedLimit, 1), 100);
+        queryOptions.skip = (currentPage - 1) * queryOptions.take;
+      }
+      const [data, total] = await repo.findAndCount(queryOptions);
       const sanitized = this.sanitizeCollection(data as any[]);
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        meta: { total, page: currentPage, lastPage: take ? Math.ceil(total / take) || 1 : 1 },
+        meta: {
+          total,
+          page: currentPage,
+          lastPage: queryOptions.take
+            ? Math.ceil(total / queryOptions.take) || 1
+            : 1,
+        },
         data: sanitized,
       };
     } catch (error) {
@@ -380,7 +419,8 @@ export class UsersService extends TenantAbstractService<User> {
   ): Promise<any> {
     try {
       const userRepo: Repository<User> = this.getRepo(req);
-      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const parsedLimit = Number(limit);
+      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
       const name = filters?.name?.trim();
       const email = filters?.email?.trim();
       const username = filters?.username?.trim();

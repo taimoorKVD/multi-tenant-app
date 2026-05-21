@@ -95,7 +95,8 @@ export class ItemsService extends TenantAbstractService<Item> {
     },
   ) {
     const repo = this.getRepo(req);
-    const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
     const qb = repo
       .createQueryBuilder('item')
       .leftJoinAndSelect('item.vendor', 'vendor')

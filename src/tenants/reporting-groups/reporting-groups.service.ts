@@ -47,7 +47,8 @@ export class ReportingGroupsService extends TenantAbstractService<ReportingGroup
 
   async search(req: any, limit = 15, filters?: { name?: string; description?: string; isActive?: boolean }) {
     const repo = this.getRepo(req);
-    const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
     const qb = repo.createQueryBuilder('group');
 
     if (filters?.name) qb.andWhere('group.name ILIKE :name', { name: `%${filters.name.trim()}%` });
