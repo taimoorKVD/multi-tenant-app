@@ -182,13 +182,11 @@ export class TenantsService {
 
   async paginate(page = 1, limit?: number): Promise<ApiResponse<Partial<Tenant>>> {
     try {
-      const parsedLimit = Number(limit);
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
       const take =
-        limit === undefined
-          ? this.paginateLimit || 10
-          : parsedLimit <= 0
-            ? undefined
-            : Math.min(Math.max(parsedLimit, 1), 100);
+        parsedLimit !== undefined && Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(Math.max(parsedLimit, 1), 100)
+          : undefined;
       const skip = take ? (page - 1) * take : 0;
 
       const [data, total] = await this.tenantRepo.findAndCount({
@@ -225,7 +223,8 @@ export class TenantsService {
     },
   ): Promise<ApiResponse<Partial<Tenant>>> {
     try {
-      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const parsedLimit = Number(limit);
+      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
       const name = filters?.name?.trim();
       const dbName = filters?.dbName?.trim();
       const subdomain = filters?.subdomain?.trim();

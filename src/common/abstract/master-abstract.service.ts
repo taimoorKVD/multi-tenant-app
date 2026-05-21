@@ -27,13 +27,11 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
     limit?: number,
   ): Promise<ApiResponse<Partial<T>>> {
     try {
-      const parsedLimit = Number(limit);
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
       const take =
-        limit === undefined
-          ? this.paginateLimit
-          : parsedLimit <= 0
-            ? undefined
-            : Math.min(Math.max(parsedLimit, 1), 100);
+        parsedLimit !== undefined && Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(Math.max(parsedLimit, 1), 100)
+          : undefined;
       const [data, total] = await this.repository.findAndCount({
         ...(take ? {take, skip: (page - 1) * take} : {}),
         relations,
