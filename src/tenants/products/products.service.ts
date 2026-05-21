@@ -66,13 +66,11 @@ export class ProductsService {
   async paginate(req: any, page = 1, limit?: number) {
     try {
       const repo = this.getRepo(req);
-      const parsedLimit = Number(limit);
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
       const take =
-        limit === undefined
-          ? 15
-          : parsedLimit <= 0
-            ? undefined
-            : Math.min(Math.max(parsedLimit, 1), 100);
+        parsedLimit !== undefined && Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(Math.max(parsedLimit, 1), 100)
+          : undefined;
       const currentPage = Math.max(Number(page) || 1, 1);
 
       const [products, total] = await repo.findAndCount({

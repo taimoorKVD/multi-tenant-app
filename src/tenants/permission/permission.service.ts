@@ -18,7 +18,8 @@ export class PermissionService extends TenantAbstractService<Permission> {
   ): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const take = Number.isNaN(limit) ? 15 : Math.min(Math.max(limit, 1), 50);
+      const parsedLimit = Number(limit);
+      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
       const name = filters?.name?.trim();
 
       if (!name) {

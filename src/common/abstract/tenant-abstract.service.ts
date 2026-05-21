@@ -115,13 +115,11 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
   ): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const parsedLimit = Number(limit);
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
       const take =
-        limit === undefined
-          ? this.paginateLimit
-          : parsedLimit <= 0
-            ? undefined
-            : Math.min(Math.max(parsedLimit, 1), 100);
+        parsedLimit !== undefined && Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(Math.max(parsedLimit, 1), 100)
+          : undefined;
       const currentPage = Math.max(Number(page) || 1, 1);
       const [data, total] = await repo.findAndCount({
         ...(take ? {take, skip: (currentPage - 1) * take} : {}),
