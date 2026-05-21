@@ -48,6 +48,9 @@ export class User {
   @Column()
   password: string;
 
+  @Column({ type: 'varchar', name: 'plain_password', nullable: true })
+  plainPassword: string | null;
+
   @ManyToOne(() => Role)
   @JoinColumn({ name: 'role_id' })
   role: Role;

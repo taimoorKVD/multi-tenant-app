@@ -606,7 +606,8 @@ export class TenantAuthService {
       throw new BadRequestException('Invalid or expired reset token.');
     }
 
-    token.user.password = await argon2.hash(dto.password);
+    token.user.password = dto.password;
+    token.user.plainPassword = dto.password;
     await tenantConnection.getRepository(User).save(token.user);
     await this.clearPasswordResetTokens(tenantConnection, token.user.id);
     await this.clearRefreshTokens(tenantConnection, token.user.id);

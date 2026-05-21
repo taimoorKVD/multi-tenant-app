@@ -207,6 +207,7 @@ export class UsersService extends TenantAbstractService<User> {
         address: address || null,
         username: username || null,
         password,
+        plainPassword: password,
         availabilityDays: availability_days?.length ? availability_days : null,
         ...(role ? { role } : {}),
         ...(jobPosition ? { jobPosition } : {}),
@@ -288,7 +289,7 @@ export class UsersService extends TenantAbstractService<User> {
         tenant: req.tenantConnection.options.database,
         data: {
           ...payload,
-          password: dto.password,
+          plainPassword: payload?.plainPassword || undefined,
         },
         ...(isDevelopment ? { email_notification: emailNotification } : {}),
       };
@@ -326,7 +327,10 @@ export class UsersService extends TenantAbstractService<User> {
       if (typeof dto.phone_number === 'string') user.phoneNumber = dto.phone_number;
       if (typeof dto.address === 'string') user.address = dto.address;
       if (typeof dto.username === 'string') user.username = dto.username;
-      if (dto.password) user.password = dto.password;
+      if (dto.password) {
+        user.password = dto.password;
+        user.plainPassword = dto.password;
+      }
       if (dto.availability_days) user.availabilityDays = dto.availability_days;
 
       if (dto.role_id && dto.role_id !== user.role?.id) {
@@ -394,7 +398,7 @@ export class UsersService extends TenantAbstractService<User> {
         tenant: req.tenantConnection.options.database,
         data: {
           ...payload,
-          password: dto.password ? dto.password : undefined,
+          plainPassword: payload?.plainPassword || undefined,
         },
       };
     } catch (error) {
