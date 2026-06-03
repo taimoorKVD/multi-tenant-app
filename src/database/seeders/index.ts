@@ -8,3 +8,5 @@ export * from './007-state.seeder';
 export * from './010-city.seeder';
 export * from './008-global-mail-setting.seeder';
 export * from './009-user-email-template.seeder';
+export * from './011-form-builder-modules.seeder';
+export * from './012-form-builder-permissions.seeder';

@@ -15,6 +15,22 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from '../tenants/auth/entities';
+import {
+  DynamicModule,
+  EntityDynamicData,
+  FieldConditionalRule,
+  FieldOption,
+  FieldType,
+  FieldValidation,
+  Form,
+  FormAuditLog,
+  FormField,
+  FormSection,
+  FormSubmission,
+  FormSubmissionFile,
+  FormVersion,
+  SubmissionIndex,
+} from '../tenants/form-builder/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
   const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -80,6 +96,20 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       PasswordResetToken,
       EmailVerificationToken,
       RefreshToken,
+      DynamicModule,
+      Form,
+      FormVersion,
+      FormSection,
+      FieldType,
+      FormField,
+      FieldOption,
+      FieldValidation,
+      FieldConditionalRule,
+      FormSubmission,
+      SubmissionIndex,
+      FormSubmissionFile,
+      FormAuditLog,
+      EntityDynamicData,
     ],
     synchronize: true,
     logging,

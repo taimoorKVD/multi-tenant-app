@@ -7,7 +7,7 @@ import {
   ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
-import { CreateUserDto, SendUserCredentialsDto, UpdateUserDto } from '../dto';
+import { SendUserCredentialsDto } from '../dto';
 
 export const TenantUsersSwagger = {
   Auth: () => ApiBearerAuth('access-token'),
@@ -17,10 +17,31 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Create tenant user',
         description:
-          'Creates a new user in the current tenant database.',
+          'Creates a new user in the current tenant database using the active form-builder schema. Custom fields are allowed and stored dynamically.',
       }),
       ApiBody({
-        type: CreateUserDto,
+        schema: {
+          type: 'object',
+          additionalProperties: true,
+          required: ['name', 'email', 'password', 'role_id'],
+          properties: {
+            name: { type: 'string', example: 'Madeline Smith' },
+            email: { type: 'string', example: 'madelinesmith@gmail.com' },
+            phone_number: { type: 'string', example: '+1 718 7955 6664' },
+            address: { type: 'string', example: '409 E100 ST New York NY 10122' },
+            username: { type: 'string', example: 'madeline' },
+            password: { type: 'string', example: 'StrongPass123!' },
+            password_confirm: { type: 'string', example: 'StrongPass123!' },
+            role_id: { type: 'number', example: 1 },
+            job_position_id: { type: 'number', example: 1 },
+            location_id: { type: 'number', example: 1 },
+            availability_days: {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['Monday', 'Thursday', 'Saturday'],
+            },
+          },
+        },
         examples: {
           valid: {
             summary: 'Create user request',
@@ -39,7 +60,7 @@ export const TenantUsersSwagger = {
             },
           },
         },
-      } as any),
+      }),
       ApiResponse({
         status: 201,
         description: 'Tenant user created successfully.',
@@ -193,7 +214,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Update tenant user',
         description:
-          'Updates tenant user fields such as name, email, and role. To send credentials email after updating, call POST /users/:id/send-credentials with template_action="update" (or "both").',
+          'Updates tenant user fields using the active form-builder schema. Custom fields are allowed and merged into the stored dynamic payload. To send credentials email after updating, call POST /users/:id/send-credentials.',
       }),
       ApiParam({
         name: 'id',
@@ -202,7 +223,27 @@ export const TenantUsersSwagger = {
         description: 'Tenant user ID',
       }),
       ApiBody({
-        type: UpdateUserDto,
+        schema: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            name: { type: 'string', example: 'Madeline Smith' },
+            email: { type: 'string', example: 'madelinesmith@company.com' },
+            phone_number: { type: 'string', example: '+1 718 7955 6664' },
+            address: { type: 'string', example: '409 E100 ST New York NY 10122' },
+            username: { type: 'string', example: 'madeline' },
+            password: { type: 'string', example: 'StrongPass123!' },
+            password_confirm: { type: 'string', example: 'StrongPass123!' },
+            role_id: { type: 'number', example: 1 },
+            job_position_id: { type: 'number', example: 1 },
+            location_id: { type: 'number', example: 1 },
+            availability_days: {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['Monday', 'Thursday', 'Saturday'],
+            },
+          },
+        },
         examples: {
           valid: {
             summary: 'Update user request',
@@ -284,6 +325,7 @@ export const TenantUsersSwagger = {
             summary: 'Send credentials to recipient email',
             value: {
               recipient_email: 'owner@company.com',
+              password: 'StrongPass123!',
             },
           },
         },

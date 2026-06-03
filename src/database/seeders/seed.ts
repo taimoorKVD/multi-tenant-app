@@ -12,6 +12,8 @@ import {
   UserSeeder,
   GlobalMailSettingSeeder,
   UserEmailTemplateSeeder,
+  FormBuilderModulesSeeder,
+  FormBuilderPermissionsSeeder,
 } from '../seeders';
 
 (async () => {
@@ -26,6 +28,8 @@ import {
     new CitySeeder(),
     new GlobalMailSettingSeeder(),
     new UserEmailTemplateSeeder(),
+    new FormBuilderModulesSeeder(),
+    new FormBuilderPermissionsSeeder(),
   ]);
 
   const shouldReset = process.argv.includes('--reset') || process.argv.includes('reset');
