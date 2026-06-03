@@ -19,6 +19,15 @@ import {CreateTenantDto} from './dto';
 import {IAdminSetup, ITenantResponse} from './interfaces';
 import {Permission} from '../../tenants/permission/entities';
 import {ApiResponse} from '../../common/abstract';
+import {FieldTypesService} from '../../tenants/form-builder/services';
+import {
+  DynamicModule,
+  FieldType,
+  Form,
+  FormField,
+  FormSection,
+  FormStatus,
+} from '../../tenants/form-builder/entities';
 
 @Injectable()
 export class TenantsService {
@@ -430,6 +439,7 @@ export class TenantsService {
       await tenantConnection.synchronize();
 
       const adminSetup = await this.bootstrapAdmin(tenantConnection, subdomain);
+      await this.bootstrapTenantFormBuilder(tenantConnection, adminSetup.user.id);
 
       return this.buildResponse(
         tenantRecord.id,
@@ -575,6 +585,12 @@ export class TenantsService {
       'edit-permission',
       'view-permission',
       'delete-permission',
+      'create-form',
+      'view-form',
+      'edit-form',
+      'delete-form',
+      'publish-form',
+      'submit-form',
     ];
 
     const permissions = await Promise.all(
@@ -596,6 +612,19 @@ export class TenantsService {
       adminRole = roleRepo.create({ name: 'Admin', permissions });
       await roleRepo.save(adminRole);
       this.logger.log(`🔑 Admin role created with default permissions`);
+    } else {
+      const existingPermissionNames = new Set((adminRole.permissions || []).map((p) => p.name));
+      const merged = [...(adminRole.permissions || [])];
+
+      for (const permission of permissions) {
+        if (!existingPermissionNames.has(permission.name)) {
+          merged.push(permission);
+          existingPermissionNames.add(permission.name);
+        }
+      }
+
+      adminRole.permissions = merged;
+      await roleRepo.save(adminRole);
     }
 
     const adminEmail = `admin@${subdomain}.com`;
@@ -614,6 +643,229 @@ export class TenantsService {
     this.logger.log(`👤 Admin user created: ${adminEmail}`);
 
     return { role: adminRole, user: adminUser, plainPassword: defaultPassword };
+  }
+
+  private async bootstrapTenantFormBuilder(connection: DataSource, actorId: number | null): Promise<void> {
+    const req = {
+      tenantConnection: connection,
+      user: actorId ? { id: actorId } : null,
+    };
+
+    const fieldTypesService = new FieldTypesService(connection);
+    await fieldTypesService.ensureSeeded(req);
+
+    const moduleRepo = connection.getRepository(DynamicModule);
+    const formRepo = connection.getRepository(Form);
+    const fieldRepo = connection.getRepository(FormField);
+    const sectionRepo = connection.getRepository(FormSection);
+    const fieldTypeRepo = connection.getRepository(FieldType);
+
+    const modules = [
+      { slug: 'users', name: 'Users' },
+      { slug: 'items', name: 'Items' },
+      { slug: 'vendors', name: 'Vendors' },
+      { slug: 'job-positions', name: 'Job Positions' },
+    ];
+
+    for (const moduleSeed of modules) {
+      let moduleEntity = await moduleRepo.findOne({ where: { slug: moduleSeed.slug }, withDeleted: true });
+      if (!moduleEntity) {
+        moduleEntity = moduleRepo.create({
+          slug: moduleSeed.slug,
+          name: moduleSeed.name,
+          isActive: true,
+          createdBy: actorId,
+          updatedBy: actorId,
+        });
+      } else {
+        moduleEntity.name = moduleSeed.name;
+        moduleEntity.isActive = true;
+        moduleEntity.deletedAt = null;
+        moduleEntity.updatedBy = actorId;
+      }
+
+      moduleEntity = await moduleRepo.save(moduleEntity);
+
+      let form = await formRepo.findOne({
+        where: { moduleId: moduleEntity.id },
+        withDeleted: true,
+        order: { createdAt: 'DESC' },
+      });
+
+      if (!form) {
+        form = formRepo.create({
+          moduleId: moduleEntity.id,
+          name: `${moduleSeed.name} Form`,
+          status: FormStatus.DRAFT,
+          autosaveSchema: null,
+          createdBy: actorId,
+          updatedBy: actorId,
+        });
+        form = await formRepo.save(form);
+      } else if (form.deletedAt) {
+        form.deletedAt = null;
+        form.status = FormStatus.DRAFT;
+        form.updatedBy = actorId;
+        form = await formRepo.save(form);
+      }
+
+      if (moduleSeed.slug !== 'users') {
+        continue;
+      }
+
+      const existingFieldCount = await fieldRepo.count({ where: { formId: form.id } });
+      if (existingFieldCount > 0) {
+        continue;
+      }
+
+      const fieldTypes = await fieldTypeRepo.find();
+      const typeByName = new Map<string, FieldType>(fieldTypes.map((fieldType) => [fieldType.name, fieldType]));
+
+      const contactInfoSection = await sectionRepo.save(
+        sectionRepo.create({
+          formId: form.id,
+          title: 'Contact Info',
+          position: 0,
+          createdBy: actorId,
+          updatedBy: actorId,
+        }),
+      );
+
+      const availabilitySection = await sectionRepo.save(
+        sectionRepo.create({
+          formId: form.id,
+          title: 'Availability',
+          position: 1,
+          createdBy: actorId,
+          updatedBy: actorId,
+        }),
+      );
+
+      const systemFields = [
+        { key: 'name', label: 'Name', name: 'name', type: 'text', isEditable: true },
+        { key: 'email', label: 'Email', name: 'email', type: 'email', isEditable: true },
+        { key: 'phone_number', label: 'Phone Number', name: 'phone_number', type: 'phone', isEditable: true },
+        { key: 'address', label: 'Address', name: 'address', type: 'address_fields', isEditable: true },
+        { key: 'username', label: 'Username', name: 'username', type: 'text', isEditable: true },
+        { key: 'password', label: 'Password', name: 'password', type: 'password', isEditable: true },
+        {
+          key: 'role_id',
+          label: 'Role',
+          name: 'role_id',
+          type: 'dropdown',
+          isEditable: true,
+          optionSource: {
+            type: 'api',
+            request: {
+              method: 'GET',
+              endpoint: '/api/roles',
+            },
+            response: {
+              dataPath: 'data',
+              labelKey: 'name',
+              valueKey: 'id',
+            },
+          },
+        },
+        {
+          key: 'job_position_id',
+          label: 'Job Position',
+          name: 'job_position_id',
+          type: 'dropdown',
+          isEditable: true,
+          optionSource: {
+            type: 'api',
+            request: {
+              method: 'GET',
+              endpoint: '/api/job-positions',
+            },
+            response: {
+              dataPath: 'data',
+              labelKey: 'name',
+              valueKey: 'id',
+            },
+          },
+        },
+        {
+          key: 'location_id',
+          label: 'Location',
+          name: 'location_id',
+          type: 'dropdown',
+          isEditable: true,
+          optionSource: {
+            type: 'api',
+            request: {
+              method: 'GET',
+              endpoint: '/api/locations',
+            },
+            response: {
+              dataPath: 'data',
+              labelKey: 'name',
+              valueKey: 'id',
+            },
+          },
+        },
+        { key: 'availability_days', label: 'Availability Days', name: 'availability_days', type: 'checkbox', isEditable: true },
+      ];
+
+      const fields = systemFields.map((item, index) => {
+        const fieldType = typeByName.get(item.type);
+        if (!fieldType) {
+          throw new InternalServerErrorException(`Missing field type during tenant bootstrap: ${item.type}`);
+        }
+
+        return fieldRepo.create({
+          formId: form.id,
+          sectionId: item.key === 'availability_days' ? availabilitySection.id : contactInfoSection.id,
+          fieldTypeId: fieldType.id,
+          fieldKey: item.key,
+          label: item.label,
+          name: item.name,
+          placeholder: 'Placeholder text',
+          helpText: null,
+          isRequired: ['name', 'email', 'password', 'role_id'].includes(item.key),
+          isUnique: ['email', 'username'].includes(item.key),
+          isReadonly: !item.isEditable,
+          isSystemDefault: true,
+          isSystemField: true,
+          systemMappingKey: item.key,
+          isDeletable: false,
+          isEditable: item.isEditable,
+          sortOrder: index,
+          layoutConfig: {
+            grid_width_desktop: 6,
+            grid_width_mobile: 12,
+            ...(item.optionSource ? { optionSource: item.optionSource } : {}),
+          },
+          ...(item.key === 'availability_days'
+            ? {
+                options: [
+                  'Monday',
+                  'Tuesday',
+                  'Wednesday',
+                  'Thursday',
+                  'Friday',
+                  'Saturday',
+                  'Sunday',
+                ].map((day, sortOrder) => ({
+                  label: day,
+                  value: day.toLowerCase(),
+                  isDefault: false,
+                  sortOrder,
+                  createdBy: actorId,
+                  updatedBy: actorId,
+                })),
+              }
+            : {}),
+          createdBy: actorId,
+          updatedBy: actorId,
+        });
+      });
+
+      await fieldRepo.save(fields);
+    }
+
+    this.logger.log('🧩 Form builder modules and default forms bootstrapped for new tenant');
   }
 
   protected buildResponse(

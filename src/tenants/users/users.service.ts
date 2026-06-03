@@ -4,15 +4,16 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, ILike, Not, Repository } from 'typeorm';
-import { User } from './entities';
+import { DataSource, In, Not, Repository } from 'typeorm';
+import { DynamicModule, Form, FormField, FormVersion } from '../form-builder/entities';
+import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
-import { CreateUserDto, SendUserCredentialsDto, UpdateUserDto } from './dto';
+import { SendUserCredentialsDto } from './dto';
 import { JobPosition } from '../job-positions/entities';
 import { Location } from '../locations/entities';
 import { MailService } from '../../mail/mail.service';
-import * as nodemailer from 'nodemailer';
+import { User } from './entities';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -22,6 +23,28 @@ export class UsersService extends TenantAbstractService<User> {
   ) {
     super(dataSource.getRepository(User));
   }
+
+  private readonly usersModuleSlug = 'users';
+
+  private readonly fallbackSystemFieldKeys = new Set([
+    'id',
+    'name',
+    'email',
+    'phone_number',
+    'address',
+    'username',
+    'password',
+    'plain_password',
+    'role_id',
+    'job_position_id',
+    'location_id',
+    'availability_days',
+    'is_system',
+    'created_at',
+    'updated_at',
+  ]);
+
+  private readonly ignoredPayloadKeys = new Set(['password_confirm', 'createdBy', 'updatedBy']);
 
   private getFrontendBaseUrl(): string {
     const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
@@ -33,68 +56,205 @@ export class UsersService extends TenantAbstractService<User> {
   }
 
   private getTenantLoginUrl(): string {
-    const frontendBaseUrl = this.getFrontendBaseUrl();
-    return `${frontendBaseUrl}/tenant/login`;
+    return `${this.getFrontendBaseUrl()}/tenant/login`;
   }
 
-  private generateTemporaryPassword(length = 12): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
-    let output = '';
-    for (let i = 0; i < length; i++) {
-      output += chars.charAt(Math.floor(Math.random() * chars.length));
+  private getActorId(req: any): number | null {
+    const actorId = req?.user?.id ?? req?.user?.sub ?? req?.user?.userId ?? null;
+    return typeof actorId === 'number' ? actorId : Number.isFinite(Number(actorId)) ? Number(actorId) : null;
+  }
+
+  private async getUsersSchemaContext(req: any): Promise<{
+    moduleId: number | null;
+    formId: number | null;
+    activeVersionId: number | null;
+    systemFieldKeys: Set<string>;
+    requiredFieldKeys: Set<string>;
+  }> {
+    const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
+    const formRepo = req.tenantConnection.getRepository(Form);
+    const fieldRepo = req.tenantConnection.getRepository(FormField);
+    const versionRepo = req.tenantConnection.getRepository(FormVersion);
+
+    const module = await moduleRepo.findOne({ where: { slug: this.usersModuleSlug } });
+    if (!module) {
+      return {
+        moduleId: null,
+        formId: null,
+        activeVersionId: null,
+        systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
+        requiredFieldKeys: new Set(['name', 'email', 'password', 'role_id']),
+      };
     }
-    return output;
+
+    const form = await formRepo.findOne({
+      where: { moduleId: module.id },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!form) {
+      return {
+        moduleId: module.id,
+        formId: null,
+        activeVersionId: null,
+        systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
+        requiredFieldKeys: new Set(['name', 'email', 'password', 'role_id']),
+      };
+    }
+
+    const [fields, activeVersion] = await Promise.all([
+      fieldRepo.find({ where: { formId: form.id }, order: { sortOrder: 'ASC' } }),
+      versionRepo.findOne({ where: { formId: form.id, isActive: true } }),
+    ]);
+
+    const systemFieldKeys = new Set<string>();
+    const requiredFieldKeys = new Set<string>();
+
+    for (const field of fields) {
+      const key = (field.systemMappingKey || field.fieldKey || field.name || '').trim();
+      if (!key) continue;
+
+      if (field.isSystemField) {
+        systemFieldKeys.add(key);
+      }
+
+      if (field.isRequired) {
+        requiredFieldKeys.add(key);
+      }
+    }
+
+    if (!systemFieldKeys.size) {
+      this.fallbackSystemFieldKeys.forEach((key) => systemFieldKeys.add(key));
+    }
+
+    return {
+      moduleId: module.id,
+      formId: form.id,
+      activeVersionId: activeVersion?.id ?? null,
+      systemFieldKeys,
+      requiredFieldKeys,
+    };
+  }
+
+  private splitUserPayload(
+    payload: Record<string, any>,
+    systemFieldKeys: Set<string>,
+  ): { staticPayload: Record<string, any>; dynamicPayload: Record<string, any> } {
+    const staticPayload: Record<string, any> = {};
+    const dynamicPayload: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(payload || {})) {
+      if (this.ignoredPayloadKeys.has(key)) {
+        continue;
+      }
+
+      if (systemFieldKeys.has(key)) {
+        staticPayload[key] = value;
+      } else {
+        dynamicPayload[key] = value;
+      }
+    }
+
+    return { staticPayload, dynamicPayload };
+  }
+
+  private assertCreatePayloadRequiredFields(
+    payload: Record<string, any>,
+    requiredFieldKeys: Set<string>,
+  ): void {
+    const missing = Array.from(requiredFieldKeys).filter((key) => {
+      const value = payload[key];
+      return value === undefined || value === null || value === '';
+    });
+
+    if (missing.length) {
+      throw new BadRequestException(`Missing required form fields: ${missing.join(', ')}`);
+    }
+
+    if (payload.password_confirm !== undefined && payload.password_confirm !== payload.password) {
+      throw new BadRequestException('Passwords do not match.');
+    }
+  }
+
+  private async loadUserDynamicRows(
+    req: any,
+    moduleId: number | null,
+    entityIds: number[],
+  ): Promise<Map<number, Record<string, any>>> {
+    const result = new Map<number, Record<string, any>>();
+    if (!moduleId || !entityIds.length) return result;
+
+    const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
+    const rows = await dynamicRepo.find({
+      where: { moduleId, entityId: In(entityIds) },
+    });
+
+    for (const row of rows) {
+      result.set(row.entityId, row.data || {});
+    }
+
+    return result;
+  }
+
+  private async upsertUserDynamicRow(
+    req: any,
+    moduleId: number | null,
+    entityId: number,
+    formVersionId: number | null,
+    data: Record<string, any>,
+    actorId: number | null,
+  ): Promise<void> {
+    if (!moduleId) return;
+
+    const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
+    let row = await dynamicRepo.findOne({ where: { moduleId, entityId } });
+
+    if (!row) {
+      row = dynamicRepo.create({
+        moduleId,
+        entityId,
+        formVersionId,
+        data,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+    } else {
+      row.formVersionId = formVersionId;
+      row.data = data;
+      row.updatedBy = actorId;
+    }
+
+    await dynamicRepo.save(row);
+  }
+
+  private buildUserResponse(user: User, dynamicData: Record<string, any> = {}): Record<string, any> {
+    const sanitized = this.sanitizeEntity(user) as any;
+    return {
+      ...dynamicData,
+      ...sanitized,
+      phone_number: sanitized?.phoneNumber ?? null,
+      plain_password: sanitized?.plainPassword ?? null,
+    };
   }
 
   override async findAll(req: any, relations: string[] = []): Promise<any> {
     try {
       const repo = this.getRepo(req);
       const data = await repo.find({ where: { isSystem: Not(true) } as any, relations });
-      const sanitized = this.sanitizeCollection(data as any[]);
+      const context = await this.getUsersSchemaContext(req);
+      const dynamicRows = await this.loadUserDynamicRows(req, context.moduleId, data.map((user) => user.id));
+
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        count: sanitized.length,
-        data: sanitized,
+        count: data.length,
+        data: data.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {})),
       };
-    } catch (error) {
+    } catch {
       throw new InternalServerErrorException('Failed to retrieve users');
     }
   }
 
-  // override async paginate(
-  //   req: any,
-  //   page = 1,
-  //   relations: string[] = [],
-  //   limit?: number,
-  // ): Promise<any> {
-  //   try {
-  //     const repo = this.getRepo(req);
-  //     const parsedLimit = Number(limit);
-  //     const take =
-  //       limit === undefined
-  //         ? this.paginateLimit || 10
-  //         : parsedLimit <= 0
-  //           ? undefined
-  //           : Math.min(Math.max(parsedLimit, 1), 100);
-  //     const currentPage = Math.max(Number(page) || 1, 1);
-  //     const [data, total] = await repo.findAndCount({
-  //       where: { isSystem: Not(true) } as any,
-  //       ...(take ? { take, skip: (currentPage - 1) * take } : {}),
-  //       relations,
-  //       order: { id: 'DESC' } as any,
-  //     });
-  //     const sanitized = this.sanitizeCollection(data as any[]);
-  //     return {
-  //       success: true,
-  //       tenant: req.tenantConnection.options.database,
-  //       meta: { total, page: currentPage, lastPage: take ? Math.ceil(total / take) || 1 : 1 },
-  //       data: sanitized,
-  //     };
-  //   } catch (error) {
-  //     throw new InternalServerErrorException('Failed to paginate users');
-  //   }
-  // }
   override async paginate(
     req: any,
     page = 1,
@@ -103,34 +263,34 @@ export class UsersService extends TenantAbstractService<User> {
   ): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const parsedLimit =
-        limit !== undefined ? Number(limit) : undefined;
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
       const currentPage = Math.max(Number(page) || 1, 1);
       const queryOptions: any = {
         where: { isSystem: Not(true) } as any,
         relations,
         order: { id: 'DESC' } as any,
       };
-      // Apply pagination only when limit is provided
+
       if (parsedLimit && parsedLimit > 0) {
         queryOptions.take = Math.min(Math.max(parsedLimit, 1), 100);
         queryOptions.skip = (currentPage - 1) * queryOptions.take;
       }
+
       const [data, total] = await repo.findAndCount(queryOptions);
-      const sanitized = this.sanitizeCollection(data as any[]);
+      const context = await this.getUsersSchemaContext(req);
+      const dynamicRows = await this.loadUserDynamicRows(req, context.moduleId, data.map((user) => user.id));
+
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
         meta: {
           total,
           page: currentPage,
-          lastPage: queryOptions.take
-            ? Math.ceil(total / queryOptions.take) || 1
-            : 1,
+          lastPage: queryOptions.take ? Math.ceil(total / queryOptions.take) || 1 : 1,
         },
-        data: sanitized,
+        data: data.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {})),
       };
-    } catch (error) {
+    } catch {
       throw new InternalServerErrorException('Failed to paginate users');
     }
   }
@@ -143,10 +303,14 @@ export class UsersService extends TenantAbstractService<User> {
         relations,
       });
       if (!entity) throw new NotFoundException(`User with ID ${id} not found`);
+
+      const context = await this.getUsersSchemaContext(req);
+      const dynamicRows = await this.loadUserDynamicRows(req, context.moduleId, [entity.id]);
+
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        data: this.sanitizeEntity(entity),
+        data: this.buildUserResponse(entity, dynamicRows.get(entity.id) || {}),
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -154,73 +318,82 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
-  async create(req: any, dto: CreateUserDto): Promise<any> {
+  async create(req: any, dto: Record<string, any>): Promise<any> {
     try {
+      const context = await this.getUsersSchemaContext(req);
       const userRepo: Repository<User> = this.getRepo(req);
       const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
-      const jobPositionRepo: Repository<JobPosition> =
-        req.tenantConnection.getRepository(JobPosition);
+      const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
       const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
 
-      const {
-        name,
-        email,
-        phone_number,
-        address,
-        username,
-        password,
-        role_id,
-        job_position_id,
-        location_id,
-        availability_days,
-      } = dto;
+      this.assertCreatePayloadRequiredFields(dto, context.requiredFieldKeys);
+      const { staticPayload, dynamicPayload } = this.splitUserPayload(dto, context.systemFieldKeys);
 
-      const existing = await userRepo.findOne({ where: { email } });
+      const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
       if (existing) throw new BadRequestException('A user with this email already exists.');
 
+      const roleId = staticPayload.role_id;
+      const jobPositionId = staticPayload.job_position_id;
+      const locationId = staticPayload.location_id;
+
       let role: Role | null = null;
-      if (role_id) {
-        role = await roleRepo.findOne({ where: { id: role_id } });
-        if (!role) throw new BadRequestException(`Role with ID ${role_id} not found.`);
+      if (roleId) {
+        role = await roleRepo.findOne({ where: { id: roleId } });
+        if (!role) throw new BadRequestException(`Role with ID ${roleId} not found.`);
       }
 
       let jobPosition: JobPosition | null = null;
-      if (job_position_id) {
-        jobPosition = await jobPositionRepo.findOne({ where: { id: job_position_id } });
+      if (jobPositionId) {
+        jobPosition = await jobPositionRepo.findOne({ where: { id: jobPositionId } });
         if (!jobPosition) {
-          throw new BadRequestException(`Job position with ID ${job_position_id} not found.`);
+          throw new BadRequestException(`Job position with ID ${jobPositionId} not found.`);
         }
       }
 
       let location: Location | null = null;
-      if (location_id) {
-        location = await locationRepo.findOne({ where: { id: location_id } });
+      if (locationId) {
+        location = await locationRepo.findOne({ where: { id: locationId } });
         if (!location) {
-          throw new BadRequestException(`Location with ID ${location_id} not found.`);
+          throw new BadRequestException(`Location with ID ${locationId} not found.`);
         }
       }
 
       const user = userRepo.create({
-        name,
-        email,
-        phoneNumber: phone_number || null,
-        address: address || null,
-        username: username || null,
-        password,
-        plainPassword: password,
-        availabilityDays: availability_days?.length ? availability_days : null,
+        name: staticPayload.name,
+        email: staticPayload.email,
+        phoneNumber: staticPayload.phone_number || null,
+        address: staticPayload.address || null,
+        username: staticPayload.username || null,
+        password: staticPayload.password,
+        plainPassword: staticPayload.plain_password || staticPayload.password,
+        availabilityDays: staticPayload.availability_days?.length ? staticPayload.availability_days : null,
         ...(role ? { role } : {}),
         ...(jobPosition ? { jobPosition } : {}),
         ...(location ? { location } : {}),
       });
 
       const saved = await userRepo.save(user);
+
+      await this.upsertUserDynamicRow(
+        req,
+        context.moduleId,
+        saved.id,
+        context.activeVersionId,
+        dynamicPayload,
+        this.getActorId(req),
+      );
+
       const payload = await userRepo.findOne({
         where: { id: saved.id },
         relations: ['role', 'jobPosition', 'location'],
       });
-      // Do NOT delete password from payload for now (per request)
-      // delete (payload as any)?.password;
+
+      const dynamicData = context.moduleId
+        ? (await req.tenantConnection.getRepository(EntityDynamicData).findOne({
+            where: { moduleId: context.moduleId, entityId: saved.id },
+          }))?.data || {}
+        : {};
+
       const mailPayload = {
         module: 'users',
         action: 'create',
@@ -233,8 +406,8 @@ export class UsersService extends TenantAbstractService<User> {
           full_name: payload?.name,
           email: payload?.email,
           username: payload?.username,
-          password,
-          user_password: password,
+          password: staticPayload.password,
+          user_password: staticPayload.password,
           tenant_slug: req?.tenantId || null,
           tenant_login_url: this.getTenantLoginUrl(),
           logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
@@ -244,19 +417,8 @@ export class UsersService extends TenantAbstractService<User> {
         },
       };
 
-      const isDevelopment =
-        (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
-      let emailNotification:
-        | {
-            attempted: true;
-            success: boolean;
-            status?: 'sent' | 'queued';
-            logId?: number;
-            idempotencyKey?: string;
-            error?: string;
-          }
-        | undefined;
-
+      const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
+      let emailNotification: any;
       if (isDevelopment) {
         try {
           const mailResult = await this.mailService.sendTemplateMail(req, mailPayload);
@@ -268,8 +430,7 @@ export class UsersService extends TenantAbstractService<User> {
             idempotencyKey: mailResult.idempotencyKey,
           };
         } catch (mailError) {
-          const mailErrorMessage =
-            mailError instanceof Error ? mailError.message : 'Unknown email dispatch error';
+          const mailErrorMessage = mailError instanceof Error ? mailError.message : 'Unknown email dispatch error';
           console.error('Tenant user email trigger failed:', mailErrorMessage);
           emailNotification = {
             attempted: true,
@@ -287,10 +448,7 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         message: 'Tenant user created successfully',
         tenant: req.tenantConnection.options.database,
-        data: {
-          ...payload,
-          plainPassword: payload?.plainPassword || undefined,
-        },
+        data: this.buildUserResponse(payload as User, dynamicData),
         ...(isDevelopment ? { email_notification: emailNotification } : {}),
       };
     } catch (error) {
@@ -300,13 +458,14 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
-  async update(req: any, id: number, dto: UpdateUserDto): Promise<any> {
+  async update(req: any, id: number, dto: Record<string, any>): Promise<any> {
     try {
+      const context = await this.getUsersSchemaContext(req);
       const userRepo: Repository<User> = this.getRepo(req);
       const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
-      const jobPositionRepo: Repository<JobPosition> =
-        req.tenantConnection.getRepository(JobPosition);
+      const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
       const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
+      const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
 
       const user = await userRepo.findOne({
         where: { id },
@@ -315,55 +474,69 @@ export class UsersService extends TenantAbstractService<User> {
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
 
-      if (dto.email && dto.email !== user.email) {
-        const existing = await userRepo.findOne({
-          where: { email: dto.email },
-        });
+      const { staticPayload, dynamicPayload } = this.splitUserPayload(dto, context.systemFieldKeys);
+      const existingDynamic = context.moduleId
+        ? await dynamicRepo.findOne({ where: { moduleId: context.moduleId, entityId: user.id } })
+        : null;
+      const mergedDynamic = {
+        ...(existingDynamic?.data || {}),
+        ...dynamicPayload,
+      };
+
+      if (staticPayload.email && staticPayload.email !== user.email) {
+        const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
         if (existing) throw new BadRequestException('Email already in use by another user.');
-        user.email = dto.email;
+        user.email = staticPayload.email;
       }
 
-      if (dto.name) user.name = dto.name;
-      if (typeof dto.phone_number === 'string') user.phoneNumber = dto.phone_number;
-      if (typeof dto.address === 'string') user.address = dto.address;
-      if (typeof dto.username === 'string') user.username = dto.username;
-      if (dto.password) {
-        user.password = dto.password;
-        user.plainPassword = dto.password;
+      if (staticPayload.name !== undefined) user.name = staticPayload.name;
+      if (staticPayload.phone_number !== undefined) user.phoneNumber = staticPayload.phone_number;
+      if (staticPayload.address !== undefined) user.address = staticPayload.address;
+      if (staticPayload.username !== undefined) user.username = staticPayload.username;
+      if (staticPayload.password !== undefined) {
+        user.password = staticPayload.password;
+        user.plainPassword = staticPayload.plain_password || staticPayload.password;
       }
-      if (dto.availability_days) user.availabilityDays = dto.availability_days;
+      if (staticPayload.availability_days !== undefined) user.availabilityDays = staticPayload.availability_days;
 
-      if (dto.role_id && dto.role_id !== user.role?.id) {
-        const newRole = await roleRepo.findOne({ where: { id: dto.role_id } });
-        if (!newRole) throw new BadRequestException(`Role with ID ${dto.role_id} not found.`);
+      if (staticPayload.role_id && staticPayload.role_id !== user.role?.id) {
+        const newRole = await roleRepo.findOne({ where: { id: staticPayload.role_id } });
+        if (!newRole) throw new BadRequestException(`Role with ID ${staticPayload.role_id} not found.`);
         user.role = newRole;
       }
 
-      if (dto.job_position_id && dto.job_position_id !== user.jobPosition?.id) {
-        const newJobPosition = await jobPositionRepo.findOne({
-          where: { id: dto.job_position_id },
-        });
+      if (staticPayload.job_position_id && staticPayload.job_position_id !== user.jobPosition?.id) {
+        const newJobPosition = await jobPositionRepo.findOne({ where: { id: staticPayload.job_position_id } });
         if (!newJobPosition) {
-          throw new BadRequestException(`Job position with ID ${dto.job_position_id} not found.`);
+          throw new BadRequestException(`Job position with ID ${staticPayload.job_position_id} not found.`);
         }
         user.jobPosition = newJobPosition;
       }
 
-      if (dto.location_id && dto.location_id !== user.location?.id) {
-        const newLocation = await locationRepo.findOne({ where: { id: dto.location_id } });
-        if (!newLocation) {
-          throw new BadRequestException(`Location with ID ${dto.location_id} not found.`);
-        }
+      if (staticPayload.location_id && staticPayload.location_id !== user.location?.id) {
+        const newLocation = await locationRepo.findOne({ where: { id: staticPayload.location_id } });
+        if (!newLocation) throw new BadRequestException(`Location with ID ${staticPayload.location_id} not found.`);
         user.location = newLocation;
       }
 
       const updated = await userRepo.save(user);
+      await this.upsertUserDynamicRow(
+        req,
+        context.moduleId,
+        updated.id,
+        context.activeVersionId,
+        mergedDynamic,
+        this.getActorId(req),
+      );
+
       const payload = await userRepo.findOne({
         where: { id: updated.id },
         relations: ['role', 'jobPosition', 'location'],
       });
-      // Do NOT delete password from payload for now (per request)
-      // delete (payload as any)?.password;
+
+      const dynamicData = context.moduleId
+        ? (await dynamicRepo.findOne({ where: { moduleId: context.moduleId, entityId: updated.id } }))?.data || {}
+        : {};
 
       void this.mailService
         .sendTemplateMail(req, {
@@ -378,8 +551,8 @@ export class UsersService extends TenantAbstractService<User> {
             full_name: payload?.name,
             email: payload?.email,
             username: payload?.username,
-            password: dto.password || 'Not changed',
-            user_password: dto.password || 'Not changed',
+            password: staticPayload.password || 'Not changed',
+            user_password: staticPayload.password || 'Not changed',
             tenant_slug: req?.tenantId || null,
             tenant_login_url: this.getTenantLoginUrl(),
             logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
@@ -396,10 +569,7 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         message: 'Tenant user updated successfully',
         tenant: req.tenantConnection.options.database,
-        data: {
-          ...payload,
-          plainPassword: payload?.plainPassword || undefined,
-        },
+        data: this.buildUserResponse(payload as User, dynamicData),
       };
     } catch (error) {
       console.error('Tenant user update failed:', error);
@@ -450,65 +620,23 @@ export class UsersService extends TenantAbstractService<User> {
         .leftJoinAndSelect('user.role', 'role')
         .leftJoinAndSelect('user.jobPosition', 'jobPosition')
         .leftJoinAndSelect('user.location', 'location')
-        .where('user.isSystem = :isSystem', {isSystem: false});
+        .where('user.isSystem = :isSystem', { isSystem: false });
 
-      if (name) {
-        qb.andWhere('user.name ILIKE :name', {name: `%${name}%`});
-      }
-
-      if (email) {
-        qb.andWhere('user.email ILIKE :email', {email: `%${email}%`});
-      }
-
-      if (username) {
-        qb.andWhere('user.username ILIKE :username', {username: `%${username}%`});
-      }
-
-      if (phoneNumber) {
-        qb.andWhere('user.phone_number ILIKE :phoneNumber', {phoneNumber: `%${phoneNumber}%`});
-      }
-
-      if (roleId) {
-        qb.andWhere('role.id = :roleId', {roleId});
-      }
-
-      if (jobPositionId) {
-        qb.andWhere('jobPosition.id = :jobPositionId', {jobPositionId});
-      }
-
-      if (locationId) {
-        qb.andWhere('location.id = :locationId', {locationId});
-      }
+      if (name) qb.andWhere('user.name ILIKE :name', { name: `%${name}%` });
+      if (email) qb.andWhere('user.email ILIKE :email', { email: `%${email}%` });
+      if (username) qb.andWhere('user.username ILIKE :username', { username: `%${username}%` });
+      if (phoneNumber) qb.andWhere('user.phone_number ILIKE :phoneNumber', { phoneNumber: `%${phoneNumber}%` });
+      if (roleId) qb.andWhere('role.id = :roleId', { roleId });
+      if (jobPositionId) qb.andWhere('jobPosition.id = :jobPositionId', { jobPositionId });
+      if (locationId) qb.andWhere('location.id = :locationId', { locationId });
 
       qb.orderBy('user.id', 'DESC').take(take);
 
       const users = await qb.getMany();
+      const context = await this.getUsersSchemaContext(req);
+      const dynamicRows = await this.loadUserDynamicRows(req, context.moduleId, users.map((user) => user.id));
 
-      const data = users.map((user) => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        username: user.username,
-        phone_number: user.phoneNumber,
-        role: user.role
-          ? {
-              id: user.role.id,
-              name: user.role.name,
-            }
-          : null,
-        job_position: user.jobPosition
-          ? {
-              id: user.jobPosition.id,
-              name: user.jobPosition.name,
-            }
-          : null,
-        location: user.location
-          ? {
-              id: user.location.id,
-              name: user.location.name,
-            }
-          : null,
-      }));
+      const data = users.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {}));
 
       return {
         success: true,
@@ -523,177 +651,82 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
-  private resolveSmtpConfig() {
-    const explicitFrom = process.env.SMTP_FROM?.trim() || process.env.EMAIL_FROM?.trim() || process.env.MAIL_FROM_EMAIL?.trim();
-    const smtpUsername = process.env.SMTP_USER?.trim() || process.env.MAIL_USER?.trim();
-    const fromEmail = explicitFrom || (smtpUsername?.includes('@') ? smtpUsername : null);
-
-    if (!fromEmail) return null;
-
-    const blockedDomains = ['yourdomain.com', 'example.com'];
-    const fromDomain = fromEmail.split('@')[1]?.toLowerCase() || '';
-    if (blockedDomains.includes(fromDomain)) return null;
-
-    return {
-      host: process.env.SMTP_HOST?.trim() || process.env.MAIL_HOST?.trim() || null,
-      port: Number(process.env.SMTP_PORT?.trim() || process.env.MAIL_PORT?.trim() || 587),
-      secure: (process.env.SMTP_SECURE?.trim() || process.env.MAIL_SECURE?.trim()) === 'true',
-      username: smtpUsername,
-      password: process.env.SMTP_PASS?.trim() || process.env.MAIL_PASS?.trim() || undefined,
-      fromEmail,
-      fromName: process.env.MAIL_FROM_NAME?.trim() || undefined,
-      replyTo: process.env.MAIL_REPLY_TO?.trim() || undefined,
-    };
-  }
-
   async sendCredentials(req: any, id: number, dto: SendUserCredentialsDto): Promise<any> {
     try {
-      const userRepo: Repository<User> = this.getRepo(req);
-      const user = await userRepo.findOne({
-        where: { id, isSystem: Not(true) } as any,
-        relations: ['role', 'jobPosition', 'location'],
+      const repo = this.getRepo(req);
+      const user = await repo.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      const recipientEmail = dto.recipient_email || user.email;
+      const payload = {
+        module: 'users',
+        action: 'credentials',
+        tenantId: req?.tenantId || null,
+        to: recipientEmail,
+        data: {
+          name: user.name,
+          email: user.email,
+          username: user.username,
+          password: dto.password || user.plainPassword || user.password,
+          tenant_login_url: this.getTenantLoginUrl(),
+          logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
+        },
+      };
+
+      const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
+      if (isDevelopment) {
+        const result = await this.mailService.sendTemplateMail(req, payload);
+        return {
+          success: true,
+          message: 'Credentials email sent successfully',
+          data: result,
+        };
+      }
+
+      void this.mailService.sendTemplateMail(req, payload).catch((error) => {
+        console.error('Failed to send credentials email:', error);
       });
+
+      return {
+        success: true,
+        message: 'Credentials email queued successfully',
+      };
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to send credentials email');
+    }
+  }
+
+  async delete(req: any, id: number): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const user = await repo.findOne({ where: { id } });
 
       if (!user) {
-        throw new NotFoundException(`User with ID ${id} not found.`);
+        throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      // --- Template-based email (commented out for now) ---
-      // await this.mailService.sendTemplateMail(req, {
-      //   module: 'users',
-      //   action: 'create',
-      //   tenantId: req?.tenantId || null,
-      //   to: dto.recipient_email,
-      //   data: {
-      //     user_id: user.id,
-      //     name: user.name,
-      //     first_name: user.name?.split(' ')?.[0] || user.name,
-      //     full_name: user.name,
-      //     email: user.email,
-      //     username: user.username,
-      //     password: tempPassword,
-      //     user_password: tempPassword,
-      //     tenant_slug: req?.tenantId || null,
-      //     tenant_login_url: this.getTenantLoginUrl(),
-      //     logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
-      //     role_name: user.role?.name || null,
-      //     job_position_name: user.jobPosition?.name || null,
-      //     location_name: user.location?.name || null,
-      //   },
-      // });
-
-      const smtp = this.resolveSmtpConfig();
-      if (!smtp?.host || !smtp.fromEmail) {
-        throw new BadRequestException(
-          'SMTP is not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASS and a verified SMTP_FROM.',
-        );
+      if (user.isSystem) {
+        throw new BadRequestException('System users cannot be deleted.');
       }
 
-      const frontendBaseUrl = this.getFrontendBaseUrl();
-      const logoUrl = `${frontendBaseUrl}/assets/eusocial-logo.png`;
-      const loginUrl = this.getTenantLoginUrl();
+      await repo.remove(user);
 
-      const transporter = nodemailer.createTransport({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.secure,
-        auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
-      });
-
-      const subject = `Your login credentials`;
-      const html = `
-        <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-            <tr>
-              <td align="center">
-                <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-                  <tr>
-                    <td style="padding:24px 28px;background:#101820;">
-                      <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:30px 28px 22px;color:#1f2d3d;">
-                      <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Your Login Credentials</h2>
-                      <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
-                        Hi <strong>${user.name}</strong>, here are your login credentials for the workspace.
-                      </p>
-                      <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
-                        <tr style="border-bottom:1px solid #e8edf3;">
-                          <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Email</strong></td>
-                          <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${user.email}</td>
-                        </tr>
-                        ${dto.password ? `<tr style="border-bottom:1px solid #e8edf3;"><td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Password</strong></td><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;font-family:monospace;background:#fafbfc;">${dto.password}</td></tr>` : ''}
-                        <tr>
-                          <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
-                          <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>
-                        </tr>
-                      </table>
-                      <div style="background:#fef3cd;border-left:4px solid #ffc107;padding:12px 14px;border-radius:4px;margin:16px 0;">
-                        <p style="margin:0;font-size:13px;color:#856404;"><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
-                      </div>
-                      <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
-                        © 2026 EuSocial. All rights reserved.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </div>
-      `;
-
-      try {
-        await transporter.sendMail({
-          from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
-          to: dto.recipient_email,
-          replyTo: smtp.replyTo || undefined,
-          subject,
-          html,
-        });
-      } finally {
-        transporter.close();
+      const context = await this.getUsersSchemaContext(req);
+      if (context.moduleId) {
+        const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
+        await dynamicRepo.delete({ moduleId: context.moduleId, entityId: id });
       }
 
       return {
         success: true,
-        message: `Tenant user credentials email sent to ${dto.recipient_email}`,
-        tenant: req.tenantConnection.options.database,
-        data: {
-          user_id: user.id,
-          user_email: user.email,
-          recipient: dto.recipient_email,
-          tenant_login_url: loginUrl,
-        },
+        message: 'User deleted successfully',
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-
-      console.error('Tenant user send credentials failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new BadRequestException(`Unable to send tenant user credentials: ${errorMessage}`);
-    }
-  }
-
-  override async delete(req: any, id: number): Promise<any> {
-    try {
-      const repo = this.getRepo(req);
-      const entity = await repo.findOneBy({ id } as any);
-      if (!entity) throw new NotFoundException(`User with ID ${id} not found`);
-      if ((entity as any).isSystem) throw new BadRequestException('System users cannot be deleted.');
-
-      await repo.delete(id);
-      return {
-        success: true,
-        message: 'User deleted successfully',
-        tenant: req.tenantConnection.options.database,
-        deletedId: id,
-      };
-    } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to delete user');
     }
   }

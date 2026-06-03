@@ -10,6 +10,7 @@ import { TenantMailAdminModule } from './mail/tenant-mail-admin.module';
 import { ReportingGroupsModule } from './reporting-groups/reporting-groups.module';
 import { ReportingCategoriesModule } from './reporting-categories/reporting-categories.module';
 import { ItemsModule } from './items/items.module';
+import { FormBuilderModule } from './form-builder';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ItemsModule } from './items/items.module';
     ReportingGroupsModule,
     ReportingCategoriesModule,
     ItemsModule,
+    FormBuilderModule,
   ],
 })
 export class TenantsModule {

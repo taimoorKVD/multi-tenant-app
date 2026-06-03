@@ -15,8 +15,8 @@ export class UsersController {
   @TenantAccess('create-user')
   @Post()
   @TenantUsersSwagger.Create()
-  create(@Req() req, @Body() dto: CreateUserDto) {
-    return this.usersService.create(req, dto);
+  create(@Req() req, @Body() body: any) {
+    return this.usersService.create(req, body);
   }
 
   @TenantAccess('view-user')
@@ -69,8 +69,8 @@ export class UsersController {
   @TenantAccess('edit-user')
   @Put(':id')
   @TenantUsersSwagger.Update()
-  update(@Req() req, @Param('id') id: number, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(req, id, dto);
+  update(@Req() req, @Param('id') id: number, @Body() body: any) {
+    return this.usersService.update(req, id, body);
   }
 
   @TenantAccess('delete-user')
