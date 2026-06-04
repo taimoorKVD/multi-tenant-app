@@ -3,11 +3,9 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
-  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { FormField } from './form-field.entity';
 
 @Entity('field_types')
 export class FieldType {
@@ -43,9 +41,6 @@ export class FieldType {
 
   @Column({ type: 'boolean', name: 'supports_conditions', default: true })
   supportsConditions!: boolean;
-
-  @OneToMany(() => FormField, (field) => field.fieldType)
-  fields!: FormField[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

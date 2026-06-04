@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import {
-  FieldTypesController,
   FormsController,
   SubmissionsController,
   VersionsController,
@@ -21,7 +20,6 @@ import {
     FormsController,
     SubmissionsController,
     VersionsController,
-    FieldTypesController,
   ],
   providers: [
     FormsService,

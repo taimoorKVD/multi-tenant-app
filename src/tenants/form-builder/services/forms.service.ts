@@ -87,7 +87,6 @@ export class FormsService {
         'module',
         'sections',
         'fields',
-        'fields.fieldType',
         'fields.options',
         'fields.validations',
         'conditionalRules',
@@ -118,8 +117,7 @@ export class FormsService {
       fields: (form.fields || []).map((field) => ({
         id: field.id,
         sectionId: field.sectionId,
-        fieldTypeId: field.fieldTypeId,
-        fieldTypeName: field.fieldType?.name,
+        fieldTypeName: field.fieldTypeName,
         fieldKey: field.fieldKey,
         label: field.label,
         name: field.name,
@@ -165,8 +163,34 @@ export class FormsService {
     };
   }
 
-  private normalizeSchemaSnapshot(form: Form & { module?: DynamicModule | null }, schema?: Record<string, any> | null): Record<string, any> {
+  private sanitizeSchemaFields(fields: any[]): any[] {
+    return fields.map((field) => {
+      if (!field || typeof field !== 'object' || Array.isArray(field)) {
+        return field;
+      }
+
+      const rest = { ...field };
+      for (const key of Object.keys(rest)) {
+        if (/^field[_]?type[_]?id$/i.test(key)) {
+          delete rest[key];
+        }
+      }
+      return rest;
+    });
+  }
+
+  private sanitizeSchemaSnapshot(schema?: Record<string, any> | null): Record<string, any> {
     const draft = schema || {};
+    return {
+      ...draft,
+      sections: Array.isArray(draft.sections) ? draft.sections : [],
+      fields: this.sanitizeSchemaFields(Array.isArray(draft.fields) ? draft.fields : []),
+      conditionalRules: Array.isArray(draft.conditionalRules) ? draft.conditionalRules : [],
+    };
+  }
+
+  private normalizeSchemaSnapshot(form: Form & { module?: DynamicModule | null }, schema?: Record<string, any> | null): Record<string, any> {
+    const draft = this.sanitizeSchemaSnapshot(schema);
     return {
       ...draft,
       form: {
@@ -177,9 +201,9 @@ export class FormsService {
         name: form.name,
         status: form.status,
       },
-      sections: Array.isArray(draft.sections) ? draft.sections : [],
-      fields: Array.isArray(draft.fields) ? draft.fields : [],
-      conditionalRules: Array.isArray(draft.conditionalRules) ? draft.conditionalRules : [],
+      sections: draft.sections,
+      fields: draft.fields,
+      conditionalRules: draft.conditionalRules,
     };
   }
 
@@ -387,7 +411,7 @@ export class FormsService {
       return fieldRepo.create({
         formId: form.id,
         sectionId: item.key === 'availability_days' ? availabilitySection.id : contactInfoSection.id,
-        fieldTypeId: fieldType.id,
+        fieldTypeName: fieldType.name,
         fieldKey: item.key,
         label: item.label,
         name: item.name,
@@ -613,8 +637,9 @@ export class FormsService {
     }
 
     this.assertSchemaPayload(dto.schema);
+    const sanitizedSchema = this.sanitizeSchemaSnapshot(dto.schema);
 
-    entity.autosaveSchema = dto.schema;
+    entity.autosaveSchema = sanitizedSchema;
     if (dto.markAsDraft !== false) {
       entity.status = FormStatus.DRAFT;
     }
@@ -627,8 +652,8 @@ export class FormsService {
       entityId: entity.id,
       action: 'save_schema',
       newValue: {
-        fieldsCount: Array.isArray(dto.schema?.fields) ? dto.schema.fields.length : 0,
-        sectionsCount: Array.isArray(dto.schema?.sections) ? dto.schema.sections.length : 0,
+        fieldsCount: Array.isArray(sanitizedSchema?.fields) ? sanitizedSchema.fields.length : 0,
+        sectionsCount: Array.isArray(sanitizedSchema?.sections) ? sanitizedSchema.sections.length : 0,
       },
       createdBy: this.getActorId(req, dto.updatedBy || null),
     });

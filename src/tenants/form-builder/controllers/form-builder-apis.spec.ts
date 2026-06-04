@@ -3,12 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as request from 'supertest';
 import { TenantAuthGuard } from '../../auth/guards';
 import { FormsController } from './forms.controller';
-import { FieldTypesController } from './field-types.controller';
 import { SubmissionsController } from './submissions.controller';
 import { VersionsController } from './versions.controller';
 import { PermissionsGuard } from '../guards';
 import {
-  FieldTypesService,
   FormsService,
   SubmissionsService,
   VersionsService,
@@ -40,11 +38,6 @@ describe('Form Builder APIs', () => {
     deleteSection: jest.fn(),
   };
 
-  const fieldTypesServiceMock = {
-    findAll: jest.fn(),
-    create: jest.fn(),
-  };
-
   const submissionsServiceMock = {
     submit: jest.fn(),
     findAll: jest.fn(),
@@ -70,13 +63,11 @@ describe('Form Builder APIs', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [
         FormsController,
-        FieldTypesController,
         SubmissionsController,
         VersionsController,
       ],
       providers: [
         { provide: FormsService, useValue: formsServiceMock },
-        { provide: FieldTypesService, useValue: fieldTypesServiceMock },
         { provide: SubmissionsService, useValue: submissionsServiceMock },
         { provide: VersionsService, useValue: versionsServiceMock },
         { provide: TenantAuthGuard, useValue: authGuardMock },
@@ -248,25 +239,6 @@ describe('Form Builder APIs', () => {
 
     it('GET /forms/:id rejects non-numeric id', async () => {
       await request(app.getHttpServer()).get('/forms/not-a-number').expect(400);
-    });
-  });
-
-  describe('FieldTypesController', () => {
-    it('GET /field-types returns all field types', async () => {
-      const response = { success: true, count: 2, data: [{ name: 'text' }, { name: 'email' }] };
-      fieldTypesServiceMock.findAll.mockResolvedValue(response);
-
-      await request(app.getHttpServer()).get('/field-types').expect(200).expect(response);
-      expect(fieldTypesServiceMock.findAll).toHaveBeenCalledTimes(1);
-    });
-
-    it('POST /field-types creates new field type', async () => {
-      const dto = { name: 'currency', category: 'input' };
-      const response = { success: true, message: 'Field type created successfully', data: { id: 11 } };
-      fieldTypesServiceMock.create.mockResolvedValue(response);
-
-      await request(app.getHttpServer()).post('/field-types').send(dto).expect(201).expect(response);
-      expect(fieldTypesServiceMock.create).toHaveBeenCalledWith(expect.any(Object), dto);
     });
   });
 

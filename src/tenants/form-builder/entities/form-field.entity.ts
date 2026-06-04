@@ -11,7 +11,6 @@ import {
 } from 'typeorm';
 import { Form } from './form.entity';
 import { FormSection } from './form-section.entity';
-import { FieldType } from './field-type.entity';
 import { FieldOption } from './field-option.entity';
 import { FieldValidation } from './field-validation.entity';
 import { FieldConditionalRule } from './field-conditional-rule.entity';
@@ -35,12 +34,8 @@ export class FormField {
     @JoinColumn({ name: 'section_id' })
     section!: FormSection | null;
 
-    @Column({ type: 'int', name: 'field_type_id' })
-    fieldTypeId!: number;
-
-    @ManyToOne(() => FieldType, (fieldType) => fieldType.fields, { onDelete: 'RESTRICT' })
-    @JoinColumn({ name: 'field_type_id' })
-    fieldType!: FieldType;
+    @Column({ type: 'varchar', name: 'field_type_name', length: 120 })
+    fieldTypeName!: string;
 
     @Column({ type: 'varchar', name: 'field_key', length: 120 })
     fieldKey!: string;
