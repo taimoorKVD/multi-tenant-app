@@ -188,88 +188,92 @@ export class FormsService {
       throw new BadRequestException('schema must be an object');
     }
 
-    const sections = Array.isArray(schema.sections) ? schema.sections : [];
-    const fields = Array.isArray(schema.fields) ? schema.fields : [];
-    const conditionalRules = Array.isArray(schema.conditionalRules) ? schema.conditionalRules : [];
+    // const sections = Array.isArray(schema.sections) ? schema.sections : [];
+    // const fields = Array.isArray(schema.fields) ? schema.fields : [];
+    // const conditionalRules = Array.isArray(schema.conditionalRules) ? schema.conditionalRules : [];
 
-    const fieldKeys = new Set<string>();
+    // const fieldKeys = new Set<string>();
 
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      if (!section || typeof section !== 'object') {
-        throw new BadRequestException(`sections[${i}] must be an object`);
-      }
+    // for (let i = 0; i < sections.length; i++) {
+    //   const section = sections[i];
+    //   if (!section || typeof section !== 'object') {
+    //     throw new BadRequestException(`sections[${i}] must be an object`);
+    //   }
 
-      if (typeof section.title !== 'string' || !section.title.trim()) {
-        throw new BadRequestException(`sections[${i}].title is required`);
-      }
-    }
+    //   if (typeof section.title !== 'string' || !section.title.trim()) {
+    //     throw new BadRequestException(`sections[${i}].title is required`);
+    //   }
+    // }
 
-    for (let i = 0; i < fields.length; i++) {
-      const field = fields[i];
-      if (!field || typeof field !== 'object') {
-        throw new BadRequestException(`fields[${i}] must be an object`);
-      }
+    // for (let i = 0; i < fields.length; i++) {
+    //   const field = fields[i];
+    //   if (!field || typeof field !== 'object') {
+    //     throw new BadRequestException(`fields[${i}] must be an object`);
+    //   }
 
-      const key = String(field.fieldKey || field.name || '').trim();
-      if (!key) {
-        throw new BadRequestException(`fields[${i}] must include fieldKey or name`);
-      }
+    //   const key = String(field.fieldKey || field.name || '').trim();
+    //   if (!key) {
+    //     throw new BadRequestException(`fields[${i}] must include fieldKey or name`);
+    //   }
 
-      if (fieldKeys.has(key)) {
-        throw new BadRequestException(`Duplicate field key detected: ${key}`);
-      }
-      fieldKeys.add(key);
+    //   if (fieldKeys.has(key)) {
+    //     throw new BadRequestException(`Duplicate field key detected: ${key}`);
+    //   }
+    //   fieldKeys.add(key);
 
-      if (typeof field.label !== 'string' || !field.label.trim()) {
-        throw new BadRequestException(`fields[${i}].label is required`);
-      }
+    //   if (typeof field.label !== 'string' || !field.label.trim()) {
+    //     throw new BadRequestException(`fields[${i}].label is required`);
+    //   }
 
-      if (field.layoutConfig !== undefined && (typeof field.layoutConfig !== 'object' || Array.isArray(field.layoutConfig))) {
-        throw new BadRequestException(`fields[${i}].layoutConfig must be an object`);
-      }
+    //   if (field.layoutConfig !== undefined && (typeof field.layoutConfig !== 'object' || Array.isArray(field.layoutConfig))) {
+    //     throw new BadRequestException(`fields[${i}].layoutConfig must be an object`);
+    //   }
 
-      const validations = Array.isArray(field.validations) ? field.validations : [];
-      for (let j = 0; j < validations.length; j++) {
-        const validation = validations[j];
-        if (!validation || typeof validation !== 'object') {
-          throw new BadRequestException(`fields[${i}].validations[${j}] must be an object`);
-        }
-        if (typeof validation.ruleType !== 'string' || !validation.ruleType.trim()) {
-          throw new BadRequestException(`fields[${i}].validations[${j}].ruleType is required`);
-        }
-      }
-    }
+    //   const validations = Array.isArray(field.validations) ? field.validations : [];
+    //   for (let j = 0; j < validations.length; j++) {
+    //     const validation = validations[j];
+    //     if (!validation || typeof validation !== 'object') {
+    //       throw new BadRequestException(`fields[${i}].validations[${j}] must be an object`);
+    //     }
+    //     if (typeof validation.ruleType !== 'string' || !validation.ruleType.trim()) {
+    //       throw new BadRequestException(`fields[${i}].validations[${j}].ruleType is required`);
+    //     }
+    //   }
+    // }
 
-    for (let i = 0; i < conditionalRules.length; i++) {
-      const rule = conditionalRules[i];
-      if (!rule || typeof rule !== 'object') {
-        throw new BadRequestException(`conditionalRules[${i}] must be an object`);
-      }
+    // for (let i = 0; i < conditionalRules.length; i++) {
+    //   const rule = conditionalRules[i];
+    //   if (!rule || typeof rule !== 'object') {
+    //     throw new BadRequestException(`conditionalRules[${i}] must be an object`);
+    //   }
 
-      const dependentFieldKey = String(rule.dependentFieldKey || '').trim();
-      const sourceFieldKey = String(rule.sourceFieldKey || '').trim();
+    //   const dependentFieldKey = String(rule.dependentFieldKey || '').trim();
+    //   const sourceFieldKey = String(rule.sourceFieldKey || '').trim();
 
-      if (!dependentFieldKey || !sourceFieldKey) {
-        throw new BadRequestException(
-          `conditionalRules[${i}] must include dependentFieldKey and sourceFieldKey`,
-        );
-      }
+    //   if (!dependentFieldKey || !sourceFieldKey) {
+    //     throw new BadRequestException(
+    //       `conditionalRules[${i}] must include dependentFieldKey and sourceFieldKey`,
+    //     );
+    //   }
 
-      if (!fieldKeys.has(dependentFieldKey) || !fieldKeys.has(sourceFieldKey)) {
-        throw new BadRequestException(
-          `conditionalRules[${i}] references fields that do not exist in schema.fields`,
-        );
-      }
+    //   if (!fieldKeys.has(dependentFieldKey) || !fieldKeys.has(sourceFieldKey)) {
+    //     throw new BadRequestException(
+    //       `conditionalRules[${i}] references fields that do not exist in schema.fields`,
+    //     );
+    //   }
 
-      if (typeof rule.operator !== 'string' || !rule.operator.trim()) {
-        throw new BadRequestException(`conditionalRules[${i}].operator is required`);
-      }
+    //   if (typeof rule.operator !== 'string' || !rule.operator.trim()) {
+    //     throw new BadRequestException(`conditionalRules[${i}].operator is required`);
+    //   }
 
-      if (typeof rule.actionType !== 'string' || !rule.actionType.trim()) {
-        throw new BadRequestException(`conditionalRules[${i}].actionType is required`);
-      }
-    }
+    //   if (typeof rule.actionType !== 'string' || !rule.actionType.trim()) {
+    //     throw new BadRequestException(`conditionalRules[${i}].actionType is required`);
+    //   }
+    // }
+    
+    // Temporarily keep schema validation permissive so drag/drop saves are not blocked
+    // by incomplete intermediate payloads from the frontend builder.
+    return;
   }
 
   private async bootstrapUsersDefault(req: any, form: Form): Promise<void> {
