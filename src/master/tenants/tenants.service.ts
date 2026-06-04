@@ -817,7 +817,7 @@ export class TenantsService {
         return fieldRepo.create({
           formId: form.id,
           sectionId: item.key === 'availability_days' ? availabilitySection.id : contactInfoSection.id,
-          fieldTypeId: fieldType.id,
+          fieldTypeName: fieldType.name,
           fieldKey: item.key,
           label: item.label,
           name: item.name,
