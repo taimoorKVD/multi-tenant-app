@@ -100,19 +100,37 @@ export const TenantAuthGetUserDocs = () =>
         ApiOperation({
             summary: 'Get authenticated user details',
             description:
-                'Retrieves the currently logged-in master user’s profile based on the provided JWT token.',
+                'Retrieves the currently logged-in tenant user profile based on the provided JWT token.',
         }),
         ApiResponse({
             status: 200,
             description: 'Authenticated user details',
             schema: {
                 example: {
-                    id: 1,
-                    name: 'Super Admin',
-                    email: 'superadmin@system.com',
-                    role: 'Super Admin',
-                    createdAt: '2025-11-10T10:22:30.000Z',
-                    updatedAt: '2025-11-10T10:25:40.000Z',
+                    success: true,
+                    message: 'Session is active.',
+                    tenant_slug: 'kingdomvision',
+                    tenant: 'tenant_kingdomvision',
+                    user: {
+                        id: 1,
+                        name: 'Administrator',
+                        email: 'admin@kingdomvision.com',
+                        email_verified: true,
+                        role: {
+                            id: 1,
+                            name: 'Senior Manager',
+                            permissions: [
+                                {id: 1, name: 'create-user'},
+                                {id: 2, name: 'view-job-position'},
+                            ],
+                        },
+                        job_position: null,
+                        location: null,
+                        availability_days: [],
+                        is_system: false,
+                        createdAt: '2026-04-14T00:52:55.371Z',
+                        updatedAt: '2026-04-14T17:26:41.358Z',
+                    },
                 },
             },
         }),
@@ -305,5 +323,33 @@ export const TenantAuthRefreshTokenDocs = () =>
         ApiResponse({
             status: 401,
             description: 'Refresh token is invalid or expired.',
+        }),
+    );
+
+export const TenantAuthLogoutDocs = () =>
+    applyDecorators(
+        ApiBearerAuth('access-token'),
+        ApiOperation({
+            summary: 'Logout tenant session',
+            description:
+                'Revokes the supplied refresh token for the authenticated tenant user. The current access token remains valid until it expires.',
+        }),
+        ApiBody({
+            type: RefreshTokenDto,
+            description: 'Refresh token to revoke.',
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: 'Logged out successfully.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Logged out successfully.',
+                },
+            },
+        }),
+        ApiResponse({
+            status: 401,
+            description: 'Unauthorized or invalid refresh token.',
         }),
     );

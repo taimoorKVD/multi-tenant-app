@@ -200,6 +200,17 @@ export class MasterAuthService {
       .execute();
   }
 
+  private async revokeRefreshToken(userId: number, refreshToken: string): Promise<void> {
+    await this.refreshTokenRepo
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ revokedAt: new Date() })
+      .where('user_id = :userId', { userId })
+      .andWhere('token_hash = :tokenHash', { tokenHash: this.buildTokenHash(refreshToken) })
+      .andWhere('revoked_at IS NULL')
+      .execute();
+  }
+
   private async persistRefreshToken(
     user: User,
     refreshToken: string,
@@ -684,6 +695,10 @@ export class MasterAuthService {
       throw new UnauthorizedException('Invalid refresh token.');
     }
 
+    if (storedToken.revokedAt) {
+      throw new UnauthorizedException('Refresh token has been revoked.');
+    }
+
     if (storedToken.expiresAt.getTime() <= Date.now()) {
       await this.clearRefreshTokens(payload.sub);
       throw new UnauthorizedException('Refresh token expired.');
@@ -705,6 +720,29 @@ export class MasterAuthService {
       success: true,
       message: 'Token refreshed successfully.',
       ...tokens,
+    };
+  }
+
+  async logout(userId: number, dto: RefreshTokenDto) {
+    let payload: any;
+
+    try {
+      payload = this.jwtService.verify(dto.refresh_token, {
+        secret: this.getRefreshTokenSecret(),
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
+    if (!payload?.sub || payload.type !== 'refresh' || Number(payload.sub) !== Number(userId)) {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
+    await this.revokeRefreshToken(userId, dto.refresh_token);
+
+    return {
+      success: true,
+      message: 'Logged out successfully.',
     };
   }
 }

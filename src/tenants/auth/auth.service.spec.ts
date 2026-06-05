@@ -124,6 +124,43 @@ describe('TenantAuthService', () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('returns tenant profile for an active session', async () => {
+    const user = {
+      id: 10,
+      email: 'admin@test.com',
+      name: 'Tenant Admin',
+      phoneNumber: '+923001234567',
+      address: 'Office 1',
+      username: 'tenant-admin',
+      role: {
+        id: 1,
+        name: 'Admin',
+        permissions: [{ id: 5, name: 'view-user' }],
+      },
+      jobPosition: { id: 2, name: 'Manager' },
+      location: { id: 3, name: 'Karachi' },
+      availabilityDays: ['monday', 'tuesday'],
+      isSystem: false,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    };
+    const req = createReq(user, 'kingdomvision');
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+
+    const result = await service.getProfile(req, 10);
+
+    expect(result.success).toBe(true);
+    expect(result.tenant_slug).toBe('kingdomvision');
+    expect(result.tenant).toBe('tenant_kingdomvision');
+    expect(result.user.email).toBe('admin@test.com');
+    expect(result.user.email_verified).toBe(true);
+    expect(result.user.role).toEqual({
+      id: 1,
+      name: 'Admin',
+      permissions: [{ id: 5, name: 'view-user' }],
+    });
+  });
+
   it('throws when tenant password is invalid', async () => {
     const req = createReq({
       id: 10,

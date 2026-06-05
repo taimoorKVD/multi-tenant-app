@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   Req,
   UnauthorizedException,
@@ -20,12 +21,15 @@ import { ApiTags, ApiParam } from '@nestjs/swagger';
 import {
   TenantAuthEmailVerificationDocs,
   TenantAuthForgotPasswordDocs,
+  TenantAuthGetUserDocs,
   TenantAuthLoginDocs,
+  TenantAuthLogoutDocs,
   TenantAuthRefreshTokenDocs,
   TenantAuthResetPasswordDocs,
   TenantAuthVerifyResetTokenDocs,
 } from './swagger/auth.swagger';
 import { createRateLimitGuard } from '../../common/guards/rate-limit.guard';
+import { TenantAuthGuard } from './guards';
 
 const TenantSensitiveRateLimitGuard = createRateLimitGuard(5, 15 * 60 * 1000);
 
@@ -129,5 +133,37 @@ export class TenantAuthController {
   @TenantAuthRefreshTokenDocs()
   async refreshToken(@Req() req, @Body() dto: RefreshTokenDto) {
     return this.authService.refreshToken(req, dto);
+  }
+
+  @Get('me')
+  @Get('tenant/me')
+  @Get('tenant/:tenantId/me')
+  @Get(':tenantId/me')
+  @UseGuards(TenantAuthGuard)
+  @TenantAuthGetUserDocs()
+  async me(@Req() req) {
+    const user = req.user as { sub?: number; id?: number };
+    const userId = user?.sub ?? user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid session.');
+    }
+
+    return this.authService.getProfile(req, userId);
+  }
+
+  @Post('logout')
+  @Post('tenant/logout')
+  @Post('tenant/:tenantId/logout')
+  @Post(':tenantId/logout')
+  @UseGuards(TenantAuthGuard)
+  @TenantAuthLogoutDocs()
+  async logout(@Req() req, @Body() dto: RefreshTokenDto) {
+    const user = req.user as { sub?: number; id?: number };
+    const userId = user?.sub ?? user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid session.');
+    }
+
+    return this.authService.logout(req, userId, dto);
   }
 }
