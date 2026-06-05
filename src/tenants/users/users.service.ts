@@ -589,6 +589,7 @@ export class UsersService extends TenantAbstractService<User> {
       roleId?: number;
       jobPositionId?: number;
       locationId?: number;
+      dynamicFilters?: Record<string, any>;
     },
   ): Promise<any> {
     try {
@@ -602,8 +603,23 @@ export class UsersService extends TenantAbstractService<User> {
       const roleId = filters?.roleId;
       const jobPositionId = filters?.jobPositionId;
       const locationId = filters?.locationId;
+      const dynamicFilters = Object.entries(filters?.dynamicFilters || {}).reduce(
+        (acc, [key, value]) => {
+          const normalizedKey = String(key || '').trim();
+          if (!normalizedKey) return acc;
+
+          const normalizedValue =
+            typeof value === 'string' ? value.trim() : value === undefined || value === null ? '' : String(value);
+
+          if (!normalizedValue) return acc;
+
+          acc[normalizedKey] = normalizedValue;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
       const hasFilters = Boolean(
-        name || email || username || phoneNumber || roleId || jobPositionId || locationId,
+        name || email || username || phoneNumber || roleId || jobPositionId || locationId || Object.keys(dynamicFilters).length,
       );
 
       if (!hasFilters) {
@@ -630,10 +646,59 @@ export class UsersService extends TenantAbstractService<User> {
       if (jobPositionId) qb.andWhere('jobPosition.id = :jobPositionId', { jobPositionId });
       if (locationId) qb.andWhere('location.id = :locationId', { locationId });
 
+      const context = await this.getUsersSchemaContext(req);
+      if (Object.keys(dynamicFilters).length) {
+        if (!context.moduleId) {
+          return {
+            success: true,
+            tenant: req.tenantConnection.options.database,
+            count: 0,
+            data: [],
+          };
+        }
+
+        const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
+        const dynamicQb = dynamicRepo
+          .createQueryBuilder('dynamic')
+          .select('dynamic.entityId', 'entityId')
+          .where('dynamic.moduleId = :moduleId', { moduleId: context.moduleId });
+
+        let idx = 0;
+        for (const [key, value] of Object.entries(dynamicFilters)) {
+          if (!/^[a-zA-Z0-9_\-]+$/.test(key)) {
+            continue;
+          }
+
+          dynamicQb.andWhere(
+            `LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${idx}), '')) LIKE :pathValue${idx}`,
+            {
+              [`pathKey${idx}`]: key,
+              [`pathValue${idx}`]: `%${value.toLowerCase()}%`,
+            },
+          );
+          idx += 1;
+        }
+
+        const matched = await dynamicQb.getRawMany<{ entityId: string }>();
+        const matchedIds = matched
+          .map((row) => Number(row.entityId))
+          .filter((id) => Number.isFinite(id));
+
+        if (!matchedIds.length) {
+          return {
+            success: true,
+            tenant: req.tenantConnection.options.database,
+            count: 0,
+            data: [],
+          };
+        }
+
+        qb.andWhere('user.id IN (:...dynamicIds)', { dynamicIds: matchedIds });
+      }
+
       qb.orderBy('user.id', 'DESC').take(take);
 
       const users = await qb.getMany();
-      const context = await this.getUsersSchemaContext(req);
       const dynamicRows = await this.loadUserDynamicRows(req, context.moduleId, users.map((user) => user.id));
 
       const data = users.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {}));
