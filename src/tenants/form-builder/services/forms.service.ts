@@ -366,6 +366,7 @@ export class FormsService {
         name: 'role_id',
         type: 'dropdown',
         isEditable: true,
+        isShow: false,
         optionSource: {
           type: 'api',
           request: {
@@ -445,7 +446,7 @@ export class FormsService {
         layoutConfig: {
           grid_width_desktop: 6,
           grid_width_mobile: 12,
-          isShow: true,
+          isShow: item.isShow ?? true,
           ...(item.optionSource ? { optionSource: item.optionSource } : {}),
         },
         ...(item.key === 'availability_days'
