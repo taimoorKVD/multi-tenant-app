@@ -8,6 +8,7 @@ import {
   MasterAuthForgotPasswordDocs,
   MasterAuthGetUserDocs,
   MasterAuthLoginDocs,
+  MasterAuthLogoutDocs,
   MasterAuthRefreshTokenDocs,
   MasterAuthResetPasswordDocs,
   MasterAuthVerifyResetTokenDocs,
@@ -72,10 +73,19 @@ export class MasterAuthController {
   }
 
   @UseGuards(MasterAuthGuard)
+  @Get('me')
   @Get('auth/user')
   @MasterAuthGetUserDocs()
   async getUser(@Req() req: Request) {
     const user = req.user as { id: number; email: string; role: string };
     return this.authService.getProfile(user.id);
+  }
+
+  @UseGuards(MasterAuthGuard)
+  @Post('logout')
+  @MasterAuthLogoutDocs()
+  async logout(@Body() dto: RefreshTokenDto, @Req() req: Request) {
+    const user = req.user as { id: number; email: string; role: string };
+    return this.authService.logout(user.id, dto);
   }
 }

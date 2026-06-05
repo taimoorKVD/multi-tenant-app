@@ -290,3 +290,31 @@ export const MasterAuthRefreshTokenDocs = () =>
             description: 'Refresh token is invalid or expired.',
         }),
     );
+
+export const MasterAuthLogoutDocs = () =>
+    applyDecorators(
+        ApiBearerAuth('access-token'),
+        ApiOperation({
+            summary: 'Logout master session',
+            description:
+                'Revokes the supplied refresh token for the authenticated master user. The current access token remains valid until it expires.',
+        }),
+        ApiBody({
+            type: RefreshTokenDto,
+            description: 'Refresh token to revoke.',
+        } as any),
+        ApiResponse({
+            status: 200,
+            description: 'Logged out successfully.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Logged out successfully.',
+                },
+            },
+        }),
+        ApiResponse({
+            status: 401,
+            description: 'Unauthorized or invalid refresh token.',
+        }),
+    );

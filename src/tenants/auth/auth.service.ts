@@ -210,6 +210,21 @@ export class TenantAuthService {
       .execute();
   }
 
+  private async revokeRefreshToken(
+    tenantConnection: DataSource,
+    userId: number,
+    refreshToken: string,
+  ): Promise<void> {
+    await this.getRefreshTokenRepo(tenantConnection)
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ revokedAt: new Date() })
+      .where('user_id = :userId', { userId })
+      .andWhere('token_hash = :tokenHash', { tokenHash: this.buildTokenHash(refreshToken) })
+      .andWhere('revoked_at IS NULL')
+      .execute();
+  }
+
   private async persistRefreshToken(
     tenantConnection: DataSource,
     user: User,
@@ -712,6 +727,10 @@ export class TenantAuthService {
       throw new UnauthorizedException('Invalid refresh token.');
     }
 
+    if (storedToken.revokedAt) {
+      throw new UnauthorizedException('Refresh token has been revoked.');
+    }
+
     if (storedToken.expiresAt.getTime() <= Date.now()) {
       await this.clearRefreshTokens(tenantConnection, payload.sub);
       throw new UnauthorizedException('Refresh token expired.');
@@ -742,6 +761,80 @@ export class TenantAuthService {
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
       ...tokens,
+    };
+  }
+
+  async getProfile(req: any, userId: number) {
+    const tenantConnection: DataSource = req.tenantConnection;
+    if (!tenantConnection) {
+      throw new BadRequestException('Missing tenant connection');
+    }
+
+    const user = await tenantConnection.getRepository(User).findOne({
+      where: { id: userId },
+      relations: ['role', 'role.permissions', 'jobPosition', 'location'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+
+    return {
+      success: true,
+      message: 'Session is active.',
+      tenant_slug: req.tenantId || null,
+      tenant: tenantConnection.options.database,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone_number: user.phoneNumber,
+        address: user.address,
+        username: user.username,
+        email_verified: emailVerified,
+        role: user.role
+          ? {
+              id: user.role.id,
+              name: user.role.name,
+              permissions: user.role.permissions ?? [],
+            }
+          : null,
+        job_position: user.jobPosition,
+        location: user.location,
+        availability_days: user.availabilityDays ?? [],
+        is_system: user.isSystem,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    };
+  }
+
+  async logout(req: any, userId: number, dto: RefreshTokenDto) {
+    const tenantConnection: DataSource = req.tenantConnection;
+    if (!tenantConnection) {
+      throw new BadRequestException('Missing tenant connection');
+    }
+
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(dto.refresh_token, {
+        secret: this.getRefreshTokenSecret(),
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
+    if (!payload?.sub || payload.type !== 'refresh' || Number(payload.sub) !== Number(userId)) {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
+    await this.revokeRefreshToken(tenantConnection, userId, dto.refresh_token);
+
+    return {
+      success: true,
+      message: 'Logged out successfully.',
     };
   }
 }
