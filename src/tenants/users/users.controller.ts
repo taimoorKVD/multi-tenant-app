@@ -37,25 +37,58 @@ export class UsersController {
   @TenantAccess('view-user')
   @Get('search')
   @TenantUsersSwagger.Search()
-  search(
-    @Req() req,
-    @Query('name') name?: string,
-    @Query('email') email?: string,
-    @Query('username') username?: string,
-    @Query('phone_number') phoneNumber?: string,
-    @Query('role_id') roleId?: string,
-    @Query('job_position_id') jobPositionId?: string,
-    @Query('location_id') locationId?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.usersService.search(req, limit ? Number(limit) : undefined, {
+  search(@Req() req, @Query() query: Record<string, any>) {
+    const name = typeof query?.name === 'string' ? query.name : undefined;
+    const email = typeof query?.email === 'string' ? query.email : undefined;
+    const username = typeof query?.username === 'string' ? query.username : undefined;
+    const phoneNumber = typeof query?.phone_number === 'string' ? query.phone_number : undefined;
+    const roleId = query?.role_id !== undefined ? Number(query.role_id) : undefined;
+    const jobPositionId =
+      query?.job_position_id !== undefined ? Number(query.job_position_id) : undefined;
+    const locationId = query?.location_id !== undefined ? Number(query.location_id) : undefined;
+    const limit = query?.limit !== undefined ? Number(query.limit) : undefined;
+
+    const reservedKeys = new Set([
+      'name',
+      'email',
+      'username',
+      'phone_number',
+      'role_id',
+      'job_position_id',
+      'location_id',
+      'limit',
+      'custom',
+    ]);
+
+    const dynamicFiltersFromTopLevel = Object.fromEntries(
+      Object.entries(query || {}).filter(([key, value]) => {
+        if (reservedKeys.has(key)) return false;
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string') return value.trim() !== '';
+        return true;
+      }),
+    );
+
+    const rawCustom = query?.custom;
+    const dynamicFiltersFromCustomObject =
+      rawCustom && typeof rawCustom === 'object' && !Array.isArray(rawCustom)
+        ? rawCustom
+        : {};
+
+    const dynamicFilters = {
+      ...dynamicFiltersFromTopLevel,
+      ...dynamicFiltersFromCustomObject,
+    };
+
+    return this.usersService.search(req, Number.isFinite(limit) ? limit : undefined, {
       name,
       email,
       username,
       phoneNumber,
-      roleId: roleId ? Number(roleId) : undefined,
-      jobPositionId: jobPositionId ? Number(jobPositionId) : undefined,
-      locationId: locationId ? Number(locationId) : undefined,
+      roleId: Number.isFinite(roleId) ? roleId : undefined,
+      jobPositionId: Number.isFinite(jobPositionId) ? jobPositionId : undefined,
+      locationId: Number.isFinite(locationId) ? locationId : undefined,
+      dynamicFilters,
     });
   }
 

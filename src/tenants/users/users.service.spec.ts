@@ -291,4 +291,86 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.emergency_contact).toBe('+1 999 111');
     expect(result.data.phone_number).toBe('+1 555 000');
   });
+
+  it('search filters users by dynamic custom fields from entity_dynamic_data', async () => {
+    const { moduleRepo, formRepo, fieldRepo, versionRepo } = buildSchemaRepos();
+
+    const qb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([
+        {
+          id: 101,
+          name: 'John Doe',
+          email: 'john@acme.com',
+          phoneNumber: null,
+          address: null,
+          username: 'john',
+          plainPassword: 'Secret123!',
+          password: 'hash',
+          role: { id: 1, name: 'Admin' },
+          jobPosition: null,
+          location: null,
+          availabilityDays: null,
+          isSystem: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]),
+    };
+
+    const dynamicFilterQb: any = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([{ entityId: '101' }]),
+    };
+
+    const userRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    };
+
+    const dynamicRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(dynamicFilterQb),
+      find: jest.fn().mockResolvedValue([
+        {
+          moduleId: 10,
+          entityId: 101,
+          data: { department: 'Operations', employee_code: 'EMP-001' },
+        },
+      ]),
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormField, fieldRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.search(req, 20, {
+      dynamicFilters: { department: 'Operations' },
+    });
+
+    expect(dynamicRepo.createQueryBuilder).toHaveBeenCalledWith('dynamic');
+    expect(dynamicFilterQb.andWhere).toHaveBeenCalled();
+    expect(qb.andWhere).toHaveBeenCalledWith('user.id IN (:...dynamicIds)', { dynamicIds: [101] });
+    expect(result.success).toBe(true);
+    expect(result.count).toBe(1);
+    expect(result.data[0].department).toBe('Operations');
+  });
 });

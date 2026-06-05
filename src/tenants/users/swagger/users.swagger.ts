@@ -103,7 +103,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Search existing tenant users',
         description:
-          'Filters tenant users using field-by-field filters such as name, email, username, phone, role, job position, and location.',
+          'Filters tenant users using base filters (name, email, username, phone, role, job position, location) and dynamic filters from form-builder custom fields. Preferred format: ?custom[department]=Operations&custom[employee_code]=EMP-001. Backward-compatible top-level custom keys are also supported.',
       }),
       ApiQuery({
         name: 'name',
@@ -154,13 +154,29 @@ export const TenantUsersSwagger = {
         example: 3,
         description: 'Filter by location ID.',
       }),
-        ApiQuery({
-          name: 'limit',
-          required: false,
-          type: Number,
-          example: 15,
-          description: 'Maximum number of records to return (1-50). Default is 15.',
-        }),
+      ApiQuery({
+        name: 'custom',
+        required: false,
+        style: 'deepObject',
+        explode: true,
+        schema: {
+          type: 'object',
+          additionalProperties: { type: 'string' },
+          example: {
+            department: 'Operations',
+            employee_code: 'EMP-001',
+          },
+        },
+        description:
+          'Dynamic custom-field filters from form builder. Example query: custom[department]=Operations&custom[employee_code]=EMP-001',
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: Number,
+        example: 15,
+        description: 'Maximum number of records to return (1-50). Default is 15.',
+      }),
       ApiResponse({
         status: 200,
         description: 'Matching tenant users fetched successfully.',
@@ -179,6 +195,8 @@ export const TenantUsersSwagger = {
                 role: { id: 1, name: 'Manager' },
                 job_position: { id: 2, name: 'Shift Manager' },
                 location: { id: 3, name: 'Downtown Branch' },
+                department: 'Operations',
+                employee_code: 'EMP-001',
               },
             ],
           },
