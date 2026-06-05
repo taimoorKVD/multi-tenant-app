@@ -826,7 +826,6 @@ export class TenantsService {
           isRequired: ['name', 'email', 'password', 'role_id'].includes(item.key),
           isUnique: ['email', 'username'].includes(item.key),
           isReadonly: !item.isEditable,
-          isSystemDefault: true,
           isSystemField: true,
           systemMappingKey: item.key,
           isDeletable: false,
@@ -835,6 +834,7 @@ export class TenantsService {
           layoutConfig: {
             grid_width_desktop: 6,
             grid_width_mobile: 12,
+            isShow: true,
             ...(item.optionSource ? { optionSource: item.optionSource } : {}),
           },
           ...(item.key === 'availability_days'

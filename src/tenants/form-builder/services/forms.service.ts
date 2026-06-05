@@ -126,11 +126,14 @@ export class FormsService {
         isRequired: field.isRequired,
         isUnique: field.isUnique,
         isReadonly: field.isReadonly,
-        isSystemDefault: field.isSystemDefault,
         isSystemField: field.isSystemField,
-        systemMappingKey: field.systemMappingKey,
+        systemMappingKey: field.isSystemField ? field.systemMappingKey : null,
         isDeletable: field.isDeletable,
         isEditable: field.isEditable,
+        isShow:
+          field.layoutConfig && typeof field.layoutConfig === 'object'
+            ? field.layoutConfig.isShow ?? true
+            : true,
         sortOrder: field.sortOrder,
         layoutConfig: field.layoutConfig,
         optionSource:
@@ -174,6 +177,20 @@ export class FormsService {
         if (/^field[_]?type[_]?id$/i.test(key)) {
           delete rest[key];
         }
+      }
+
+      delete rest.isSystemDefault;
+
+      if (!Object.prototype.hasOwnProperty.call(rest, 'isSystemField')) {
+        rest.isSystemField = false;
+      }
+
+      if (!rest.isSystemField) {
+        rest.systemMappingKey = null;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(rest, 'isShow')) {
+        rest.isShow = true;
       }
       return rest;
     });
@@ -420,7 +437,6 @@ export class FormsService {
         isRequired: ['name', 'email', 'password', 'role_id'].includes(item.key),
         isUnique: ['email', 'username'].includes(item.key),
         isReadonly: !item.isEditable,
-        isSystemDefault: true,
         isSystemField: true,
         systemMappingKey: item.key,
         isDeletable: false,
@@ -429,6 +445,7 @@ export class FormsService {
         layoutConfig: {
           grid_width_desktop: 6,
           grid_width_mobile: 12,
+          isShow: true,
           ...(item.optionSource ? { optionSource: item.optionSource } : {}),
         },
         ...(item.key === 'availability_days'
