@@ -657,6 +657,9 @@ export class FormsService {
     this.assertSchemaPayload(dto.schema);
     const sanitizedSchema = this.sanitizeSchemaSnapshot(dto.schema);
 
+    const oldSchema = this.normalizeSchemaSnapshot(entity as Form & { module?: DynamicModule | null }, entity.autosaveSchema);
+    const oldStatus = entity.status;
+
     entity.autosaveSchema = sanitizedSchema;
     const shouldSaveAsDraft = dto.markAsDraft === true;
     entity.status = shouldSaveAsDraft ? FormStatus.DRAFT : FormStatus.PUBLISHED;
@@ -668,9 +671,17 @@ export class FormsService {
       entityType: 'form',
       entityId: entity.id,
       action: 'save_schema',
+      oldValue: {
+        form: {
+          status: oldStatus,
+        },
+        schema: oldSchema,
+      },
       newValue: {
-        fieldsCount: Array.isArray(sanitizedSchema?.fields) ? sanitizedSchema.fields.length : 0,
-        sectionsCount: Array.isArray(sanitizedSchema?.sections) ? sanitizedSchema.sections.length : 0,
+        form: {
+          status: entity.status,
+        },
+        schema: sanitizedSchema,
       },
       createdBy: this.getActorId(req, dto.updatedBy || null),
     });
