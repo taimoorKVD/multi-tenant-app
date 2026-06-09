@@ -11,14 +11,14 @@ import {
 import { Match } from '../../../common/decorators';
 
 export class CreateUserDto {
-  @IsString()
-  @IsNotEmpty({ message: 'Name is required.' })
+  @IsOptional()
+  @IsString({ message: 'Name must be a string.' })
   @MaxLength(100, { message: 'Name must not exceed 100 characters.' })
-  name: string;
+  name?: string;
 
+  @IsOptional()
   @IsEmail({}, { message: 'Invalid email address.' })
-  @IsNotEmpty({ message: 'Email is required.' })
-  email: string;
+  email?: string;
 
   @IsOptional()
   @IsString({ message: 'Phone number must be a string.' })
@@ -35,19 +35,20 @@ export class CreateUserDto {
   @MaxLength(100, { message: 'Username must not exceed 100 characters.' })
   username?: string;
 
-  @IsString()
-  @IsNotEmpty({ message: 'Password is required.' })
+  @IsOptional()
+  @IsString({ message: 'Password must be a string.' })
   @MinLength(6, { message: 'Password must be at least 6 characters long.' })
   @MaxLength(50, { message: 'Password must not exceed 50 characters.' })
-  password: string;
+  password?: string;
 
-  @IsString()
-  @IsNotEmpty({ message: 'Confirm password is required.' })
+  @IsOptional()
+  @IsString({ message: 'Confirm password must be a string.' })
   @Match('password', { message: 'Passwords do not match.' })
-  password_confirm: string;
+  password_confirm?: string;
 
+  @IsOptional()
   @IsNumber({}, { message: 'Role ID must be numeric if provided.' })
-  role_id: number;
+  role_id?: number;
 
   @IsOptional()
   @IsNumber({}, { message: 'Job position ID must be numeric if provided.' })
