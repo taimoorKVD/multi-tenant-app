@@ -14,14 +14,14 @@ export const TenantFormBuilderVersionsSwagger = {
   FindAll: () =>
     applyDecorators(
       ApiOperation({ summary: 'List form versions' }),
-      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiParam({ name: 'moduleSlug', type: String, example: 'users' }),
       ApiResponse({ status: 200, description: 'Versions returned successfully.' }),
     ),
 
   FindOne: () =>
     applyDecorators(
       ApiOperation({ summary: 'Get form version by version number' }),
-      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiParam({ name: 'moduleSlug', type: String, example: 'users' }),
       ApiParam({ name: 'version', type: Number, example: 2 }),
       ApiResponse({ status: 200, description: 'Version returned successfully.' }),
       ApiResponse({ status: 404, description: 'Version not found.' }),
@@ -30,7 +30,7 @@ export const TenantFormBuilderVersionsSwagger = {
   Restore: () =>
     applyDecorators(
       ApiOperation({ summary: 'Restore form from version snapshot transactionally' }),
-      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiParam({ name: 'moduleSlug', type: String, example: 'users' }),
       ApiParam({ name: 'version', type: Number, example: 2 }),
       ApiResponse({ status: 200, description: 'Version restored successfully.' }),
       ApiResponse({ status: 404, description: 'Version not found.' }),
