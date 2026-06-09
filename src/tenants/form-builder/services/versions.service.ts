@@ -23,35 +23,43 @@ export class VersionsService {
     return Number.isFinite(actorId) ? actorId : null;
   }
 
-  async findAll(req: any, formId: number) {
+  async findAll(req: any, moduleSlug: string) {
+    const formRepo = req.tenantConnection.getRepository(Form);
+    const form = await formRepo.findOne({ where: { module: { slug: moduleSlug } }, relations: ['module'] });
+    if (!form) throw new NotFoundException('Form not found');
+
     const repo = req.tenantConnection.getRepository(FormVersion);
     const data = await repo.find({
-      where: { formId },
+      where: { formId: form.id },
       order: { versionNumber: 'DESC' },
     });
     return { success: true, count: data.length, data };
   }
 
-  async findOne(req: any, formId: number, version: number) {
+  async findOne(req: any, moduleSlug: string, version: number) {
+    const formRepo = req.tenantConnection.getRepository(Form);
+    const form = await formRepo.findOne({ where: { module: { slug: moduleSlug } }, relations: ['module'] });
+    if (!form) throw new NotFoundException('Form not found');
+
     const repo = req.tenantConnection.getRepository(FormVersion);
     const data = await repo.findOne({
-      where: { formId, versionNumber: version },
+      where: { formId: form.id, versionNumber: version },
     });
     if (!data) throw new NotFoundException('Version not found');
 
     return { success: true, data };
   }
 
-  async restore(req: any, formId: number, version: number, updatedBy?: number) {
+  async restore(req: any, moduleSlug: string, version: number, updatedBy?: number) {
     await req.tenantConnection.manager.transaction(async (manager) => {
       const formRepo = manager.getRepository(Form);
       const versionRepo = manager.getRepository(FormVersion);
 
-      const form = await formRepo.findOne({ where: { id: formId } });
+      const form = await formRepo.findOne({ where: { module: { slug: moduleSlug } }, relations: ['module'] });
       if (!form) throw new NotFoundException('Form not found');
 
       const targetVersion = await versionRepo.findOne({
-        where: { formId, versionNumber: version },
+        where: { formId: form.id, versionNumber: version },
       });
       if (!targetVersion) throw new NotFoundException('Target version not found');
 
@@ -64,7 +72,7 @@ export class VersionsService {
       await formRepo.save(form);
 
       await versionRepo.update(
-        { formId, isActive: true },
+        { formId: form.id, isActive: true },
         { isActive: false, updatedBy: actor },
       );
       targetVersion.isActive = true;
