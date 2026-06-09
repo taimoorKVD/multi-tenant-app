@@ -11,11 +11,11 @@ export class SaveSchemaDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'If true, force form status to draft after save.',
+    description: 'If true, force form status to draft after save. Omit or set false to publish the form on save.',
   })
   @IsOptional()
   @IsBoolean()
-  markAsDraft?: boolean;
+  markAsDraft?: boolean = false;
 
   @ApiPropertyOptional({ example: 1, description: 'Actor user id.' })
   @IsOptional()

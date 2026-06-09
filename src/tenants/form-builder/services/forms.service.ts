@@ -658,9 +658,8 @@ export class FormsService {
     const sanitizedSchema = this.sanitizeSchemaSnapshot(dto.schema);
 
     entity.autosaveSchema = sanitizedSchema;
-    if (dto.markAsDraft !== false) {
-      entity.status = FormStatus.DRAFT;
-    }
+    const shouldSaveAsDraft = dto.markAsDraft === true;
+    entity.status = shouldSaveAsDraft ? FormStatus.DRAFT : FormStatus.PUBLISHED;
     entity.updatedBy = this.getActorId(req, dto.updatedBy || null);
 
     const data = await repo.save(entity);
@@ -676,10 +675,19 @@ export class FormsService {
       createdBy: this.getActorId(req, dto.updatedBy || null),
     });
 
+    if (!shouldSaveAsDraft) {
+      await this.publish(req, id, dto.updatedBy ?? undefined);
+    }
+
+    const updatedForm = await repo.findOne({ where: { id }, relations: ['module'] });
+
     return {
       success: true,
       message: 'Form schema saved successfully',
-      data: this.normalizeSchemaSnapshot(data as Form & { module?: DynamicModule | null }, data.autosaveSchema),
+      data: this.normalizeSchemaSnapshot(
+        updatedForm as Form & { module?: DynamicModule | null },
+        sanitizedSchema,
+      ),
     };
   }
 
