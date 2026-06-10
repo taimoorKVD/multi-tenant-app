@@ -41,6 +41,7 @@ export class UsersController {
     const name = typeof query?.name === 'string' ? query.name : undefined;
     const email = typeof query?.email === 'string' ? query.email : undefined;
     const username = typeof query?.username === 'string' ? query.username : undefined;
+    const address = typeof query?.address === 'string' ? query.address : undefined;
     const phoneNumber = typeof query?.phone_number === 'string' ? query.phone_number : undefined;
     const roleId = query?.role_id !== undefined ? Number(query.role_id) : undefined;
     const jobPositionId =
@@ -52,6 +53,7 @@ export class UsersController {
       'name',
       'email',
       'username',
+      'address',
       'phone_number',
       'role_id',
       'job_position_id',
@@ -84,6 +86,7 @@ export class UsersController {
       name,
       email,
       username,
+      address,
       phoneNumber,
       roleId: Number.isFinite(roleId) ? roleId : undefined,
       jobPositionId: Number.isFinite(jobPositionId) ? jobPositionId : undefined,

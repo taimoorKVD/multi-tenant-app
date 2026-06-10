@@ -373,4 +373,49 @@ describe('UsersService dynamic fields', () => {
     expect(result.count).toBe(1);
     expect(result.data[0].department).toBe('Operations');
   });
+
+  it('search filters users by address text', async () => {
+    const { moduleRepo, formRepo, fieldRepo, versionRepo } = buildSchemaRepos();
+
+    const qb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const userRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    };
+
+    const dynamicRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormField, fieldRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    await service.search(req, 20, {
+      address: 'Elm',
+    });
+
+    expect(qb.andWhere).toHaveBeenCalledWith('user.address ILIKE :address', { address: '%Elm%' });
+  });
 });
