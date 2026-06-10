@@ -824,7 +824,7 @@ export class TenantsService {
           name: item.name,
           placeholder: 'Placeholder text',
           helpText: null,
-          isRequired: ['name', 'email', 'password', 'role_id'].includes(item.key),
+          isRequired: false,
           isUnique: ['email', 'username'].includes(item.key),
           isReadonly: !item.isEditable,
           isSystemField: true,
