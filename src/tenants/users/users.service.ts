@@ -585,6 +585,7 @@ export class UsersService extends TenantAbstractService<User> {
       name?: string;
       email?: string;
       username?: string;
+      address?: string;
       phoneNumber?: string;
       roleId?: number;
       jobPositionId?: number;
@@ -599,6 +600,7 @@ export class UsersService extends TenantAbstractService<User> {
       const name = filters?.name?.trim();
       const email = filters?.email?.trim();
       const username = filters?.username?.trim();
+      const address = filters?.address?.trim();
       const phoneNumber = filters?.phoneNumber?.trim();
       const roleId = filters?.roleId;
       const jobPositionId = filters?.jobPositionId;
@@ -619,7 +621,7 @@ export class UsersService extends TenantAbstractService<User> {
         {} as Record<string, string>,
       );
       const hasFilters = Boolean(
-        name || email || username || phoneNumber || roleId || jobPositionId || locationId || Object.keys(dynamicFilters).length,
+        name || email || username || address || phoneNumber || roleId || jobPositionId || locationId || Object.keys(dynamicFilters).length,
       );
 
       if (!hasFilters) {
@@ -641,6 +643,7 @@ export class UsersService extends TenantAbstractService<User> {
       if (name) qb.andWhere('user.name ILIKE :name', { name: `%${name}%` });
       if (email) qb.andWhere('user.email ILIKE :email', { email: `%${email}%` });
       if (username) qb.andWhere('user.username ILIKE :username', { username: `%${username}%` });
+      if (address) qb.andWhere('user.address ILIKE :address', { address: `%${address}%` });
       if (phoneNumber) qb.andWhere('user.phone_number ILIKE :phoneNumber', { phoneNumber: `%${phoneNumber}%` });
       if (roleId) qb.andWhere('role.id = :roleId', { roleId });
       if (jobPositionId) qb.andWhere('jobPosition.id = :jobPositionId', { jobPositionId });

@@ -127,6 +127,13 @@ export const TenantUsersSwagger = {
         description: 'Filter by username.',
       }),
       ApiQuery({
+        name: 'address',
+        required: false,
+        type: String,
+        example: '123 Elm Street',
+        description: 'Filter by user address.',
+      }),
+      ApiQuery({
         name: 'phone_number',
         required: false,
         type: String,
