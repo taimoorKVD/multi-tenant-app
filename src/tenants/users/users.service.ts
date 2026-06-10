@@ -83,7 +83,7 @@ export class UsersService extends TenantAbstractService<User> {
         formId: null,
         activeVersionId: null,
         systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
-        requiredFieldKeys: new Set(['name', 'email', 'password', 'role_id']),
+        requiredFieldKeys: new Set(),
       };
     }
 
@@ -98,7 +98,7 @@ export class UsersService extends TenantAbstractService<User> {
         formId: null,
         activeVersionId: null,
         systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
-        requiredFieldKeys: new Set(['name', 'email', 'password', 'role_id']),
+        requiredFieldKeys: new Set(),
       };
     }
 
