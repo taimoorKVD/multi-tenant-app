@@ -20,6 +20,7 @@ import {IAdminSetup, ITenantResponse} from './interfaces';
 import {Permission} from '../../tenants/permission/entities';
 import {ApiResponse} from '../../common/abstract';
 import {FieldTypesService} from '../../tenants/form-builder/services';
+import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../../tenants/form-builder/config/module-seeds';
 import {
   DynamicModule,
   FieldType,
@@ -659,12 +660,9 @@ export class TenantsService {
     const fieldRepo = connection.getRepository(FormField);
     const fieldTypeRepo = connection.getRepository(FieldType);
 
-    const modules = [
-      { slug: 'users', name: 'Users' },
-      { slug: 'items', name: 'Items' },
-      { slug: 'vendors', name: 'Vendors' },
-      { slug: 'job-positions', name: 'Job Positions' },
-    ];
+    const modules = FORM_BUILDER_MODULE_SEEDS;
+    const fieldTypes = await fieldTypeRepo.find();
+    const typeByName = new Map<string, FieldType>(fieldTypes.map((fieldType) => [fieldType.name, fieldType]));
 
     for (const moduleSeed of modules) {
       let moduleEntity = await moduleRepo.findOne({ where: { slug: moduleSeed.slug }, withDeleted: true });
@@ -708,7 +706,7 @@ export class TenantsService {
         form = await formRepo.save(form);
       }
 
-      if (moduleSeed.slug !== 'users') {
+      if (!moduleSeed.defaultFields?.length) {
         continue;
       }
 
@@ -717,78 +715,7 @@ export class TenantsService {
         continue;
       }
 
-      const fieldTypes = await fieldTypeRepo.find();
-      const typeByName = new Map<string, FieldType>(fieldTypes.map((fieldType) => [fieldType.name, fieldType]));
-
-      const systemFields = [
-        { key: 'name', label: 'Name', name: 'name', type: 'text', isEditable: true },
-        { key: 'email', label: 'Email', name: 'email', type: 'email', isEditable: true },
-        { key: 'phone_number', label: 'Phone Number', name: 'phone_number', type: 'phone', isEditable: true },
-        { key: 'address', label: 'Address', name: 'address', type: 'address_fields', isEditable: true },
-        { key: 'username', label: 'Username', name: 'username', type: 'text', isEditable: true },
-        { key: 'password', label: 'Password', name: 'password', type: 'password', isEditable: true },
-        {
-          key: 'role_id',
-          label: 'Role',
-          name: 'role_id',
-          type: 'dropdown',
-          isEditable: true,
-          isShow: false,
-          optionSource: {
-            type: 'api',
-            request: {
-              method: 'GET',
-              endpoint: '/api/roles',
-            },
-            response: {
-              dataPath: 'data',
-              labelKey: 'name',
-              valueKey: 'id',
-            },
-          },
-        },
-        {
-          key: 'job_position_id',
-          label: 'Job Position',
-          name: 'job_position_id',
-          type: 'dropdown',
-          isEditable: true,
-          optionSource: {
-            type: 'api',
-            request: {
-              method: 'GET',
-              endpoint: '/api/job-positions',
-            },
-            response: {
-              dataPath: 'data',
-              labelKey: 'name',
-              valueKey: 'id',
-            },
-          },
-        },
-        {
-          key: 'location_id',
-          label: 'Location',
-          name: 'location_id',
-          type: 'dropdown',
-          isEditable: true,
-          optionSource: {
-            type: 'api',
-            request: {
-              method: 'GET',
-              endpoint: '/api/locations',
-            },
-            response: {
-              dataPath: 'data',
-              labelKey: 'name',
-              valueKey: 'id',
-            },
-          },
-        },
-        { key: 'availability_days', label: 'Availability Days', name: 'availability_days', type: 'checkbox', isEditable: true },
-      ];
-
-      const fields = systemFields.map((item, index) => {
+      const fields = moduleSeed.defaultFields.map((item, index) => {
         const fieldType = typeByName.get(item.type);
         if (!fieldType) {
           throw new InternalServerErrorException(`Missing field type during tenant bootstrap: ${item.type}`);
@@ -800,15 +727,15 @@ export class TenantsService {
           fieldKey: item.key,
           label: item.label,
           name: item.name,
-          placeholder: 'Placeholder text',
-          helpText: null,
-          isRequired: false,
-          isUnique: ['email', 'username'].includes(item.key),
-          isReadonly: !item.isEditable,
-          isSystemField: true,
-          systemMappingKey: item.key,
+          placeholder: item.placeholder ?? 'Placeholder text',
+          helpText: item.helpText ?? null,
+          isRequired: item.isRequired ?? false,
+          isUnique: item.isUnique ?? false,
+          isReadonly: !(item.isEditable ?? true),
+          isSystemField: item.isSystemField ?? false,
+          systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
           isDeletable: false,
-          isEditable: item.isEditable,
+          isEditable: item.isEditable ?? true,
           sortOrder: index,
           layoutConfig: {
             grid_width_desktop: 6,
@@ -816,20 +743,12 @@ export class TenantsService {
             isShow: item.isShow ?? true,
             ...(item.optionSource ? { optionSource: item.optionSource } : {}),
           },
-          ...(item.key === 'availability_days'
+          ...(item.options?.length
             ? {
-                options: [
-                  'Monday',
-                  'Tuesday',
-                  'Wednesday',
-                  'Thursday',
-                  'Friday',
-                  'Saturday',
-                  'Sunday',
-                ].map((day, sortOrder) => ({
-                  label: day,
-                  value: day.toLowerCase(),
-                  isDefault: false,
+                options: item.options.map((option, sortOrder) => ({
+                  label: option.label,
+                  value: option.value,
+                  isDefault: option.isDefault ?? false,
                   sortOrder,
                   createdBy: actorId,
                   updatedBy: actorId,

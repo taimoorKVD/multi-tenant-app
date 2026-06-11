@@ -3,22 +3,13 @@ import { getTenantDataSource, MasterDataSource } from '../datasource';
 import { ISeeder } from '../interfaces/seeder.interface';
 import { Tenant } from '../../master/tenants/entities';
 import { DynamicModule } from '../../tenants/form-builder/entities';
+import { FORM_BUILDER_MODULE_SEEDS } from '../../tenants/form-builder/config/module-seeds';
 import { User } from '../../tenants/users/entities';
-
-type ModuleSeed = {
-  slug: string;
-  name: string;
-};
 
 export class FormBuilderModulesSeeder implements ISeeder {
   name = 'FormBuilderModulesSeeder';
 
-  private readonly defaultModules: ModuleSeed[] = [
-    { slug: 'users', name: 'Users' },
-    { slug: 'items', name: 'Items' },
-    { slug: 'vendors', name: 'Vendors' },
-    { slug: 'job-positions', name: 'Job Positions' },
-  ];
+  private readonly defaultModules = FORM_BUILDER_MODULE_SEEDS.map(({ slug, name }) => ({ slug, name }));
 
   private async resolveSystemActorId(tenantDataSource: any): Promise<number | null> {
     const userRepo = tenantDataSource.getRepository(User);

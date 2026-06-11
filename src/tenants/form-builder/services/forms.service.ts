@@ -17,6 +17,7 @@ import {
   FormStatus,
   FormVersion,
 } from '../entities';
+import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../config/module-seeds';
 import { AuditLogService } from './audit-log.service';
 import { FieldTypesService } from './field-types.service';
 
@@ -38,12 +39,10 @@ export class FormsService {
     return Number.isFinite(actorId) ? actorId : null;
   }
 
-  private modulesSeed = [
-    { slug: 'users', name: 'Users' },
-    { slug: 'items', name: 'Items' },
-    { slug: 'vendors', name: 'Vendors' },
-    { slug: 'job-positions', name: 'Job Positions' },
-  ];
+  private readonly modulesSeed = FORM_BUILDER_MODULE_SEEDS.map(({ slug, name }) => ({ slug, name }));
+  private readonly moduleSeedBySlug = new Map(
+    FORM_BUILDER_MODULE_SEEDS.map((seed) => [seed.slug, seed]),
+  );
 
   private async ensureCoreModules(req: any): Promise<void> {
     const repo = req.tenantConnection.getRepository(DynamicModule);
@@ -306,7 +305,11 @@ export class FormsService {
     return;
   }
 
-  private async bootstrapUsersDefault(req: any, form: Form): Promise<void> {
+  private async bootstrapDefaultFields(
+    req: any,
+    form: Form,
+    defaultFields: readonly FormBuilderFieldSeed[],
+  ): Promise<void> {
     const fieldRepo = req.tenantConnection.getRepository(FormField);
     const fieldTypeRepo = req.tenantConnection.getRepository(FieldType);
 
@@ -318,77 +321,7 @@ export class FormsService {
 
     const actor = this.getActorId(req);
 
-    // Default system fields exposed to the form builder for tenant user management.
-    // Keep this focused on operational fields and avoid exposing internal/sensitive columns.
-    const systemFields = [
-      { key: 'name', label: 'Name', name: 'name', type: 'text', isEditable: true },
-      { key: 'email', label: 'Email', name: 'email', type: 'email', isEditable: true },
-      { key: 'phone_number', label: 'Phone Number', name: 'phone_number', type: 'phone', isEditable: true },
-      { key: 'address', label: 'Address', name: 'address', type: 'address_fields', isEditable: true },
-      { key: 'username', label: 'Username', name: 'username', type: 'text', isEditable: true },
-      { key: 'password', label: 'Password', name: 'password', type: 'password', isEditable: true },
-      {
-        key: 'role_id',
-        label: 'Role',
-        name: 'role_id',
-        type: 'dropdown',
-        isEditable: true,
-        isShow: false,
-        optionSource: {
-          type: 'api',
-          request: {
-            method: 'GET',
-            endpoint: '/api/roles',
-          },
-          response: {
-            dataPath: 'data',
-            labelKey: 'name',
-            valueKey: 'id',
-          },
-        },
-      },
-      {
-        key: 'job_position_id',
-        label: 'Job Position',
-        name: 'job_position_id',
-        type: 'dropdown',
-        isEditable: true,
-        optionSource: {
-          type: 'api',
-          request: {
-            method: 'GET',
-            endpoint: '/api/job-positions',
-          },
-          response: {
-            dataPath: 'data',
-            labelKey: 'name',
-            valueKey: 'id',
-          },
-        },
-      },
-      {
-        key: 'location_id',
-        label: 'Location',
-        name: 'location_id',
-        type: 'dropdown',
-        isEditable: true,
-        optionSource: {
-          type: 'api',
-          request: {
-            method: 'GET',
-            endpoint: '/api/locations',
-          },
-          response: {
-            dataPath: 'data',
-            labelKey: 'name',
-            valueKey: 'id',
-          },
-        },
-      },
-      { key: 'availability_days', label: 'Availability Days', name: 'availability_days', type: 'checkbox', isEditable: true },
-    ];
-
-    const fields = systemFields.map((item, index) => {
+    const fields = defaultFields.map((item, index) => {
       const fieldType = typeByName.get(item.type);
       if (!fieldType) {
         throw new BadRequestException(`Missing field type: ${item.type}`);
@@ -399,15 +332,15 @@ export class FormsService {
         fieldKey: item.key,
         label: item.label,
         name: item.name,
-        placeholder: 'Placeholder text',
-        helpText: null,
-        isRequired: false,
-        isUnique: ['email', 'username'].includes(item.key),
-        isReadonly: !item.isEditable,
-        isSystemField: true,
-        systemMappingKey: item.key,
+        placeholder: item.placeholder ?? 'Placeholder text',
+        helpText: item.helpText ?? null,
+        isRequired: item.isRequired ?? false,
+        isUnique: item.isUnique ?? false,
+        isReadonly: !(item.isEditable ?? true),
+        isSystemField: item.isSystemField ?? false,
+        systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
         isDeletable: false,
-        isEditable: item.isEditable,
+        isEditable: item.isEditable ?? true,
         sortOrder: index,
         layoutConfig: {
           grid_width_desktop: 6,
@@ -415,20 +348,12 @@ export class FormsService {
           isShow: item.isShow ?? true,
           ...(item.optionSource ? { optionSource: item.optionSource } : {}),
         },
-        ...(item.key === 'availability_days'
+        ...(item.options?.length
           ? {
-              options: [
-                'Monday',
-                'Tuesday',
-                'Wednesday',
-                'Thursday',
-                'Friday',
-                'Saturday',
-                'Sunday',
-              ].map((day, sortOrder) => ({
-                label: day,
-                value: day.toLowerCase(),
-                isDefault: false,
+              options: item.options.map((option, sortOrder) => ({
+                label: option.label,
+                value: option.value,
+                isDefault: option.isDefault ?? false,
                 sortOrder,
                 createdBy: actor,
                 updatedBy: actor,
@@ -509,8 +434,9 @@ export class FormsService {
       }),
     );
 
-    if (slug === 'users') {
-      await this.bootstrapUsersDefault(req, form);
+    const moduleSeed = this.moduleSeedBySlug.get(slug);
+    if (moduleSeed?.defaultFields?.length) {
+      await this.bootstrapDefaultFields(req, form, moduleSeed.defaultFields);
     }
 
     await this.auditLogService.log(req, {
