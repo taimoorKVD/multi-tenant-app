@@ -5,20 +5,15 @@ import {
 } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import {
-  AutosaveFormDto,
   CreateFormDto,
-  CreateSectionDto,
   SaveSchemaDto,
   UpdateFormDto,
-  UpdateLayoutDto,
-  UpdateSectionDto,
 } from '../dto';
 import {
   DynamicModule,
   FieldType,
   Form,
   FormField,
-  FormSection,
   FormStatus,
   FormVersion,
 } from '../entities';
@@ -85,14 +80,12 @@ export class FormsService {
       where: { id: formId },
       relations: [
         'module',
-        'sections',
         'fields',
         'fields.options',
         'fields.validations',
         'conditionalRules',
       ],
       order: {
-        sections: { position: 'ASC' },
         fields: { sortOrder: 'ASC' },
       },
     });
@@ -109,11 +102,7 @@ export class FormsService {
         name: form.name,
         status: form.status,
       },
-      sections: (form.sections || []).map((section) => ({
-        id: section.id,
-        title: section.title,
-        position: section.position,
-      })),
+      sections: [],
       fields: (form.fields || []).map((field) => ({
         id: field.id,
         sectionId: field.sectionId,
@@ -318,7 +307,6 @@ export class FormsService {
   }
 
   private async bootstrapUsersDefault(req: any, form: Form): Promise<void> {
-    const sectionRepo = req.tenantConnection.getRepository(FormSection);
     const fieldRepo = req.tenantConnection.getRepository(FormField);
     const fieldTypeRepo = req.tenantConnection.getRepository(FieldType);
 
@@ -329,27 +317,6 @@ export class FormsService {
     );
 
     const actor = this.getActorId(req);
-
-    const contactInfoSection = await sectionRepo.save(
-      sectionRepo.create({
-        formId: form.id,
-        title: 'Contact Info',
-        position: 0,
-        createdBy: actor,
-        updatedBy: actor,
-      }),
-    );
-
-    const availabilitySection = await sectionRepo.save(
-      sectionRepo.create({
-        formId: form.id,
-        title: 'Availability',
-        position: 1,
-        createdBy: actor,
-        updatedBy: actor,
-      }),
-    );
-
 
     // Default system fields exposed to the form builder for tenant user management.
     // Keep this focused on operational fields and avoid exposing internal/sensitive columns.
@@ -428,7 +395,6 @@ export class FormsService {
       }
       return fieldRepo.create({
         formId: form.id,
-        sectionId: item.key === 'availability_days' ? availabilitySection.id : contactInfoSection.id,
         fieldTypeName: fieldType.name,
         fieldKey: item.key,
         label: item.label,
@@ -506,7 +472,28 @@ export class FormsService {
     });
 
     if (form) {
-      return this.getRuntimeSchema(req, form.id);
+      const versionRepo = req.tenantConnection.getRepository(FormVersion);
+      const activeVersion = await versionRepo.findOne({
+        where: { formId: form.id, isActive: true },
+        order: { versionNumber: 'DESC' },
+      });
+
+      if (activeVersion?.schemaSnapshot) {
+        return {
+          success: true,
+          data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, activeVersion.schemaSnapshot),
+        };
+      }
+
+      if (form.autosaveSchema) {
+        return {
+          success: true,
+          data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, form.autosaveSchema),
+        };
+      }
+
+      const snapshot = await this.buildRuntimeSnapshot(req, form.id);
+      return { success: true, data: snapshot };
     }
 
     const actor = this.getActorId(req);
@@ -534,7 +521,28 @@ export class FormsService {
       createdBy: actor,
     });
 
-    return this.getRuntimeSchema(req, form.id);
+    const versionRepo = req.tenantConnection.getRepository(FormVersion);
+    const activeVersion = await versionRepo.findOne({
+      where: { formId: form.id, isActive: true },
+      order: { versionNumber: 'DESC' },
+    });
+
+    if (activeVersion?.schemaSnapshot) {
+      return {
+        success: true,
+        data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, activeVersion.schemaSnapshot),
+      };
+    }
+
+    if (form.autosaveSchema) {
+      return {
+        success: true,
+        data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, form.autosaveSchema),
+      };
+    }
+
+    const snapshot = await this.buildRuntimeSnapshot(req, form.id);
+    return { success: true, data: snapshot };
   }
 
   async create(req: any, dto: CreateFormDto) {
@@ -633,20 +641,6 @@ export class FormsService {
     return { success: true, message: 'Form deleted successfully', deletedId: id };
   }
 
-  async autosave(req: any, id: number, dto: AutosaveFormDto) {
-    const repo = req.tenantConnection.getRepository(Form);
-    const entity = await repo.findOne({ where: { id } });
-    if (!entity) {
-      throw new NotFoundException('Form not found');
-    }
-
-    entity.autosaveSchema = dto.schema;
-    entity.updatedBy = this.getActorId(req, dto.updatedBy || null);
-
-    const data = await repo.save(entity);
-    return { success: true, message: 'Form autosaved', data };
-  }
-
   async saveSchema(req: any, id: number, dto: SaveSchemaDto) {
     const repo = req.tenantConnection.getRepository(Form);
     const entity = await repo.findOne({ where: { id }, relations: ['module'] });
@@ -702,93 +696,6 @@ export class FormsService {
     };
   }
 
-  async createSection(req: any, formId: number, dto: CreateSectionDto) {
-    const formRepo = req.tenantConnection.getRepository(Form);
-    const form = await formRepo.findOne({ where: { id: formId } });
-    if (!form) throw new NotFoundException('Form not found');
-
-    const sectionRepo = req.tenantConnection.getRepository(FormSection);
-    const data = await sectionRepo.save(
-      sectionRepo.create({
-        formId,
-        title: dto.title,
-        position: dto.position ?? 0,
-        createdBy: this.getActorId(req, dto.createdBy || null),
-        updatedBy: this.getActorId(req, dto.createdBy || null),
-      }),
-    );
-
-    return { success: true, message: 'Section created successfully', data };
-  }
-
-  async updateSection(req: any, id: number, dto: UpdateSectionDto) {
-    const repo = req.tenantConnection.getRepository(FormSection);
-    const entity = await repo.findOne({ where: { id } });
-    if (!entity) throw new NotFoundException('Section not found');
-
-    if (dto.title !== undefined) entity.title = dto.title;
-    if (dto.position !== undefined) entity.position = dto.position;
-    entity.updatedBy = this.getActorId(req, dto.updatedBy || null);
-
-    const data = await repo.save(entity);
-    return { success: true, message: 'Section updated successfully', data };
-  }
-
-  async deleteSection(req: any, id: number) {
-    const repo = req.tenantConnection.getRepository(FormSection);
-    const entity = await repo.findOne({ where: { id } });
-    if (!entity) throw new NotFoundException('Section not found');
-
-    await repo.softDelete({ id });
-    return { success: true, message: 'Section deleted successfully', deletedId: id };
-  }
-
-  async updateLayout(req: any, formId: number, dto: UpdateLayoutDto) {
-    const formRepo = req.tenantConnection.getRepository(Form);
-    const fieldRepo = req.tenantConnection.getRepository(FormField);
-
-    const form = await formRepo.findOne({ where: { id: formId } });
-    if (!form) {
-      throw new NotFoundException('Form not found');
-    }
-
-    const actor = this.getActorId(req, dto.updatedBy || null);
-
-    await req.tenantConnection.manager.transaction(async (manager) => {
-      const repo = manager.getRepository(FormField);
-      for (const item of dto.fields) {
-        const field = await repo.findOne({ where: { id: item.fieldId, formId } });
-        if (!field) {
-          throw new NotFoundException(`Field ${item.fieldId} not found`);
-        }
-
-        field.sectionId = item.sectionId ?? null;
-        field.sortOrder = item.sortOrder;
-        field.layoutConfig = {
-          grid_width_desktop: item.gridWidthDesktop,
-          grid_width_mobile: item.gridWidthMobile,
-        };
-        field.updatedBy = actor;
-        await repo.save(field);
-      }
-    });
-
-    const data = await fieldRepo.find({
-      where: { formId },
-      order: { sortOrder: 'ASC' },
-    });
-
-    await this.auditLogService.log(req, {
-      entityType: 'form_layout',
-      entityId: formId,
-      action: 'bulk_layout_update',
-      newValue: { fieldsCount: dto.fields.length, meta: dto.meta || null },
-      createdBy: actor,
-    });
-
-    return { success: true, message: 'Layout updated successfully', data };
-  }
-
   async publish(req: any, formId: number, updatedBy?: number) {
     await req.tenantConnection.manager.transaction(async (manager) => {
       const formRepo = manager.getRepository(Form);
@@ -839,35 +746,4 @@ export class FormsService {
     return { success: true, message: 'Form published successfully' };
   }
 
-  async getRuntimeSchema(req: any, formId: number) {
-    const formRepo = req.tenantConnection.getRepository(Form);
-    const versionRepo = req.tenantConnection.getRepository(FormVersion);
-
-    const form = await formRepo.findOne({ where: { id: formId }, relations: ['module'] });
-    if (!form) {
-      throw new NotFoundException('Form not found');
-    }
-
-    const activeVersion = await versionRepo.findOne({
-      where: { formId, isActive: true },
-      order: { versionNumber: 'DESC' },
-    });
-
-    if (activeVersion?.schemaSnapshot) {
-      return {
-        success: true,
-        data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, activeVersion.schemaSnapshot),
-      };
-    }
-
-    if (form.autosaveSchema) {
-      return {
-        success: true,
-        data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, form.autosaveSchema),
-      };
-    }
-
-    const snapshot = await this.buildRuntimeSnapshot(req, formId);
-    return { success: true, data: snapshot };
-  }
 }

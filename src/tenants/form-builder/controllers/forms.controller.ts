@@ -12,13 +12,9 @@ import {
 } from '@nestjs/common';
 import { Permissions } from '../../../common/decorators';
 import {
-    AutosaveFormDto,
     CreateFormDto,
     SaveSchemaDto,
-    CreateSectionDto,
     UpdateFormDto,
-    UpdateLayoutDto,
-    UpdateSectionDto,
 } from '../dto';
 import { PermissionsGuard } from '../guards';
 import { FormsService } from '../services';
@@ -81,17 +77,6 @@ export class FormsController {
         return this.formsService.remove(req, id);
     }
 
-    @Put(['forms/:id/autosave', 'tenant/:tenantId/forms/:id/autosave'])
-    @Permissions('edit-form')
-    @TenantFormBuilderFormsSwagger.Autosave()
-    autosave(
-        @Req() req: any,
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: AutosaveFormDto,
-    ) {
-        return this.formsService.autosave(req, id, dto);
-    }
-
     @Put(['forms/:id/schema', 'tenant/:tenantId/forms/:id/schema'])
     @Permissions('edit-form')
     @TenantFormBuilderFormsSwagger.SaveSchema()
@@ -103,58 +88,11 @@ export class FormsController {
         return this.formsService.saveSchema(req, id, dto);
     }
 
-    @Put(['forms/:id/layout', 'tenant/:tenantId/forms/:id/layout'])
-    @Permissions('edit-form')
-    @TenantFormBuilderFormsSwagger.UpdateLayout()
-    updateLayout(
-        @Req() req: any,
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: UpdateLayoutDto,
-    ) {
-        return this.formsService.updateLayout(req, id, dto);
-    }
-
     @Post(['forms/:id/publish', 'tenant/:tenantId/forms/:id/publish'])
     @Permissions('publish-form')
     @TenantFormBuilderFormsSwagger.Publish()
     publish(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
         return this.formsService.publish(req, id);
-    }
-
-    @Get(['forms/:id/runtime-schema', 'tenant/:tenantId/forms/:id/runtime-schema'])
-    @Permissions('view-form')
-    @TenantFormBuilderFormsSwagger.RuntimeSchema()
-    getRuntimeSchema(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-        return this.formsService.getRuntimeSchema(req, id);
-    }
-
-    @Post(['forms/:id/sections', 'tenant/:tenantId/forms/:id/sections'])
-    @Permissions('edit-form')
-    @TenantFormBuilderFormsSwagger.CreateSection()
-    createSection(
-        @Req() req: any,
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: CreateSectionDto,
-    ) {
-        return this.formsService.createSection(req, id, dto);
-    }
-
-    @Put(['sections/:id', 'tenant/:tenantId/sections/:id'])
-    @Permissions('edit-form')
-    @TenantFormBuilderFormsSwagger.UpdateSection()
-    updateSection(
-        @Req() req: any,
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: UpdateSectionDto,
-    ) {
-        return this.formsService.updateSection(req, id, dto);
-    }
-
-    @Delete(['sections/:id', 'tenant/:tenantId/sections/:id'])
-    @Permissions('edit-form')
-    @TenantFormBuilderFormsSwagger.DeleteSection()
-    deleteSection(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-        return this.formsService.deleteSection(req, id);
     }
 
 }
