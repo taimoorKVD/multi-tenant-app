@@ -70,6 +70,7 @@ export class UsersService extends TenantAbstractService<User> {
     activeVersionId: number | null;
     systemFieldKeys: Set<string>;
     requiredFieldKeys: Set<string>;
+    aliasToCanonicalMap: Map<string, string>;
   }> {
     const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
     const formRepo = req.tenantConnection.getRepository(Form);
@@ -84,6 +85,7 @@ export class UsersService extends TenantAbstractService<User> {
         activeVersionId: null,
         systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
         requiredFieldKeys: new Set(),
+        aliasToCanonicalMap: new Map(),
       };
     }
 
@@ -99,6 +101,7 @@ export class UsersService extends TenantAbstractService<User> {
         activeVersionId: null,
         systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
         requiredFieldKeys: new Set(),
+        aliasToCanonicalMap: new Map(),
       };
     }
 
@@ -109,10 +112,24 @@ export class UsersService extends TenantAbstractService<User> {
 
     const systemFieldKeys = new Set<string>();
     const requiredFieldKeys = new Set<string>();
+    const aliasToCanonicalMap = new Map<string, string>();
 
     for (const field of fields) {
       const key = (field.systemMappingKey || field.fieldKey || field.name || '').trim();
       if (!key) continue;
+
+      const normalizedLabel = this.normalizeFieldAlias(field.label || '');
+      const normalizedFieldKey = this.normalizeFieldAlias(field.fieldKey || '');
+      const normalizedName = this.normalizeFieldAlias(field.name || '');
+      const aliases = [key, field.fieldKey, field.name, field.label, normalizedLabel, normalizedFieldKey, normalizedName]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+      for (const alias of aliases) {
+        if (!aliasToCanonicalMap.has(alias)) {
+          aliasToCanonicalMap.set(alias, key);
+        }
+      }
 
       if (field.isSystemField) {
         systemFieldKeys.add(key);
@@ -127,13 +144,55 @@ export class UsersService extends TenantAbstractService<User> {
       this.fallbackSystemFieldKeys.forEach((key) => systemFieldKeys.add(key));
     }
 
+    this.fallbackSystemFieldKeys.forEach((key) => {
+      if (!aliasToCanonicalMap.has(key)) {
+        aliasToCanonicalMap.set(key, key);
+      }
+
+      const normalized = this.normalizeFieldAlias(key);
+      if (normalized && !aliasToCanonicalMap.has(normalized)) {
+        aliasToCanonicalMap.set(normalized, key);
+      }
+    });
+
     return {
       moduleId: module.id,
       formId: form.id,
       activeVersionId: activeVersion?.id ?? null,
       systemFieldKeys,
       requiredFieldKeys,
+      aliasToCanonicalMap,
     };
+  }
+
+  private normalizeFieldAlias(value: string): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private resolvePayloadAliases(
+    payload: Record<string, any>,
+    aliasToCanonicalMap: Map<string, string>,
+  ): Record<string, any> {
+    const normalizedPayload: Record<string, any> = {};
+
+    for (const [rawKey, value] of Object.entries(payload || {})) {
+      const key = String(rawKey || '').trim();
+      if (!key) continue;
+
+      const normalizedKey = this.normalizeFieldAlias(key);
+      const canonicalKey = aliasToCanonicalMap.get(key) || aliasToCanonicalMap.get(normalizedKey) || key;
+
+      const hasCanonicalValue = Object.prototype.hasOwnProperty.call(normalizedPayload, canonicalKey);
+      if (!hasCanonicalValue || key === canonicalKey) {
+        normalizedPayload[canonicalKey] = value;
+      }
+    }
+
+    return normalizedPayload;
   }
 
   private splitUserPayload(
@@ -326,8 +385,9 @@ export class UsersService extends TenantAbstractService<User> {
       const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
       const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
 
-      this.assertCreatePayloadRequiredFields(dto, context.requiredFieldKeys);
-      const { staticPayload, dynamicPayload } = this.splitUserPayload(dto, context.systemFieldKeys);
+      const normalizedDto = this.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
+      this.assertCreatePayloadRequiredFields(normalizedDto, context.requiredFieldKeys);
+      const { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
 
       const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
       if (existing) throw new BadRequestException('A user with this email already exists.');
@@ -474,7 +534,8 @@ export class UsersService extends TenantAbstractService<User> {
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
 
-      const { staticPayload, dynamicPayload } = this.splitUserPayload(dto, context.systemFieldKeys);
+      const normalizedDto = this.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
+      const { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
       const existingDynamic = context.moduleId
         ? await dynamicRepo.findOne({ where: { moduleId: context.moduleId, entityId: user.id } })
         : null;

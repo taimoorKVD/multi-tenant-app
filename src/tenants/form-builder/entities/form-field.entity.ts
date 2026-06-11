@@ -10,7 +10,6 @@ import {
     UpdateDateColumn,
 } from 'typeorm';
 import { Form } from './form.entity';
-import { FormSection } from './form-section.entity';
 import { FieldOption } from './field-option.entity';
 import { FieldValidation } from './field-validation.entity';
 import { FieldConditionalRule } from './field-conditional-rule.entity';
@@ -26,13 +25,6 @@ export class FormField {
     @ManyToOne(() => Form, (form) => form.fields, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'form_id' })
     form!: Form;
-
-    @Column({ type: 'int', name: 'section_id', nullable: true })
-    sectionId!: number | null;
-
-    @ManyToOne(() => FormSection, (section) => section.fields, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'section_id' })
-    section!: FormSection | null;
 
     @Column({ type: 'varchar', name: 'field_type_name', length: 120 })
     fieldTypeName!: string;

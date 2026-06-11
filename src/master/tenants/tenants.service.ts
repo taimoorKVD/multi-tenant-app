@@ -25,7 +25,7 @@ import {
   FieldType,
   Form,
   FormField,
-  FormSection,
+
   FormStatus,
 } from '../../tenants/form-builder/entities';
 
@@ -657,7 +657,6 @@ export class TenantsService {
     const moduleRepo = connection.getRepository(DynamicModule);
     const formRepo = connection.getRepository(Form);
     const fieldRepo = connection.getRepository(FormField);
-    const sectionRepo = connection.getRepository(FormSection);
     const fieldTypeRepo = connection.getRepository(FieldType);
 
     const modules = [
@@ -720,26 +719,6 @@ export class TenantsService {
 
       const fieldTypes = await fieldTypeRepo.find();
       const typeByName = new Map<string, FieldType>(fieldTypes.map((fieldType) => [fieldType.name, fieldType]));
-
-      const contactInfoSection = await sectionRepo.save(
-        sectionRepo.create({
-          formId: form.id,
-          title: 'Contact Info',
-          position: 0,
-          createdBy: actorId,
-          updatedBy: actorId,
-        }),
-      );
-
-      const availabilitySection = await sectionRepo.save(
-        sectionRepo.create({
-          formId: form.id,
-          title: 'Availability',
-          position: 1,
-          createdBy: actorId,
-          updatedBy: actorId,
-        }),
-      );
 
       const systemFields = [
         { key: 'name', label: 'Name', name: 'name', type: 'text', isEditable: true },
@@ -817,7 +796,6 @@ export class TenantsService {
 
         return fieldRepo.create({
           formId: form.id,
-          sectionId: item.key === 'availability_days' ? availabilitySection.id : contactInfoSection.id,
           fieldTypeName: fieldType.name,
           fieldKey: item.key,
           label: item.label,

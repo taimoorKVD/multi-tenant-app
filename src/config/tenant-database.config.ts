@@ -25,11 +25,7 @@ import {
   Form,
   FormAuditLog,
   FormField,
-  FormSection,
-  FormSubmission,
-  FormSubmissionFile,
   FormVersion,
-  SubmissionIndex,
 } from '../tenants/form-builder/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
@@ -99,15 +95,11 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       DynamicModule,
       Form,
       FormVersion,
-      FormSection,
       FieldType,
       FormField,
       FieldOption,
       FieldValidation,
       FieldConditionalRule,
-      FormSubmission,
-      SubmissionIndex,
-      FormSubmissionFile,
       FormAuditLog,
       EntityDynamicData,
     ],
