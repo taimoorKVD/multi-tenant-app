@@ -11,22 +11,18 @@ import {
 } from '../dto';
 import {
   DynamicModule,
-  FieldType,
   Form,
-  FormField,
   FormStatus,
   FormVersion,
 } from '../entities';
 import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../config/module-seeds';
 import { AuditLogService } from './audit-log.service';
-import { FieldTypesService } from './field-types.service';
 
 @Injectable()
 export class FormsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly auditLogService: AuditLogService,
-    private readonly fieldTypesService: FieldTypesService,
   ) {}
 
   private getActorId(req: any, fallback?: number | null): number | null {
@@ -75,83 +71,13 @@ export class FormsService {
 
   private async buildRuntimeSnapshot(req: any, formId: number): Promise<Record<string, any>> {
     const formRepo = req.tenantConnection.getRepository(Form);
-    const form = await formRepo.findOne({
-      where: { id: formId },
-      relations: [
-        'module',
-        'fields',
-        'fields.options',
-        'fields.validations',
-        'conditionalRules',
-      ],
-      order: {
-        fields: { sortOrder: 'ASC' },
-      },
-    });
+    const form = await formRepo.findOne({ where: { id: formId }, relations: ['module'] });
+    if (!form) throw new NotFoundException('Form not found');
 
-    if (!form) {
-      throw new NotFoundException('Form not found');
-    }
+    // Prefer JSON schema stored on the form (autosaveSchema).
+    const schema = form.autosaveSchema || { fields: [] };
 
-    return {
-      form: {
-        id: form.id,
-        moduleId: form.moduleId,
-        moduleSlug: form.module?.slug,
-        name: form.name,
-        status: form.status,
-      },
-      sections: [],
-      fields: (form.fields || []).map((field) => ({
-        id: field.id,
-        sectionId: field.sectionId,
-        fieldTypeName: field.fieldTypeName,
-        fieldKey: field.fieldKey,
-        label: field.label,
-        name: field.name,
-        placeholder: field.placeholder,
-        helpText: field.helpText,
-        isRequired: field.isRequired,
-        isUnique: field.isUnique,
-        isReadonly: field.isReadonly,
-        isSystemField: field.isSystemField,
-        systemMappingKey: field.isSystemField ? field.systemMappingKey : null,
-        isDeletable: field.isDeletable,
-        isEditable: field.isEditable,
-        isShow:
-          field.layoutConfig && typeof field.layoutConfig === 'object'
-            ? field.layoutConfig.isShow ?? true
-            : true,
-        sortOrder: field.sortOrder,
-        layoutConfig: field.layoutConfig,
-        optionSource:
-          field.layoutConfig && typeof field.layoutConfig === 'object'
-            ? field.layoutConfig.optionSource || null
-            : null,
-        options: (field.options || []).map((option) => ({
-          id: option.id,
-          label: option.label,
-          value: option.value,
-          isDefault: option.isDefault,
-          sortOrder: option.sortOrder,
-        })),
-        validations: (field.validations || []).map((validation) => ({
-          id: validation.id,
-          ruleType: validation.ruleType,
-          ruleValue: validation.ruleValue,
-          errorMessage: validation.errorMessage,
-          isActive: validation.isActive,
-        })),
-      })),
-      conditionalRules: (form.conditionalRules || []).map((rule) => ({
-        id: rule.id,
-        dependentFieldId: rule.dependentFieldId,
-        sourceFieldId: rule.sourceFieldId,
-        operator: rule.operator,
-        comparisonValue: rule.comparisonValue,
-        actionType: rule.actionType,
-      })),
-    };
+    return this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, schema);
   }
 
   private sanitizeSchemaFields(fields: any[]): any[] {
@@ -177,6 +103,15 @@ export class FormsService {
         rest.systemMappingKey = null;
       }
 
+      if (rest.layoutConfig && typeof rest.layoutConfig === 'object') {
+        if (!Object.prototype.hasOwnProperty.call(rest, 'isShow') && typeof rest.layoutConfig.isShow === 'boolean') {
+          rest.isShow = rest.layoutConfig.isShow;
+        }
+        if (rest.layoutConfig.optionSource !== undefined) {
+          rest.optionSource = rest.layoutConfig.optionSource;
+        }
+      }
+
       if (!Object.prototype.hasOwnProperty.call(rest, 'isShow')) {
         rest.isShow = true;
       }
@@ -188,9 +123,7 @@ export class FormsService {
     const draft = schema || {};
     return {
       ...draft,
-      sections: Array.isArray(draft.sections) ? draft.sections : [],
       fields: this.sanitizeSchemaFields(Array.isArray(draft.fields) ? draft.fields : []),
-      conditionalRules: Array.isArray(draft.conditionalRules) ? draft.conditionalRules : [],
     };
   }
 
@@ -206,9 +139,7 @@ export class FormsService {
         name: form.name,
         status: form.status,
       },
-      sections: draft.sections,
       fields: draft.fields,
-      conditionalRules: draft.conditionalRules,
     };
   }
 
@@ -216,92 +147,42 @@ export class FormsService {
     if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
       throw new BadRequestException('schema must be an object');
     }
+    const fields = Array.isArray(schema.fields) ? schema.fields : [];
 
-    // const sections = Array.isArray(schema.sections) ? schema.sections : [];
-    // const fields = Array.isArray(schema.fields) ? schema.fields : [];
-    // const conditionalRules = Array.isArray(schema.conditionalRules) ? schema.conditionalRules : [];
+    const fieldKeys = new Set<string>();
 
-    // const fieldKeys = new Set<string>();
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i];
+      if (!field || typeof field !== 'object') {
+        throw new BadRequestException(`fields[${i}] must be an object`);
+      }
 
-    // for (let i = 0; i < sections.length; i++) {
-    //   const section = sections[i];
-    //   if (!section || typeof section !== 'object') {
-    //     throw new BadRequestException(`sections[${i}] must be an object`);
-    //   }
+      const key = String(field.fieldKey || field.name || '').trim();
+      if (!key) {
+        throw new BadRequestException(`fields[${i}] must include fieldKey or name`);
+      }
 
-    //   if (typeof section.title !== 'string' || !section.title.trim()) {
-    //     throw new BadRequestException(`sections[${i}].title is required`);
-    //   }
-    // }
+      if (fieldKeys.has(key)) {
+        throw new BadRequestException(`Duplicate field key detected: ${key}`);
+      }
+      fieldKeys.add(key);
 
-    // for (let i = 0; i < fields.length; i++) {
-    //   const field = fields[i];
-    //   if (!field || typeof field !== 'object') {
-    //     throw new BadRequestException(`fields[${i}] must be an object`);
-    //   }
+      if (typeof field.label !== 'string' || !field.label.trim()) {
+        throw new BadRequestException(`fields[${i}].label is required`);
+      }
 
-    //   const key = String(field.fieldKey || field.name || '').trim();
-    //   if (!key) {
-    //     throw new BadRequestException(`fields[${i}] must include fieldKey or name`);
-    //   }
+      const validations = Array.isArray(field.validations) ? field.validations : [];
+      for (let j = 0; j < validations.length; j++) {
+        const validation = validations[j];
+        if (!validation || typeof validation !== 'object') {
+          throw new BadRequestException(`fields[${i}].validations[${j}] must be an object`);
+        }
+        if (typeof validation.ruleType !== 'string' || !validation.ruleType.trim()) {
+          throw new BadRequestException(`fields[${i}].validations[${j}].ruleType is required`);
+        }
+      }
+    }
 
-    //   if (fieldKeys.has(key)) {
-    //     throw new BadRequestException(`Duplicate field key detected: ${key}`);
-    //   }
-    //   fieldKeys.add(key);
-
-    //   if (typeof field.label !== 'string' || !field.label.trim()) {
-    //     throw new BadRequestException(`fields[${i}].label is required`);
-    //   }
-
-    //   if (field.layoutConfig !== undefined && (typeof field.layoutConfig !== 'object' || Array.isArray(field.layoutConfig))) {
-    //     throw new BadRequestException(`fields[${i}].layoutConfig must be an object`);
-    //   }
-
-    //   const validations = Array.isArray(field.validations) ? field.validations : [];
-    //   for (let j = 0; j < validations.length; j++) {
-    //     const validation = validations[j];
-    //     if (!validation || typeof validation !== 'object') {
-    //       throw new BadRequestException(`fields[${i}].validations[${j}] must be an object`);
-    //     }
-    //     if (typeof validation.ruleType !== 'string' || !validation.ruleType.trim()) {
-    //       throw new BadRequestException(`fields[${i}].validations[${j}].ruleType is required`);
-    //     }
-    //   }
-    // }
-
-    // for (let i = 0; i < conditionalRules.length; i++) {
-    //   const rule = conditionalRules[i];
-    //   if (!rule || typeof rule !== 'object') {
-    //     throw new BadRequestException(`conditionalRules[${i}] must be an object`);
-    //   }
-
-    //   const dependentFieldKey = String(rule.dependentFieldKey || '').trim();
-    //   const sourceFieldKey = String(rule.sourceFieldKey || '').trim();
-
-    //   if (!dependentFieldKey || !sourceFieldKey) {
-    //     throw new BadRequestException(
-    //       `conditionalRules[${i}] must include dependentFieldKey and sourceFieldKey`,
-    //     );
-    //   }
-
-    //   if (!fieldKeys.has(dependentFieldKey) || !fieldKeys.has(sourceFieldKey)) {
-    //     throw new BadRequestException(
-    //       `conditionalRules[${i}] references fields that do not exist in schema.fields`,
-    //     );
-    //   }
-
-    //   if (typeof rule.operator !== 'string' || !rule.operator.trim()) {
-    //     throw new BadRequestException(`conditionalRules[${i}].operator is required`);
-    //   }
-
-    //   if (typeof rule.actionType !== 'string' || !rule.actionType.trim()) {
-    //     throw new BadRequestException(`conditionalRules[${i}].actionType is required`);
-    //   }
-    // }
-    
-    // Temporarily keep schema validation permissive so drag/drop saves are not blocked
-    // by incomplete intermediate payloads from the frontend builder.
     return;
   }
 
@@ -310,62 +191,42 @@ export class FormsService {
     form: Form,
     defaultFields: readonly FormBuilderFieldSeed[],
   ): Promise<void> {
-    const fieldRepo = req.tenantConnection.getRepository(FormField);
-    const fieldTypeRepo = req.tenantConnection.getRepository(FieldType);
+    const formRepo = req.tenantConnection.getRepository(Form);
+    const existing = form.autosaveSchema || {};
 
-    await this.fieldTypesService.ensureSeeded(req);
-    const fieldTypes = await fieldTypeRepo.find();
-    const typeByName = new Map<string, FieldType>(
-      fieldTypes.map((fieldType) => [fieldType.name, fieldType]),
-    );
+    const fields = defaultFields.map((item, index) => ({
+      fieldKey: item.key,
+      label: item.label,
+      name: item.name,
+      fieldTypeName: item.type,
+      placeholder: item.placeholder ?? 'Placeholder text',
+      helpText: item.helpText ?? null,
+      isRequired: item.isRequired ?? false,
+      isUnique: item.isUnique ?? false,
+      isReadonly: !(item.isEditable ?? true),
+      isSystemField: item.isSystemField ?? false,
+      systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
+      isShow: item.isShow ?? true,
+      ...(item.optionSource ? { optionSource: item.optionSource } : {}),
+      ...(item.options?.length
+        ? {
+            options: item.options.map((option, sortOrder) => ({
+              label: option.label,
+              value: option.value,
+              isDefault: option.isDefault ?? false,
+              sortOrder,
+            })),
+          }
+        : {}),
+    }));
 
-    const actor = this.getActorId(req);
+    const newSchema = {
+      ...existing,
+      fields,
+    };
 
-    const fields = defaultFields.map((item, index) => {
-      const fieldType = typeByName.get(item.type);
-      if (!fieldType) {
-        throw new BadRequestException(`Missing field type: ${item.type}`);
-      }
-      return fieldRepo.create({
-        formId: form.id,
-        fieldTypeName: fieldType.name,
-        fieldKey: item.key,
-        label: item.label,
-        name: item.name,
-        placeholder: item.placeholder ?? 'Placeholder text',
-        helpText: item.helpText ?? null,
-        isRequired: item.isRequired ?? false,
-        isUnique: item.isUnique ?? false,
-        isReadonly: !(item.isEditable ?? true),
-        isSystemField: item.isSystemField ?? false,
-        systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
-        isDeletable: false,
-        isEditable: item.isEditable ?? true,
-        sortOrder: index,
-        layoutConfig: {
-          grid_width_desktop: 6,
-          grid_width_mobile: 12,
-          isShow: item.isShow ?? true,
-          ...(item.optionSource ? { optionSource: item.optionSource } : {}),
-        },
-        ...(item.options?.length
-          ? {
-              options: item.options.map((option, sortOrder) => ({
-                label: option.label,
-                value: option.value,
-                isDefault: option.isDefault ?? false,
-                sortOrder,
-                createdBy: actor,
-                updatedBy: actor,
-              })),
-            }
-          : {}),
-        createdBy: actor,
-        updatedBy: actor,
-      });
-    });
-
-    await fieldRepo.save(fields);
+    form.autosaveSchema = newSchema;
+    await formRepo.save(form);
   }
 
   async getModules(req: any) {
@@ -381,7 +242,6 @@ export class FormsService {
 
   async bootstrapByModuleSlug(req: any, slug: string) {
     await this.ensureCoreModules(req);
-    await this.fieldTypesService.ensureSeeded(req);
 
     const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
     const formRepo = req.tenantConnection.getRepository(Form);

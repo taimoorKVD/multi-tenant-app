@@ -6,7 +6,6 @@ import {
 import { PermissionsGuard } from './guards';
 import {
   AuditLogService,
-  FieldTypesService,
   FormsService,
   VersionsService,
 } from './services';
@@ -19,10 +18,9 @@ import {
   providers: [
     FormsService,
     VersionsService,
-    FieldTypesService,
     AuditLogService,
     PermissionsGuard,
   ],
-  exports: [FormsService, FieldTypesService],
+  exports: [FormsService],
 })
 export class FormBuilderModule {}

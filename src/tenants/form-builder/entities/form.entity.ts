@@ -12,9 +12,7 @@ import {
 } from 'typeorm';
 import { DynamicModule } from './module.entity';
 import { FormStatus } from './enums';
-import { FormField } from './form-field.entity';
 import { FormVersion } from './form-version.entity';
-import { FieldConditionalRule } from './field-conditional-rule.entity';
 
 @Entity('forms')
 @Index('idx_forms_module_status', ['moduleId', 'status'])
@@ -38,14 +36,8 @@ export class Form {
   @Column({ type: 'jsonb', name: 'autosave_schema', nullable: true })
   autosaveSchema!: Record<string, any> | null;
 
-  @OneToMany(() => FormField, (field) => field.form, { cascade: true })
-  fields!: FormField[];
-
   @OneToMany(() => FormVersion, (version) => version.form)
   versions!: FormVersion[];
-
-  @OneToMany(() => FieldConditionalRule, (rule) => rule.form)
-  conditionalRules!: FieldConditionalRule[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

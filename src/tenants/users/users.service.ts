@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, In, Not, Repository } from 'typeorm';
-import { DynamicModule, Form, FormField, FormVersion } from '../form-builder/entities';
+import { DynamicModule, Form, FormVersion } from '../form-builder/entities';
 import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
@@ -74,7 +75,6 @@ export class UsersService extends TenantAbstractService<User> {
   }> {
     const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
     const formRepo = req.tenantConnection.getRepository(Form);
-    const fieldRepo = req.tenantConnection.getRepository(FormField);
     const versionRepo = req.tenantConnection.getRepository(FormVersion);
 
     const module = await moduleRepo.findOne({ where: { slug: this.usersModuleSlug } });
@@ -105,14 +105,13 @@ export class UsersService extends TenantAbstractService<User> {
       };
     }
 
-    const [fields, activeVersion] = await Promise.all([
-      fieldRepo.find({ where: { formId: form.id }, order: { sortOrder: 'ASC' } }),
-      versionRepo.findOne({ where: { formId: form.id, isActive: true } }),
-    ]);
+    const activeVersion = await versionRepo.findOne({ where: { formId: form.id, isActive: true } });
 
     const systemFieldKeys = new Set<string>();
     const requiredFieldKeys = new Set<string>();
     const aliasToCanonicalMap = new Map<string, string>();
+
+    const fields = form.autosaveSchema?.fields || [];
 
     for (const field of fields) {
       const key = (field.systemMappingKey || field.fieldKey || field.name || '').trim();
