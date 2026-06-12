@@ -32,9 +32,10 @@ export class UserEmailResolver extends BaseEmailResolver {
       });
 
       if (user) {
+        const userName = user.name || '';
         Object.assign(data, {
           user_id: user.id,
-          first_name: data.first_name ?? user.name.split(' ')[0],
+          first_name: data.first_name ?? (userName.split(' ')[0] || null),
           full_name: data.full_name ?? user.name,
           email: data.email ?? user.email,
           username: data.username ?? user.username,

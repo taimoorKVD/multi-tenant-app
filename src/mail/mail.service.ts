@@ -25,6 +25,7 @@ import {
 } from './resolvers';
 import {
   assertTemplateVariables,
+  extractPlaceholders,
   normalizeEmailList,
   renderTemplate,
 } from './utils/template-variable.util';
@@ -53,6 +54,30 @@ export class MailService {
 
   private getResolver(module: string): EmailTemplateResolver {
     return this.resolvers.find((resolver) => resolver.supports(module)) || this.baseEmailResolver;
+  }
+
+  private applyOptionalUserTemplateDefaults(
+    module: string,
+    template: { subject?: string | null; body?: string | null },
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (module !== 'users') {
+      return data;
+    }
+
+    const placeholders = new Set([
+      ...extractPlaceholders(template.subject || ''),
+      ...extractPlaceholders(template.body || ''),
+    ]);
+
+    const normalized = { ...data };
+    placeholders.forEach((placeholder) => {
+      if (normalized[placeholder] === undefined || normalized[placeholder] === null) {
+        normalized[placeholder] = '';
+      }
+    });
+
+    return normalized;
   }
 
   private buildIdempotencyKey(options: {
@@ -128,7 +153,10 @@ export class MailService {
           relations: ['role'],
         });
 
-        return users.map((user) => user.email.toLowerCase());
+        return users
+          .map((user) => user.email)
+          .filter((email): email is string => typeof email === 'string' && email.trim() !== '')
+          .map((email) => email.toLowerCase());
       }
       default:
         return [];
@@ -382,14 +410,14 @@ export class MailService {
     });
 
     const resolver = this.getResolver(options.module);
-    const resolvedData = await resolver.resolve({
+    const resolvedData = this.applyOptionalUserTemplateDefaults(options.module, template, await resolver.resolve({
       module: options.module,
       action: options.action,
       tenantId: options.tenantId || req?.tenantId || null,
       req,
       tenantConnection,
       data: options.data || {},
-    });
+    }));
 
     const subjectMissing = assertTemplateVariables(template.subject, resolvedData);
     const bodyMissing = assertTemplateVariables(template.body, resolvedData);

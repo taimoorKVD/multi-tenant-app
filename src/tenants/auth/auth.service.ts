@@ -507,6 +507,10 @@ export class TenantAuthService {
         throw new UnauthorizedException('Invalid credentials');
       }
 
+      if (!user.password) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
       const valid = await argon2.verify(user.password, dto.password);
       if (!valid) {
         throw new UnauthorizedException('Invalid credentials');
@@ -572,7 +576,7 @@ export class TenantAuthService {
     const rawToken = await this.issuePasswordResetToken(tenantConnection, user, req);
 
     try {
-      await this.sendResetPasswordEmail(req, user.email, user.name, rawToken, scope);
+      await this.sendResetPasswordEmail(req, user.email || email, user.name || '', rawToken, scope);
     } catch (error) {
       console.error('Tenant forgot-password email dispatch failed:', error);
     }
@@ -663,7 +667,7 @@ export class TenantAuthService {
     const rawToken = await this.issueEmailVerificationToken(tenantConnection, user);
 
     try {
-      await this.sendVerificationEmail(req, user.email, user.name, rawToken, scope);
+      await this.sendVerificationEmail(req, user.email || email, user.name || '', rawToken, scope);
     } catch (error) {
       console.error('Tenant email verification dispatch failed:', error);
     }

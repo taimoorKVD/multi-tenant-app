@@ -23,7 +23,6 @@ export const TenantUsersSwagger = {
         schema: {
           type: 'object',
           additionalProperties: true,
-          required: ['name', 'email', 'password', 'role_id'],
           properties: {
             name: { type: 'string', example: 'Madeline Smith' },
             email: { type: 'string', example: 'madelinesmith@gmail.com' },

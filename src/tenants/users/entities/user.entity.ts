@@ -28,12 +28,12 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 100 })
-  name: string;
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  name: string | null;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', unique: true, nullable: true })
   // @Column() //Same email should be allowed in different tenants
-  email: string;
+  email: string | null;
 
   @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
   phoneNumber: string | null;
@@ -45,8 +45,8 @@ export class User {
   username: string | null;
 
   @Exclude()
-  @Column()
-  password: string;
+  @Column({ type: 'varchar', nullable: true })
+  password: string | null;
 
   @Column({ type: 'varchar', name: 'plain_password', nullable: true })
   plainPassword: string | null;
