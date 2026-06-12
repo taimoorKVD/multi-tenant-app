@@ -3,8 +3,8 @@ import { IsBoolean, IsInt, IsObject, IsOptional } from 'class-validator';
 
 export class SaveSchemaDto {
   @ApiProperty({
-    example: { sections: [], fields: [], conditionalRules: [] },
-    description: 'Full builder schema payload owned by frontend.',
+    example: { fields: [] },
+    description: 'Full builder schema payload owned by frontend. Legacy sections and conditional rules are stripped when saved.',
   })
   @IsObject()
   schema: Record<string, any>;

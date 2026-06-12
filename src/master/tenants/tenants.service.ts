@@ -702,7 +702,6 @@ export class TenantsService {
       }
 
       form.autosaveSchema = {
-        sections: [],
         fields: moduleSeed.defaultFields.map((item, index) => ({
           fieldKey: item.key,
           label: item.label,
@@ -715,15 +714,9 @@ export class TenantsService {
           isReadonly: !(item.isEditable ?? true),
           isSystemField: item.isSystemField ?? false,
           systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
-          isDeletable: false,
-          isEditable: item.isEditable ?? true,
+          isShow: item.isShow ?? true,
+          ...(item.optionSource ? { optionSource: item.optionSource } : {}),
           sortOrder: index,
-          layoutConfig: {
-            grid_width_desktop: 6,
-            grid_width_mobile: 12,
-            isShow: item.isShow ?? true,
-            ...(item.optionSource ? { optionSource: item.optionSource } : {}),
-          },
           ...(item.options?.length
             ? {
                 options: item.options.map((option, sortOrder) => ({
@@ -735,7 +728,6 @@ export class TenantsService {
               }
             : {}),
         })),
-        conditionalRules: [],
       };
 
       await formRepo.save(form);

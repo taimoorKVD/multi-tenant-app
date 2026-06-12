@@ -75,7 +75,7 @@ export class FormsService {
     if (!form) throw new NotFoundException('Form not found');
 
     // Prefer JSON schema stored on the form (autosaveSchema).
-    const schema = form.autosaveSchema || { sections: [], fields: [], conditionalRules: [] };
+    const schema = form.autosaveSchema || { fields: [] };
 
     return this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, schema);
   }
@@ -103,6 +103,15 @@ export class FormsService {
         rest.systemMappingKey = null;
       }
 
+      if (rest.layoutConfig && typeof rest.layoutConfig === 'object') {
+        if (!Object.prototype.hasOwnProperty.call(rest, 'isShow') && typeof rest.layoutConfig.isShow === 'boolean') {
+          rest.isShow = rest.layoutConfig.isShow;
+        }
+        if (rest.layoutConfig.optionSource !== undefined) {
+          rest.optionSource = rest.layoutConfig.optionSource;
+        }
+      }
+
       if (!Object.prototype.hasOwnProperty.call(rest, 'isShow')) {
         rest.isShow = true;
       }
@@ -114,9 +123,7 @@ export class FormsService {
     const draft = schema || {};
     return {
       ...draft,
-      sections: Array.isArray(draft.sections) ? draft.sections : [],
       fields: this.sanitizeSchemaFields(Array.isArray(draft.fields) ? draft.fields : []),
-      conditionalRules: Array.isArray(draft.conditionalRules) ? draft.conditionalRules : [],
     };
   }
 
@@ -132,9 +139,7 @@ export class FormsService {
         name: form.name,
         status: form.status,
       },
-      sections: draft.sections,
       fields: draft.fields,
-      conditionalRules: draft.conditionalRules,
     };
   }
 
@@ -142,22 +147,9 @@ export class FormsService {
     if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
       throw new BadRequestException('schema must be an object');
     }
-    const sections = Array.isArray(schema.sections) ? schema.sections : [];
     const fields = Array.isArray(schema.fields) ? schema.fields : [];
-    const conditionalRules = Array.isArray(schema.conditionalRules) ? schema.conditionalRules : [];
 
     const fieldKeys = new Set<string>();
-
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      if (!section || typeof section !== 'object') {
-        throw new BadRequestException(`sections[${i}] must be an object`);
-      }
-
-      if (typeof section.title !== 'string' || !section.title.trim()) {
-        throw new BadRequestException(`sections[${i}].title is required`);
-      }
-    }
 
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
@@ -179,10 +171,6 @@ export class FormsService {
         throw new BadRequestException(`fields[${i}].label is required`);
       }
 
-      if (field.layoutConfig !== undefined && (typeof field.layoutConfig !== 'object' || Array.isArray(field.layoutConfig))) {
-        throw new BadRequestException(`fields[${i}].layoutConfig must be an object`);
-      }
-
       const validations = Array.isArray(field.validations) ? field.validations : [];
       for (let j = 0; j < validations.length; j++) {
         const validation = validations[j];
@@ -192,36 +180,6 @@ export class FormsService {
         if (typeof validation.ruleType !== 'string' || !validation.ruleType.trim()) {
           throw new BadRequestException(`fields[${i}].validations[${j}].ruleType is required`);
         }
-      }
-    }
-
-    for (let i = 0; i < conditionalRules.length; i++) {
-      const rule = conditionalRules[i];
-      if (!rule || typeof rule !== 'object') {
-        throw new BadRequestException(`conditionalRules[${i}] must be an object`);
-      }
-
-      const dependentFieldKey = String(rule.dependentFieldKey || '').trim();
-      const sourceFieldKey = String(rule.sourceFieldKey || '').trim();
-
-      if (!dependentFieldKey || !sourceFieldKey) {
-        throw new BadRequestException(
-          `conditionalRules[${i}] must include dependentFieldKey and sourceFieldKey`,
-        );
-      }
-
-      if (!fieldKeys.has(dependentFieldKey) || !fieldKeys.has(sourceFieldKey)) {
-        throw new BadRequestException(
-          `conditionalRules[${i}] references fields that do not exist in schema.fields`,
-        );
-      }
-
-      if (typeof rule.operator !== 'string' || !rule.operator.trim()) {
-        throw new BadRequestException(`conditionalRules[${i}].operator is required`);
-      }
-
-      if (typeof rule.actionType !== 'string' || !rule.actionType.trim()) {
-        throw new BadRequestException(`conditionalRules[${i}].actionType is required`);
       }
     }
 
@@ -248,15 +206,8 @@ export class FormsService {
       isReadonly: !(item.isEditable ?? true),
       isSystemField: item.isSystemField ?? false,
       systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
-      isDeletable: false,
-      isEditable: item.isEditable ?? true,
-      sortOrder: index,
-      layoutConfig: {
-        grid_width_desktop: 6,
-        grid_width_mobile: 12,
-        isShow: item.isShow ?? true,
-        ...(item.optionSource ? { optionSource: item.optionSource } : {}),
-      },
+      isShow: item.isShow ?? true,
+      ...(item.optionSource ? { optionSource: item.optionSource } : {}),
       ...(item.options?.length
         ? {
             options: item.options.map((option, sortOrder) => ({
@@ -270,10 +221,8 @@ export class FormsService {
     }));
 
     const newSchema = {
-      ...(existing || {}),
-      sections: Array.isArray(existing.sections) ? existing.sections : [],
+      ...existing,
       fields,
-      conditionalRules: Array.isArray(existing.conditionalRules) ? existing.conditionalRules : [],
     };
 
     form.autosaveSchema = newSchema;
