@@ -131,7 +131,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
       type: 'api',
       request: {
         method: 'GET',
-        endpoint: '/api/job-positions',
+        endpoint: '/api/jobpositions',
       },
       response: {
         dataPath: 'data',
