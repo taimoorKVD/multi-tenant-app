@@ -208,9 +208,9 @@ export class FormsService {
       systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
       isShow: item.isShow ?? true,
       ...(item.optionSource ? { optionSource: item.optionSource } : {}),
-      ...(item.options?.length
+      ...(item.type === 'dropdown' || item.options?.length
         ? {
-            options: item.options.map((option, sortOrder) => ({
+            options: (item.options ?? []).map((option, sortOrder) => ({
               label: option.label,
               value: option.value,
               isDefault: option.isDefault ?? false,
