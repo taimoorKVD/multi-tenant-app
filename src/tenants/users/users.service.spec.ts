@@ -174,7 +174,170 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.department).toBe('Operations');
     expect(result.data.nickname).toBe('JD');
     expect(result.data.name).toBe('John Doe');
-    expect((mailServiceMock.sendTemplateMail as any)).toHaveBeenCalled();
+    expect((mailServiceMock.sendTemplateMail as any)).not.toHaveBeenCalled();
+  });
+
+  it('rejects create when a required form-builder field is missing', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { fieldKey: 'name', isSystemField: true, isRequired: true },
+            { fieldKey: 'email', isSystemField: true, isRequired: true },
+            { fieldKey: 'password', isSystemField: true, isRequired: true },
+            { fieldKey: 'favorite_color', label: 'Favorite Color', isSystemField: false, isRequired: 'true' },
+          ],
+        },
+      }),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const userRepo = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+
+    const dynamicRepo = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    await expect(
+      service.create(req, {
+        name: 'John Doe',
+        email: 'john@kingdomvision.com',
+        password: 'Secret123!',
+        password_confirm: 'Secret123!',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        message: ['Favorite Color is required'],
+        fields: {
+          favorite_color: 'Favorite Color is required',
+        },
+      },
+    });
+
+    expect(userRepo.create).not.toHaveBeenCalled();
+    expect(dynamicRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('allows create when an optional user field was removed from the form schema', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { fieldKey: 'email', label: 'Email', isSystemField: true, isRequired: true },
+            { fieldKey: 'password', label: 'Password', isSystemField: true, isRequired: true },
+          ],
+        },
+      }),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const userRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 101,
+          name: null,
+          email: 'john@kingdomvision.com',
+          phoneNumber: null,
+          address: null,
+          username: null,
+          plainPassword: 'Secret123!',
+          password: 'hash',
+          role: null,
+          jobPosition: null,
+          location: null,
+          availabilityDays: null,
+          isSystem: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      create: jest.fn().mockImplementation((payload) => payload),
+      save: jest.fn().mockImplementation(async (payload) => ({ id: 101, ...payload })),
+    };
+
+    const dynamicRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          moduleId: 10,
+          entityId: 101,
+          data: {},
+        }),
+      create: jest.fn(),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.create(req, {
+      email: 'john@kingdomvision.com',
+      password: 'Secret123!',
+      password_confirm: 'Secret123!',
+    });
+
+    expect(userRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: undefined,
+        email: 'john@kingdomvision.com',
+        password: 'Secret123!',
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.data.name).toBeNull();
   });
 
   it('update merges new dynamic fields with existing dynamic data', async () => {

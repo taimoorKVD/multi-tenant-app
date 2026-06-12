@@ -763,7 +763,7 @@ export class TenantsService {
         subdomainUrl: `https://${subdomain}.com`,
         customDomainUrl: customDomain ? `https://${customDomain}` : null,
         admin: {
-          email: user.email,
+          email: user.email || '',
           password: adminSetup.plainPassword,
           role: {
             id: role.id,

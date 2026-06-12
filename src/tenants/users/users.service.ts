@@ -71,6 +71,7 @@ export class UsersService extends TenantAbstractService<User> {
     activeVersionId: number | null;
     systemFieldKeys: Set<string>;
     requiredFieldKeys: Set<string>;
+    fieldLabels: Map<string, string>;
     aliasToCanonicalMap: Map<string, string>;
   }> {
     const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
@@ -85,6 +86,7 @@ export class UsersService extends TenantAbstractService<User> {
         activeVersionId: null,
         systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
         requiredFieldKeys: new Set(),
+        fieldLabels: new Map(),
         aliasToCanonicalMap: new Map(),
       };
     }
@@ -101,6 +103,7 @@ export class UsersService extends TenantAbstractService<User> {
         activeVersionId: null,
         systemFieldKeys: new Set(this.fallbackSystemFieldKeys),
         requiredFieldKeys: new Set(),
+        fieldLabels: new Map(),
         aliasToCanonicalMap: new Map(),
       };
     }
@@ -109,6 +112,7 @@ export class UsersService extends TenantAbstractService<User> {
 
     const systemFieldKeys = new Set<string>();
     const requiredFieldKeys = new Set<string>();
+    const fieldLabels = new Map<string, string>();
     const aliasToCanonicalMap = new Map<string, string>();
 
     const fields = form.autosaveSchema?.fields || [];
@@ -116,6 +120,7 @@ export class UsersService extends TenantAbstractService<User> {
     for (const field of fields) {
       const key = (field.systemMappingKey || field.fieldKey || field.name || '').trim();
       if (!key) continue;
+      fieldLabels.set(key, String(field.label || key).trim() || key);
 
       const normalizedLabel = this.normalizeFieldAlias(field.label || '');
       const normalizedFieldKey = this.normalizeFieldAlias(field.fieldKey || '');
@@ -134,14 +139,12 @@ export class UsersService extends TenantAbstractService<User> {
         systemFieldKeys.add(key);
       }
 
-      if (field.isRequired) {
+      if (this.isRequiredField(field)) {
         requiredFieldKeys.add(key);
       }
     }
 
-    if (!systemFieldKeys.size) {
-      this.fallbackSystemFieldKeys.forEach((key) => systemFieldKeys.add(key));
-    }
+    this.fallbackSystemFieldKeys.forEach((key) => systemFieldKeys.add(key));
 
     this.fallbackSystemFieldKeys.forEach((key) => {
       if (!aliasToCanonicalMap.has(key)) {
@@ -160,6 +163,7 @@ export class UsersService extends TenantAbstractService<User> {
       activeVersionId: activeVersion?.id ?? null,
       systemFieldKeys,
       requiredFieldKeys,
+      fieldLabels,
       aliasToCanonicalMap,
     };
   }
@@ -170,6 +174,59 @@ export class UsersService extends TenantAbstractService<User> {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
+  }
+
+  private isTruthySchemaFlag(value: any): boolean {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'number') {
+      return value === 1;
+    }
+
+    if (typeof value === 'string') {
+      return ['true', '1', 'yes', 'required'].includes(value.trim().toLowerCase());
+    }
+
+    return false;
+  }
+
+  private isRequiredField(field: Record<string, any>): boolean {
+    if (this.isTruthySchemaFlag(field.isRequired) || this.isTruthySchemaFlag(field.required)) {
+      return true;
+    }
+
+    const validations = Array.isArray(field.validations) ? field.validations : [];
+    return validations.some((validation) => {
+      if (!validation || typeof validation !== 'object') {
+        return false;
+      }
+
+      return (
+        this.isTruthySchemaFlag(validation.isRequired) ||
+        this.isTruthySchemaFlag(validation.required) ||
+        String(validation.ruleType || validation.type || '')
+          .trim()
+          .toLowerCase() === 'required'
+      );
+    });
+  }
+
+  private isEmptyRequiredValue(value: any): boolean {
+    if (value === undefined || value === null) {
+      return true;
+    }
+
+    if (typeof value === 'string') {
+      return value.trim() === '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.length === 0;
+    }
+
+    return false;
   }
 
   private resolvePayloadAliases(
@@ -219,19 +276,53 @@ export class UsersService extends TenantAbstractService<User> {
   private assertCreatePayloadRequiredFields(
     payload: Record<string, any>,
     requiredFieldKeys: Set<string>,
+    fieldLabels: Map<string, string> = new Map(),
   ): void {
     const missing = Array.from(requiredFieldKeys).filter((key) => {
       const value = payload[key];
-      return value === undefined || value === null || value === '';
+      return this.isEmptyRequiredValue(value);
     });
 
     if (missing.length) {
-      throw new BadRequestException(`Missing required form fields: ${missing.join(', ')}`);
+      throw new BadRequestException({
+        message: missing.map((key) => `${fieldLabels.get(key) || key} is required`),
+        error: 'Bad Request',
+        statusCode: 400,
+        fields: missing.reduce(
+          (acc, key) => ({
+            ...acc,
+            [key]: `${fieldLabels.get(key) || key} is required`,
+          }),
+          {} as Record<string, string>,
+        ),
+      });
     }
 
     if (payload.password_confirm !== undefined && payload.password_confirm !== payload.password) {
       throw new BadRequestException('Passwords do not match.');
     }
+  }
+
+  private buildRequiredValidationPayload(
+    user: User,
+    staticPayload: Record<string, any>,
+    dynamicPayload: Record<string, any>,
+  ): Record<string, any> {
+    return {
+      name: user.name,
+      email: user.email,
+      phone_number: user.phoneNumber,
+      address: user.address,
+      username: user.username,
+      password: user.password,
+      plain_password: user.plainPassword,
+      role_id: user.role?.id,
+      job_position_id: user.jobPosition?.id,
+      location_id: user.location?.id,
+      availability_days: user.availabilityDays,
+      ...staticPayload,
+      ...dynamicPayload,
+    };
   }
 
   private async loadUserDynamicRows(
@@ -385,11 +476,13 @@ export class UsersService extends TenantAbstractService<User> {
       const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
 
       const normalizedDto = this.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
-      this.assertCreatePayloadRequiredFields(normalizedDto, context.requiredFieldKeys);
+      this.assertCreatePayloadRequiredFields(normalizedDto, context.requiredFieldKeys, context.fieldLabels);
       const { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
 
-      const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
-      if (existing) throw new BadRequestException('A user with this email already exists.');
+      if (staticPayload.email) {
+        const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
+        if (existing) throw new BadRequestException('A user with this email already exists.');
+      }
 
       const roleId = staticPayload.role_id;
       const jobPositionId = staticPayload.job_position_id;
@@ -453,11 +546,12 @@ export class UsersService extends TenantAbstractService<User> {
           }))?.data || {}
         : {};
 
+      /*
       const mailPayload = {
         module: 'users',
         action: 'create',
         tenantId: req?.tenantId || null,
-        to: payload?.email,
+        to: payload?.email || undefined,
         data: {
           user_id: payload?.id,
           name: payload?.name,
@@ -502,15 +596,16 @@ export class UsersService extends TenantAbstractService<User> {
           console.error('Tenant user email trigger failed:', mailError);
         });
       }
+      */
 
       return {
         success: true,
         message: 'Tenant user created successfully',
         tenant: req.tenantConnection.options.database,
         data: this.buildUserResponse(payload as User, dynamicData),
-        ...(isDevelopment ? { email_notification: emailNotification } : {}),
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       console.error('Tenant user creation failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new InternalServerErrorException(`Failed to create tenant user: ${errorMessage}`);
@@ -542,6 +637,11 @@ export class UsersService extends TenantAbstractService<User> {
         ...(existingDynamic?.data || {}),
         ...dynamicPayload,
       };
+      this.assertCreatePayloadRequiredFields(
+        this.buildRequiredValidationPayload(user, staticPayload, mergedDynamic),
+        context.requiredFieldKeys,
+        context.fieldLabels,
+      );
 
       if (staticPayload.email && staticPayload.email !== user.email) {
         const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
@@ -598,12 +698,13 @@ export class UsersService extends TenantAbstractService<User> {
         ? (await dynamicRepo.findOne({ where: { moduleId: context.moduleId, entityId: updated.id } }))?.data || {}
         : {};
 
+      /*
       void this.mailService
         .sendTemplateMail(req, {
           module: 'users',
           action: 'update',
           tenantId: req?.tenantId || null,
-          to: payload?.email,
+          to: payload?.email || undefined,
           data: {
             user_id: payload?.id,
             name: payload?.name,
@@ -624,6 +725,7 @@ export class UsersService extends TenantAbstractService<User> {
         .catch((mailError) => {
           console.error('Tenant user update email trigger failed:', mailError);
         });
+      */
 
       return {
         success: true,
@@ -632,6 +734,7 @@ export class UsersService extends TenantAbstractService<User> {
         data: this.buildUserResponse(payload as User, dynamicData),
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       console.error('Tenant user update failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new InternalServerErrorException(`Failed to update tenant user: ${errorMessage}`);
@@ -787,7 +890,7 @@ export class UsersService extends TenantAbstractService<User> {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      const recipientEmail = dto.recipient_email || user.email;
+      const recipientEmail = dto.recipient_email || user.email || undefined;
       const payload = {
         module: 'users',
         action: 'credentials',
