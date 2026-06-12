@@ -154,10 +154,7 @@ export function setupSwagger(app: INestApplication) {
                     'Reporting Category Management',
                     'Item Management',
                     'Form Builder Management - Forms',
-                    'Form Builder Management - Fields',
-                    'Form Builder Management - Submissions',
                     'Form Builder Management - Versions',
-                    'Form Builder Management - Field Types',
                     'Email Management',
                     'Email Testing',
                 ];

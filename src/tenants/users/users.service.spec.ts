@@ -1,6 +1,7 @@
+import { BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { MailService } from '../../mail/mail.service';
-import { DynamicModule, Form, FormField, FormVersion } from '../form-builder/entities';
+import { DynamicModule, Form, FormVersion } from '../form-builder/entities';
 import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { JobPosition } from '../job-positions/entities';
 import { Location } from '../locations/entities';
@@ -51,29 +52,31 @@ describe('UsersService dynamic fields', () => {
     };
 
     const formRepo = {
-      findOne: jest.fn().mockResolvedValue({ id: 20, moduleId: 10 }),
-    };
-
-    const fieldRepo = {
-      find: jest.fn().mockResolvedValue([
-        { fieldKey: 'name', isSystemField: true, isRequired: true },
-        { fieldKey: 'email', isSystemField: true, isRequired: true },
-        { fieldKey: 'password', isSystemField: true, isRequired: true },
-        { fieldKey: 'role_id', isSystemField: true, isRequired: true },
-        { fieldKey: 'phone_number', isSystemField: true, isRequired: false },
-        { fieldKey: 'favorite_color', isSystemField: false, isRequired: false },
-      ]),
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { fieldKey: 'name', isSystemField: true, isRequired: true },
+            { fieldKey: 'email', isSystemField: true, isRequired: true },
+            { fieldKey: 'password', isSystemField: true, isRequired: true },
+            { fieldKey: 'role_id', isSystemField: true, isRequired: true },
+            { fieldKey: 'phone_number', isSystemField: true, isRequired: false },
+            { fieldKey: 'favorite_color', isSystemField: false, isRequired: false },
+          ],
+        },
+      }),
     };
 
     const versionRepo = {
       findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
     };
 
-    return { moduleRepo, formRepo, fieldRepo, versionRepo };
+    return { moduleRepo, formRepo, versionRepo };
   }
 
   it('create stores additional form-builder fields in entity_dynamic_data', async () => {
-    const { moduleRepo, formRepo, fieldRepo, versionRepo } = buildSchemaRepos();
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
     const roleRepo = {
       findOne: jest.fn().mockResolvedValue({ id: 1, name: 'Admin' }),
@@ -131,7 +134,6 @@ describe('UsersService dynamic fields', () => {
       [Location, { findOne: jest.fn() }],
       [DynamicModule, moduleRepo],
       [Form, formRepo],
-      [FormField, fieldRepo],
       [FormVersion, versionRepo],
       [EntityDynamicData, dynamicRepo],
     ]);
@@ -176,7 +178,7 @@ describe('UsersService dynamic fields', () => {
   });
 
   it('update merges new dynamic fields with existing dynamic data', async () => {
-    const { moduleRepo, formRepo, fieldRepo, versionRepo } = buildSchemaRepos();
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
     const userRepo = {
       findOne: jest
@@ -258,7 +260,6 @@ describe('UsersService dynamic fields', () => {
       [Location, { findOne: jest.fn() }],
       [DynamicModule, moduleRepo],
       [Form, formRepo],
-      [FormField, fieldRepo],
       [FormVersion, versionRepo],
       [EntityDynamicData, dynamicRepo],
     ]);
@@ -292,8 +293,123 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.phone_number).toBe('+1 555 000');
   });
 
+  it('throws when updating a user removes a required form-builder field', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { fieldKey: 'name', isSystemField: true, isRequired: true },
+            { fieldKey: 'email', isSystemField: true, isRequired: true },
+            { fieldKey: 'password', isSystemField: true, isRequired: true },
+            { fieldKey: 'role_id', isSystemField: true, isRequired: true },
+            { fieldKey: 'phone_number', isSystemField: true, isRequired: false },
+            { fieldKey: 'favorite_color', isSystemField: false, isRequired: true },
+          ],
+        },
+      }),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const userRepo = {
+      findOne: jest.fn()
+        .mockResolvedValueOnce({
+          id: 101,
+          name: 'John Doe',
+          email: 'john@acme.com',
+          phoneNumber: null,
+          address: null,
+          username: 'john',
+          plainPassword: 'Secret123!',
+          password: 'hash',
+          role: { id: 1, name: 'Admin' },
+          jobPosition: null,
+          location: null,
+          availabilityDays: null,
+          isSystem: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .mockResolvedValueOnce({
+          id: 101,
+          name: 'John Doe',
+          email: 'john@acme.com',
+          phoneNumber: null,
+          address: null,
+          username: 'john',
+          plainPassword: 'Secret123!',
+          password: 'hash',
+          role: { id: 1, name: 'Admin' },
+          jobPosition: null,
+          location: null,
+          availabilityDays: null,
+          isSystem: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      save: jest.fn().mockResolvedValue({
+        id: 101,
+        name: 'John Doe',
+        email: 'john@acme.com',
+        phoneNumber: null,
+        address: null,
+        username: 'john',
+        plainPassword: 'Secret123!',
+        password: 'hash',
+        role: { id: 1, name: 'Admin' },
+        jobPosition: null,
+        location: null,
+        availabilityDays: null,
+        isSystem: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    };
+
+    const dynamicRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({
+          moduleId: 10,
+          entityId: 101,
+          data: { favorite_color: 'red' },
+        }),
+      find: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    await expect(service.update(req, 101, { favorite_color: '' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(userRepo.findOne).toHaveBeenCalled();
+    expect(dynamicRepo.save).not.toHaveBeenCalled();
+  });
+
   it('search filters users by dynamic custom fields from entity_dynamic_data', async () => {
-    const { moduleRepo, formRepo, fieldRepo, versionRepo } = buildSchemaRepos();
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
     const qb: any = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -355,7 +471,6 @@ describe('UsersService dynamic fields', () => {
       [Location, { findOne: jest.fn() }],
       [DynamicModule, moduleRepo],
       [Form, formRepo],
-      [FormField, fieldRepo],
       [FormVersion, versionRepo],
       [EntityDynamicData, dynamicRepo],
     ]);
@@ -375,7 +490,7 @@ describe('UsersService dynamic fields', () => {
   });
 
   it('search filters users by address text', async () => {
-    const { moduleRepo, formRepo, fieldRepo, versionRepo } = buildSchemaRepos();
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
     const qb: any = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -405,7 +520,6 @@ describe('UsersService dynamic fields', () => {
       [Location, { findOne: jest.fn() }],
       [DynamicModule, moduleRepo],
       [Form, formRepo],
-      [FormField, fieldRepo],
       [FormVersion, versionRepo],
       [EntityDynamicData, dynamicRepo],
     ]);

@@ -18,13 +18,8 @@ import {
 import {
   DynamicModule,
   EntityDynamicData,
-  FieldConditionalRule,
-  FieldOption,
-  FieldType,
-  FieldValidation,
   Form,
   FormAuditLog,
-  FormField,
   FormVersion,
 } from '../tenants/form-builder/entities';
 
@@ -95,11 +90,6 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       DynamicModule,
       Form,
       FormVersion,
-      FieldType,
-      FormField,
-      FieldOption,
-      FieldValidation,
-      FieldConditionalRule,
       FormAuditLog,
       EntityDynamicData,
     ],

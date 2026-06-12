@@ -19,14 +19,10 @@ import {CreateTenantDto} from './dto';
 import {IAdminSetup, ITenantResponse} from './interfaces';
 import {Permission} from '../../tenants/permission/entities';
 import {ApiResponse} from '../../common/abstract';
-import {FieldTypesService} from '../../tenants/form-builder/services';
 import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../../tenants/form-builder/config/module-seeds';
 import {
   DynamicModule,
-  FieldType,
   Form,
-  FormField,
-
   FormStatus,
 } from '../../tenants/form-builder/entities';
 
@@ -651,18 +647,9 @@ export class TenantsService {
       tenantConnection: connection,
       user: actorId ? { id: actorId } : null,
     };
-
-    const fieldTypesService = new FieldTypesService(connection);
-    await fieldTypesService.ensureSeeded(req);
-
     const moduleRepo = connection.getRepository(DynamicModule);
     const formRepo = connection.getRepository(Form);
-    const fieldRepo = connection.getRepository(FormField);
-    const fieldTypeRepo = connection.getRepository(FieldType);
-
     const modules = FORM_BUILDER_MODULE_SEEDS;
-    const fieldTypes = await fieldTypeRepo.find();
-    const typeByName = new Map<string, FieldType>(fieldTypes.map((fieldType) => [fieldType.name, fieldType]));
 
     for (const moduleSeed of modules) {
       let moduleEntity = await moduleRepo.findOne({ where: { slug: moduleSeed.slug }, withDeleted: true });
@@ -709,24 +696,18 @@ export class TenantsService {
       if (!moduleSeed.defaultFields?.length) {
         continue;
       }
-
-      const existingFieldCount = await fieldRepo.count({ where: { formId: form.id } });
-      if (existingFieldCount > 0) {
+      // If an autosave schema with fields already exists, don't overwrite it
+      if (form.autosaveSchema && Array.isArray(form.autosaveSchema.fields) && form.autosaveSchema.fields.length) {
         continue;
       }
 
-      const fields = moduleSeed.defaultFields.map((item, index) => {
-        const fieldType = typeByName.get(item.type);
-        if (!fieldType) {
-          throw new InternalServerErrorException(`Missing field type during tenant bootstrap: ${item.type}`);
-        }
-
-        return fieldRepo.create({
-          formId: form.id,
-          fieldTypeName: fieldType.name,
+      form.autosaveSchema = {
+        sections: [],
+        fields: moduleSeed.defaultFields.map((item, index) => ({
           fieldKey: item.key,
           label: item.label,
           name: item.name,
+          fieldTypeName: item.type,
           placeholder: item.placeholder ?? 'Placeholder text',
           helpText: item.helpText ?? null,
           isRequired: item.isRequired ?? false,
@@ -750,17 +731,14 @@ export class TenantsService {
                   value: option.value,
                   isDefault: option.isDefault ?? false,
                   sortOrder,
-                  createdBy: actorId,
-                  updatedBy: actorId,
                 })),
               }
             : {}),
-          createdBy: actorId,
-          updatedBy: actorId,
-        });
-      });
+        })),
+        conditionalRules: [],
+      };
 
-      await fieldRepo.save(fields);
+      await formRepo.save(form);
     }
 
     this.logger.log('🧩 Form builder modules and default forms bootstrapped for new tenant');
