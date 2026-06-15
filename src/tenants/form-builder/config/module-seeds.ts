@@ -1,5 +1,5 @@
 type FieldOptionSourceSeed = {
-  type: 'api';
+  type: 'dynamic';
    method: string;
    endpoint: string;
   response: {
@@ -105,9 +105,9 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     isSystemField: true,
     systemMappingKey: 'role_id',
     optionSource: {
-      type: 'api',
+      type: 'dynamic',
       method: 'GET',
-      endpoint: '/api/roles',
+      endpoint: 'roles',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -124,9 +124,9 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     isSystemField: true,
     systemMappingKey: 'job_position_id',
     optionSource: {
-      type: 'api',
+      type: 'dynamic',
       method: 'GET',
-      endpoint: '/api/jobpositions',
+      endpoint: 'jobpositions',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -143,9 +143,9 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     isSystemField: true,
     systemMappingKey: 'location_id',
     optionSource: {
-      type: 'api',
+      type: 'dynamic',
       method: 'GET',
-      endpoint: '/api/locations',
+      endpoint: 'locations',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -199,9 +199,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     type: 'dropdown',
     isEditable: true,
     optionSource: {
-      type: 'api',
+      type: 'dynamic',
       method: 'GET',
-      endpoint: '/api/countries',
+      endpoint: 'countries',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -216,9 +216,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     type: 'dropdown',
     isEditable: true,
     optionSource: {
-      type: 'api',
+      type: 'dynamic',
       method: 'GET',
-      endpoint: '/api/states',
+      endpoint: 'states',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -233,9 +233,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     type: 'dropdown',
     isEditable: true,
     optionSource: {
-      type: 'api',
+      type: 'dynamic',
       method: 'GET',
-      endpoint: '/api/cities',
+      endpoint: 'cities',
       response: {
         dataPath: 'data',
         labelKey: 'name',
