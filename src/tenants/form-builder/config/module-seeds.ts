@@ -1,9 +1,7 @@
 type FieldOptionSourceSeed = {
   type: 'api';
-  request: {
-    method: string;
-    endpoint: string;
-  };
+   method: string;
+   endpoint: string;
   response: {
     dataPath: string;
     labelKey: string;
@@ -108,10 +106,8 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     systemMappingKey: 'role_id',
     optionSource: {
       type: 'api',
-      request: {
-        method: 'GET',
-        endpoint: '/api/roles',
-      },
+      method: 'GET',
+      endpoint: '/api/roles',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -129,10 +125,8 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     systemMappingKey: 'job_position_id',
     optionSource: {
       type: 'api',
-      request: {
-        method: 'GET',
-        endpoint: '/api/jobpositions',
-      },
+      method: 'GET',
+      endpoint: '/api/jobpositions',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -150,10 +144,8 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     systemMappingKey: 'location_id',
     optionSource: {
       type: 'api',
-      request: {
-        method: 'GET',
-        endpoint: '/api/locations',
-      },
+      method: 'GET',
+      endpoint: '/api/locations',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -208,10 +200,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
     optionSource: {
       type: 'api',
-      request: {
-        method: 'GET',
-        endpoint: '/api/countries',
-      },
+      method: 'GET',
+      endpoint: '/api/countries',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -227,10 +217,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
     optionSource: {
       type: 'api',
-      request: {
-        method: 'GET',
-        endpoint: '/api/states',
-      },
+      method: 'GET',
+      endpoint: '/api/states',
       response: {
         dataPath: 'data',
         labelKey: 'name',
@@ -246,10 +234,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
     optionSource: {
       type: 'api',
-      request: {
-        method: 'GET',
-        endpoint: '/api/cities',
-      },
+      method: 'GET',
+      endpoint: '/api/cities',
       response: {
         dataPath: 'data',
         labelKey: 'name',
