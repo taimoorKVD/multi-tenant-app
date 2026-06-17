@@ -47,6 +47,12 @@ export class UsersService extends TenantAbstractService<User> {
 
   private readonly ignoredPayloadKeys = new Set(['password_confirm', 'createdBy', 'updatedBy']);
 
+  private readonly relationFieldAliases: Record<string, string> = {
+    job_position: 'job_position_id',
+    location: 'location_id',
+    role: 'role_id',
+  };
+
   private getFrontendBaseUrl(): string {
     const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
     if (frontendUrl) {
@@ -118,30 +124,49 @@ export class UsersService extends TenantAbstractService<User> {
     const fields = form.autosaveSchema?.fields || [];
 
     for (const field of fields) {
-      const key = (field.systemMappingKey || field.fieldKey || field.name || '').trim();
-      if (!key) continue;
-      fieldLabels.set(key, String(field.label || key).trim() || key);
+      const fieldKey = String(field.fieldKey || field.name || '').trim();
+      const systemMappingKey = String(field.systemMappingKey || '').trim();
+      const canonicalKey =
+        field.isSystemField && systemMappingKey ? systemMappingKey : systemMappingKey || fieldKey;
+      if (!canonicalKey) continue;
+
+      fieldLabels.set(canonicalKey, String(field.label || canonicalKey).trim() || canonicalKey);
 
       const normalizedLabel = this.normalizeFieldAlias(field.label || '');
       const normalizedFieldKey = this.normalizeFieldAlias(field.fieldKey || '');
       const normalizedName = this.normalizeFieldAlias(field.name || '');
-      const aliases = [key, field.fieldKey, field.name, field.label, normalizedLabel, normalizedFieldKey, normalizedName]
+      const aliases = [
+        canonicalKey,
+        fieldKey,
+        field.name,
+        field.label,
+        normalizedLabel,
+        normalizedFieldKey,
+        normalizedName,
+      ]
         .map((value) => String(value || '').trim())
         .filter(Boolean);
 
       for (const alias of aliases) {
-        if (!aliasToCanonicalMap.has(alias)) {
-          aliasToCanonicalMap.set(alias, key);
+        aliasToCanonicalMap.set(alias, canonicalKey);
+        const normalizedAlias = this.normalizeFieldAlias(alias);
+        if (normalizedAlias) {
+          aliasToCanonicalMap.set(normalizedAlias, canonicalKey);
         }
       }
 
       if (field.isSystemField) {
-        systemFieldKeys.add(key);
+        systemFieldKeys.add(canonicalKey);
       }
 
       if (this.isRequiredField(field)) {
-        requiredFieldKeys.add(key);
+        requiredFieldKeys.add(canonicalKey);
       }
+    }
+
+    for (const [alias, canonical] of Object.entries(this.relationFieldAliases)) {
+      aliasToCanonicalMap.set(alias, canonical);
+      aliasToCanonicalMap.set(this.normalizeFieldAlias(alias), canonical);
     }
 
     this.fallbackSystemFieldKeys.forEach((key) => systemFieldKeys.add(key));
@@ -243,12 +268,104 @@ export class UsersService extends TenantAbstractService<User> {
       const canonicalKey = aliasToCanonicalMap.get(key) || aliasToCanonicalMap.get(normalizedKey) || key;
 
       const hasCanonicalValue = Object.prototype.hasOwnProperty.call(normalizedPayload, canonicalKey);
-      if (!hasCanonicalValue || key === canonicalKey) {
+      if (!hasCanonicalValue) {
+        normalizedPayload[canonicalKey] = value;
+        continue;
+      }
+
+      if (key === canonicalKey) {
+        if (this.hasPresentValue(value) || !this.hasPresentValue(normalizedPayload[canonicalKey])) {
+          normalizedPayload[canonicalKey] = value;
+        }
+        continue;
+      }
+
+      if (this.hasPresentValue(value) && !this.hasPresentValue(normalizedPayload[canonicalKey])) {
         normalizedPayload[canonicalKey] = value;
       }
     }
 
     return normalizedPayload;
+  }
+
+  private hasPresentValue(value: unknown): boolean {
+    if (value === undefined || value === null) {
+      return false;
+    }
+
+    if (typeof value === 'string') {
+      return value.trim() !== '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    return true;
+  }
+
+  private coerceRelationId(value: unknown): number | null {
+    if (!this.hasPresentValue(value)) {
+      return null;
+    }
+
+    if (typeof value === 'object' && value !== null && 'id' in (value as Record<string, unknown>)) {
+      const id = Number((value as Record<string, unknown>).id);
+      return Number.isFinite(id) ? id : null;
+    }
+
+    const id = Number(value);
+    return Number.isFinite(id) ? id : null;
+  }
+
+  private promoteDynamicSystemFields(
+    staticPayload: Record<string, any>,
+    dynamicPayload: Record<string, any>,
+    aliasToCanonicalMap: Map<string, string>,
+    systemFieldKeys: Set<string>,
+  ): { staticPayload: Record<string, any>; dynamicPayload: Record<string, any> } {
+    const nextStaticPayload = { ...staticPayload };
+    const nextDynamicPayload = { ...dynamicPayload };
+
+    for (const [key, value] of Object.entries(dynamicPayload || {})) {
+      const normalizedKey = this.normalizeFieldAlias(key);
+      const canonicalKey = aliasToCanonicalMap.get(key) || aliasToCanonicalMap.get(normalizedKey) || key;
+
+      if (!systemFieldKeys.has(canonicalKey) || !this.hasPresentValue(value)) {
+        continue;
+      }
+
+      if (!this.hasPresentValue(nextStaticPayload[canonicalKey])) {
+        nextStaticPayload[canonicalKey] = value;
+        delete nextDynamicPayload[key];
+      }
+    }
+
+    return {
+      staticPayload: nextStaticPayload,
+      dynamicPayload: nextDynamicPayload,
+    };
+  }
+
+  private filterDynamicDataForResponse(
+    dynamicData: Record<string, any>,
+    aliasToCanonicalMap: Map<string, string>,
+    systemFieldKeys: Set<string>,
+  ): Record<string, any> {
+    const filtered: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(dynamicData || {})) {
+      const normalizedKey = this.normalizeFieldAlias(key);
+      const canonicalKey = aliasToCanonicalMap.get(key) || aliasToCanonicalMap.get(normalizedKey) || key;
+
+      if (systemFieldKeys.has(canonicalKey) || systemFieldKeys.has(key)) {
+        continue;
+      }
+
+      filtered[key] = value;
+    }
+
+    return filtered;
   }
 
   private splitUserPayload(
@@ -376,14 +493,151 @@ export class UsersService extends TenantAbstractService<User> {
     await dynamicRepo.save(row);
   }
 
-  private buildUserResponse(user: User, dynamicData: Record<string, any> = {}): Record<string, any> {
-    const sanitized = this.sanitizeEntity(user) as any;
+  private formatJobPosition(jobPosition: JobPosition | null): Record<string, any> | null {
+    if (!jobPosition) return null;
+
+    const { createdAt, updatedAt, permissions, ...rest } = jobPosition;
     return {
-      ...dynamicData,
-      ...sanitized,
-      phone_number: sanitized?.phoneNumber ?? null,
-      plain_password: sanitized?.plainPassword ?? null,
+      ...rest,
+      ...(permissions ? { permissions } : {}),
+      created_at: createdAt,
+      updated_at: updatedAt,
     };
+  }
+
+  private formatLocation(location: Location | null): Record<string, any> | null {
+    if (!location) return null;
+
+    const { countryId, stateId, cityId, postalCode, createdAt, updatedAt, ...rest } = location;
+    return {
+      ...rest,
+      country_id: countryId,
+      state_id: stateId,
+      city_id: cityId,
+      postal_code: postalCode,
+      created_at: createdAt,
+      updated_at: updatedAt,
+    };
+  }
+
+  private formatRole(role: Role | null): Record<string, any> | null {
+    if (!role) return null;
+
+    const { createdAt, updatedAt, permissions, ...rest } = role;
+    return {
+      ...rest,
+      ...(permissions ? { permissions } : {}),
+      created_at: createdAt,
+      updated_at: updatedAt,
+    };
+  }
+
+  private buildUserResponse(
+    user: User,
+    dynamicData: Record<string, any> = {},
+    schemaContext?: {
+      systemFieldKeys: Set<string>;
+      aliasToCanonicalMap: Map<string, string>;
+    },
+  ): Record<string, any> {
+    const filteredDynamicData = schemaContext
+      ? this.filterDynamicDataForResponse(
+          dynamicData,
+          schemaContext.aliasToCanonicalMap,
+          schemaContext.systemFieldKeys,
+        )
+      : dynamicData;
+
+    return {
+      ...filteredDynamicData,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone_number: user.phoneNumber ?? null,
+      address: user.address,
+      username: user.username,
+      plain_password: user.plainPassword ?? null,
+      role: this.formatRole(user.role ?? null),
+      job_position: this.formatJobPosition(user.jobPosition ?? null),
+      location: this.formatLocation(user.location ?? null),
+      availability_days: user.availabilityDays ?? null,
+      is_system: user.isSystem,
+      created_at: user.createdAt,
+      updated_at: user.updatedAt,
+    };
+  }
+
+  private async applyStaticPayloadToUser(
+    req: any,
+    user: User,
+    staticPayload: Record<string, any>,
+    options: { isCreate?: boolean } = {},
+  ): Promise<void> {
+    const userRepo = this.getRepo(req);
+    const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
+    const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
+    const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
+    const isCreate = options.isCreate ?? false;
+
+    const shouldApplyScalar = (value: unknown) => isCreate || this.hasPresentValue(value);
+
+    if (shouldApplyScalar(staticPayload.name) && staticPayload.name !== undefined) {
+      user.name = staticPayload.name;
+    }
+
+    if (staticPayload.email !== undefined && (isCreate || this.hasPresentValue(staticPayload.email))) {
+      if (!isCreate && staticPayload.email !== user.email) {
+        const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
+        if (existing && existing.id !== user.id) {
+          throw new BadRequestException('Email already in use by another user.');
+        }
+      }
+      user.email = staticPayload.email;
+    }
+
+    if (shouldApplyScalar(staticPayload.phone_number) && staticPayload.phone_number !== undefined) {
+      user.phoneNumber = staticPayload.phone_number;
+    }
+
+    if (shouldApplyScalar(staticPayload.address) && staticPayload.address !== undefined) {
+      user.address = staticPayload.address;
+    }
+
+    if (shouldApplyScalar(staticPayload.username) && staticPayload.username !== undefined) {
+      user.username = staticPayload.username;
+    }
+
+    if (this.hasPresentValue(staticPayload.password)) {
+      user.password = staticPayload.password;
+      user.plainPassword = staticPayload.plain_password || staticPayload.password;
+    }
+
+    if (staticPayload.availability_days !== undefined && (isCreate || staticPayload.availability_days !== null)) {
+      user.availabilityDays = staticPayload.availability_days?.length ? staticPayload.availability_days : null;
+    }
+
+    const roleId = this.coerceRelationId(staticPayload.role_id);
+    if (roleId !== null && roleId !== user.role?.id) {
+      const newRole = await roleRepo.findOne({ where: { id: roleId } });
+      if (!newRole) throw new BadRequestException(`Role with ID ${roleId} not found.`);
+      user.role = newRole;
+    }
+
+    const jobPositionId = this.coerceRelationId(staticPayload.job_position_id);
+    if (jobPositionId !== null && jobPositionId !== user.jobPosition?.id) {
+      const newJobPosition = await jobPositionRepo.findOne({ where: { id: jobPositionId } });
+      if (!newJobPosition) {
+        throw new BadRequestException(`Job position with ID ${jobPositionId} not found.`);
+      }
+      user.jobPosition = newJobPosition;
+    }
+
+    const locationId = this.coerceRelationId(staticPayload.location_id);
+    if (locationId !== null && locationId !== user.location?.id) {
+      const newLocation = await locationRepo.findOne({ where: { id: locationId } });
+      if (!newLocation) throw new BadRequestException(`Location with ID ${locationId} not found.`);
+      user.location = newLocation;
+    }
   }
 
   override async findAll(req: any, relations: string[] = []): Promise<any> {
@@ -397,7 +651,12 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         tenant: req.tenantConnection.options.database,
         count: data.length,
-        data: data.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {})),
+        data: data.map((user) =>
+          this.buildUserResponse(user, dynamicRows.get(user.id) || {}, {
+            systemFieldKeys: context.systemFieldKeys,
+            aliasToCanonicalMap: context.aliasToCanonicalMap,
+          }),
+        ),
       };
     } catch {
       throw new InternalServerErrorException('Failed to retrieve users');
@@ -437,7 +696,12 @@ export class UsersService extends TenantAbstractService<User> {
           page: currentPage,
           lastPage: queryOptions.take ? Math.ceil(total / queryOptions.take) || 1 : 1,
         },
-        data: data.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {})),
+        data: data.map((user) =>
+          this.buildUserResponse(user, dynamicRows.get(user.id) || {}, {
+            systemFieldKeys: context.systemFieldKeys,
+            aliasToCanonicalMap: context.aliasToCanonicalMap,
+          }),
+        ),
       };
     } catch {
       throw new InternalServerErrorException('Failed to paginate users');
@@ -459,7 +723,10 @@ export class UsersService extends TenantAbstractService<User> {
       return {
         success: true,
         tenant: req.tenantConnection.options.database,
-        data: this.buildUserResponse(entity, dynamicRows.get(entity.id) || {}),
+        data: this.buildUserResponse(entity, dynamicRows.get(entity.id) || {}, {
+          systemFieldKeys: context.systemFieldKeys,
+          aliasToCanonicalMap: context.aliasToCanonicalMap,
+        }),
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -471,58 +738,24 @@ export class UsersService extends TenantAbstractService<User> {
     try {
       const context = await this.getUsersSchemaContext(req);
       const userRepo: Repository<User> = this.getRepo(req);
-      const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
-      const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
-      const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
 
       const normalizedDto = this.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
       this.assertCreatePayloadRequiredFields(normalizedDto, context.requiredFieldKeys, context.fieldLabels);
-      const { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
+      let { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
+      ({ staticPayload, dynamicPayload } = this.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+      ));
 
       if (staticPayload.email) {
         const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
         if (existing) throw new BadRequestException('A user with this email already exists.');
       }
 
-      const roleId = staticPayload.role_id;
-      const jobPositionId = staticPayload.job_position_id;
-      const locationId = staticPayload.location_id;
-
-      let role: Role | null = null;
-      if (roleId) {
-        role = await roleRepo.findOne({ where: { id: roleId } });
-        if (!role) throw new BadRequestException(`Role with ID ${roleId} not found.`);
-      }
-
-      let jobPosition: JobPosition | null = null;
-      if (jobPositionId) {
-        jobPosition = await jobPositionRepo.findOne({ where: { id: jobPositionId } });
-        if (!jobPosition) {
-          throw new BadRequestException(`Job position with ID ${jobPositionId} not found.`);
-        }
-      }
-
-      let location: Location | null = null;
-      if (locationId) {
-        location = await locationRepo.findOne({ where: { id: locationId } });
-        if (!location) {
-          throw new BadRequestException(`Location with ID ${locationId} not found.`);
-        }
-      }
-
-      const user = userRepo.create({
-        name: staticPayload.name,
-        email: staticPayload.email,
-        phoneNumber: staticPayload.phone_number || null,
-        address: staticPayload.address || null,
-        username: staticPayload.username || null,
-        password: staticPayload.password,
-        plainPassword: staticPayload.plain_password || staticPayload.password,
-        availabilityDays: staticPayload.availability_days?.length ? staticPayload.availability_days : null,
-        ...(role ? { role } : {}),
-        ...(jobPosition ? { jobPosition } : {}),
-        ...(location ? { location } : {}),
-      });
+      const user = userRepo.create({});
+      await this.applyStaticPayloadToUser(req, user as User, staticPayload, { isCreate: true });
 
       const saved = await userRepo.save(user);
 
@@ -602,7 +835,10 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         message: 'Tenant user created successfully',
         tenant: req.tenantConnection.options.database,
-        data: this.buildUserResponse(payload as User, dynamicData),
+        data: this.buildUserResponse(payload as User, dynamicData, {
+          systemFieldKeys: context.systemFieldKeys,
+          aliasToCanonicalMap: context.aliasToCanonicalMap,
+        }),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -616,9 +852,6 @@ export class UsersService extends TenantAbstractService<User> {
     try {
       const context = await this.getUsersSchemaContext(req);
       const userRepo: Repository<User> = this.getRepo(req);
-      const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
-      const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
-      const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
       const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
 
       const user = await userRepo.findOne({
@@ -629,7 +862,13 @@ export class UsersService extends TenantAbstractService<User> {
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
 
       const normalizedDto = this.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
-      const { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
+      let { staticPayload, dynamicPayload } = this.splitUserPayload(normalizedDto, context.systemFieldKeys);
+      ({ staticPayload, dynamicPayload } = this.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+      ));
       const existingDynamic = context.moduleId
         ? await dynamicRepo.findOne({ where: { moduleId: context.moduleId, entityId: user.id } })
         : null;
@@ -643,41 +882,7 @@ export class UsersService extends TenantAbstractService<User> {
         context.fieldLabels,
       );
 
-      if (staticPayload.email && staticPayload.email !== user.email) {
-        const existing = await userRepo.findOne({ where: { email: staticPayload.email } });
-        if (existing) throw new BadRequestException('Email already in use by another user.');
-        user.email = staticPayload.email;
-      }
-
-      if (staticPayload.name !== undefined) user.name = staticPayload.name;
-      if (staticPayload.phone_number !== undefined) user.phoneNumber = staticPayload.phone_number;
-      if (staticPayload.address !== undefined) user.address = staticPayload.address;
-      if (staticPayload.username !== undefined) user.username = staticPayload.username;
-      if (staticPayload.password !== undefined) {
-        user.password = staticPayload.password;
-        user.plainPassword = staticPayload.plain_password || staticPayload.password;
-      }
-      if (staticPayload.availability_days !== undefined) user.availabilityDays = staticPayload.availability_days;
-
-      if (staticPayload.role_id && staticPayload.role_id !== user.role?.id) {
-        const newRole = await roleRepo.findOne({ where: { id: staticPayload.role_id } });
-        if (!newRole) throw new BadRequestException(`Role with ID ${staticPayload.role_id} not found.`);
-        user.role = newRole;
-      }
-
-      if (staticPayload.job_position_id && staticPayload.job_position_id !== user.jobPosition?.id) {
-        const newJobPosition = await jobPositionRepo.findOne({ where: { id: staticPayload.job_position_id } });
-        if (!newJobPosition) {
-          throw new BadRequestException(`Job position with ID ${staticPayload.job_position_id} not found.`);
-        }
-        user.jobPosition = newJobPosition;
-      }
-
-      if (staticPayload.location_id && staticPayload.location_id !== user.location?.id) {
-        const newLocation = await locationRepo.findOne({ where: { id: staticPayload.location_id } });
-        if (!newLocation) throw new BadRequestException(`Location with ID ${staticPayload.location_id} not found.`);
-        user.location = newLocation;
-      }
+      await this.applyStaticPayloadToUser(req, user, staticPayload);
 
       const updated = await userRepo.save(user);
       await this.upsertUserDynamicRow(
@@ -731,7 +936,10 @@ export class UsersService extends TenantAbstractService<User> {
         success: true,
         message: 'Tenant user updated successfully',
         tenant: req.tenantConnection.options.database,
-        data: this.buildUserResponse(payload as User, dynamicData),
+        data: this.buildUserResponse(payload as User, dynamicData, {
+          systemFieldKeys: context.systemFieldKeys,
+          aliasToCanonicalMap: context.aliasToCanonicalMap,
+        }),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -867,7 +1075,12 @@ export class UsersService extends TenantAbstractService<User> {
       const users = await qb.getMany();
       const dynamicRows = await this.loadUserDynamicRows(req, context.moduleId, users.map((user) => user.id));
 
-      const data = users.map((user) => this.buildUserResponse(user, dynamicRows.get(user.id) || {}));
+      const data = users.map((user) =>
+        this.buildUserResponse(user, dynamicRows.get(user.id) || {}, {
+          systemFieldKeys: context.systemFieldKeys,
+          aliasToCanonicalMap: context.aliasToCanonicalMap,
+        }),
+      );
 
       return {
         success: true,
