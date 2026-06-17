@@ -83,7 +83,7 @@ describe('UsersService dynamic fields', () => {
     };
 
     const userRepo = {
-      create: jest.fn().mockImplementation((payload) => payload),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
       save: jest.fn().mockImplementation(async (payload) => ({ id: 101, ...payload })),
       findOne: jest
         .fn()
@@ -121,7 +121,7 @@ describe('UsersService dynamic fields', () => {
             nickname: 'JD',
           },
         }),
-      create: jest.fn().mockImplementation((payload) => payload),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
       save: jest.fn().mockImplementation(async (payload) => payload),
       delete: jest.fn(),
       find: jest.fn(),
@@ -291,7 +291,7 @@ describe('UsersService dynamic fields', () => {
           createdAt: new Date(),
           updatedAt: new Date(),
         }),
-      create: jest.fn().mockImplementation((payload) => payload),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
       save: jest.fn().mockImplementation(async (payload) => ({ id: 101, ...payload })),
     };
 
@@ -329,15 +329,136 @@ describe('UsersService dynamic fields', () => {
       password_confirm: 'Secret123!',
     });
 
-    expect(userRepo.create).toHaveBeenCalledWith(
+    expect(userRepo.create).toHaveBeenCalledWith({});
+    expect(userRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: undefined,
         email: 'john@kingdomvision.com',
         password: 'Secret123!',
       }),
     );
     expect(result.success).toBe(true);
     expect(result.data.name).toBeNull();
+  });
+
+  it('update preserves job position and location when omitted or null in payload', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            {
+              fieldKey: 'name_new',
+              label: 'Name',
+              isSystemField: true,
+              systemMappingKey: 'name',
+            },
+            { fieldKey: 'email', isSystemField: true, isRequired: true },
+            { fieldKey: 'select_field', isSystemField: false, isRequired: false },
+          ],
+        },
+      }),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const jobPosition = { id: 2, name: 'Shift Manager', description: null, createdAt: new Date(), updatedAt: new Date() };
+    const location = {
+      id: 3,
+      name: 'Downtown',
+      address: 'Main St',
+      countryId: 1,
+      stateId: 2,
+      cityId: 3,
+      postalCode: '10001',
+      latitude: '',
+      longitude: '',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const existingUser = {
+      id: 101,
+      name: 'Old Name',
+      email: 'john@acme.com',
+      phoneNumber: '+1 555 000',
+      address: 'Old address',
+      username: 'john',
+      plainPassword: 'Secret123!',
+      password: 'hash',
+      role: { id: 1, name: 'Admin', createdAt: new Date(), updatedAt: new Date(), permissions: [] },
+      jobPosition,
+      location,
+      availabilityDays: ['true', 'false'],
+      isSystem: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const userRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(existingUser)
+        .mockResolvedValueOnce({ ...existingUser, name: 'Desirae Hall' }),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+    };
+
+    const dynamicRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({ moduleId: 10, entityId: 101, data: {} })
+        .mockResolvedValueOnce({ moduleId: 10, entityId: 101, data: {} })
+        .mockResolvedValueOnce({
+          moduleId: 10,
+          entityId: 101,
+          data: { select_field: 'Option 1' },
+        }),
+      create: jest.fn(),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.update(req, 101, {
+      name: null,
+      name_new: 'Desirae Hall',
+      email: 'john@acme.com',
+      job_position_id: null,
+      location_id: null,
+      select_field: 'Option 1',
+    });
+
+    expect(userRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Desirae Hall',
+        jobPosition,
+        location,
+      }),
+    );
+    expect(result.data.name).toBe('Desirae Hall');
+    expect(result.data.job_position?.id).toBe(2);
+    expect(result.data.location?.id).toBe(3);
+    expect(result.data.select_field).toBe('Option 1');
+    expect(result.data.name_new).toBeUndefined();
   });
 
   it('update merges new dynamic fields with existing dynamic data', async () => {
@@ -410,7 +531,7 @@ describe('UsersService dynamic fields', () => {
             emergency_contact: '+1 999 111',
           },
         }),
-      create: jest.fn().mockImplementation((payload) => payload),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
       save: jest.fn().mockImplementation(async (payload) => payload),
       delete: jest.fn(),
       find: jest.fn(),
