@@ -53,6 +53,26 @@ export class UsersService extends TenantAbstractService<User> {
     role: 'role_id',
   };
 
+  private readonly weekdayPositions: Record<string, number> = {
+    monday: 1,
+    mon: 1,
+    tuesday: 2,
+    tue: 2,
+    tues: 2,
+    wednesday: 3,
+    wed: 3,
+    thursday: 4,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
+    friday: 5,
+    fri: 5,
+    saturday: 6,
+    sat: 6,
+    sunday: 7,
+    sun: 7,
+  };
+
   private getFrontendBaseUrl(): string {
     const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
     if (frontendUrl) {
@@ -79,6 +99,7 @@ export class UsersService extends TenantAbstractService<User> {
     requiredFieldKeys: Set<string>;
     fieldLabels: Map<string, string>;
     aliasToCanonicalMap: Map<string, string>;
+    fieldDefinitions: Map<string, { fieldType: string; options: Array<{ label: string; value: string }> }>;
   }> {
     const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
     const formRepo = req.tenantConnection.getRepository(Form);
@@ -94,6 +115,7 @@ export class UsersService extends TenantAbstractService<User> {
         requiredFieldKeys: new Set(),
         fieldLabels: new Map(),
         aliasToCanonicalMap: new Map(),
+        fieldDefinitions: new Map(),
       };
     }
 
@@ -111,6 +133,7 @@ export class UsersService extends TenantAbstractService<User> {
         requiredFieldKeys: new Set(),
         fieldLabels: new Map(),
         aliasToCanonicalMap: new Map(),
+        fieldDefinitions: new Map(),
       };
     }
 
@@ -120,6 +143,7 @@ export class UsersService extends TenantAbstractService<User> {
     const requiredFieldKeys = new Set<string>();
     const fieldLabels = new Map<string, string>();
     const aliasToCanonicalMap = new Map<string, string>();
+    const fieldDefinitions = new Map<string, { fieldType: string; options: Array<{ label: string; value: string }> }>();
 
     const fields = form.autosaveSchema?.fields || [];
 
@@ -162,6 +186,17 @@ export class UsersService extends TenantAbstractService<User> {
       if (this.isRequiredField(field)) {
         requiredFieldKeys.add(canonicalKey);
       }
+
+      const fieldType = String(field.fieldTypeName || field.type || '').trim().toLowerCase();
+      const options = (Array.isArray(field.options) ? field.options : []).map((option: Record<string, any>) => ({
+        label: String(option?.label ?? '').trim(),
+        value: String(option?.value ?? '').trim(),
+      }));
+      const definition = { fieldType, options };
+      fieldDefinitions.set(canonicalKey, definition);
+      if (fieldKey) {
+        fieldDefinitions.set(fieldKey, definition);
+      }
     }
 
     for (const [alias, canonical] of Object.entries(this.relationFieldAliases)) {
@@ -190,6 +225,7 @@ export class UsersService extends TenantAbstractService<User> {
       requiredFieldKeys,
       fieldLabels,
       aliasToCanonicalMap,
+      fieldDefinitions,
     };
   }
 
@@ -949,6 +985,117 @@ export class UsersService extends TenantAbstractService<User> {
     }
   }
 
+  private resolveCheckboxOptionIndex(
+    options: Array<{ label?: string; value?: string }>,
+    filterValue: string,
+  ): number | null {
+    const normalizedFilter = this.normalizeFieldAlias(filterValue);
+
+    if (/^\d+$/.test(filterValue)) {
+      return Number(filterValue);
+    }
+
+    for (let index = 0; index < options.length; index += 1) {
+      const option = options[index];
+      const value = String(option?.value ?? '').trim();
+      const label = String(option?.label ?? '').trim();
+
+      if (
+        value === filterValue ||
+        this.normalizeFieldAlias(value) === normalizedFilter ||
+        label.toLowerCase() === filterValue.toLowerCase() ||
+        this.normalizeFieldAlias(label) === normalizedFilter
+      ) {
+        return index;
+      }
+    }
+
+    return null;
+  }
+
+  private applyDynamicFieldFilter(
+    dynamicQb: any,
+    idx: number,
+    key: string,
+    value: string,
+    fieldDefinition?: { fieldType: string; options: Array<{ label: string; value: string }> },
+  ): void {
+    const fieldType = fieldDefinition?.fieldType?.toLowerCase() ?? '';
+    const truthySql = `('true', '1', 'yes')`;
+
+    if (fieldType === 'checkbox') {
+      const selectedOptions = value
+        .split(',')
+        .map((option) => option.trim())
+        .filter(Boolean);
+
+      selectedOptions.forEach((optionValue, optionIdx) => {
+        const paramSuffix = `${idx}_${optionIdx}`;
+        const optionIndex = this.resolveCheckboxOptionIndex(fieldDefinition?.options ?? [], optionValue);
+
+        if (optionIndex !== null) {
+          dynamicQb.andWhere(
+            `(
+              LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathIndex${paramSuffix}), '')) IN ${truthySql}
+              OR LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathOption${paramSuffix}), '')) IN ${truthySql}
+            )`,
+            {
+              [`pathKey${paramSuffix}`]: key,
+              [`pathIndex${paramSuffix}`]: String(optionIndex),
+              [`pathOption${paramSuffix}`]: optionValue,
+            },
+          );
+          return;
+        }
+
+        dynamicQb.andWhere(
+          `LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathOption${paramSuffix}), '')) IN ${truthySql}`,
+          {
+            [`pathKey${paramSuffix}`]: key,
+            [`pathOption${paramSuffix}`]: optionValue,
+          },
+        );
+      });
+      return;
+    }
+
+    dynamicQb.andWhere(
+      `LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${idx}), '')) LIKE :pathValue${idx}`,
+      {
+        [`pathKey${idx}`]: key,
+        [`pathValue${idx}`]: `%${value.toLowerCase()}%`,
+      },
+    );
+  }
+
+  private applyAvailabilityDaysFilter(qb: any, days: string[]): void {
+    days.forEach((day, index) => {
+      const normalized = day.trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+
+      const position = this.weekdayPositions[normalized];
+      const dayPattern = `%${normalized}%`;
+
+      if (position) {
+        qb.andWhere(
+          `(LOWER(split_part(COALESCE(user.availability_days, ''), ',', :availPos${index})) IN ('true', '1', 'yes')
+            OR LOWER(COALESCE(user.availability_days, '')) LIKE :availDayPattern${index})`,
+          {
+            [`availPos${index}`]: position,
+            [`availDayPattern${index}`]: dayPattern,
+          },
+        );
+        return;
+      }
+
+      qb.andWhere(`LOWER(COALESCE(user.availability_days, '')) LIKE :availDayPattern${index}`, {
+        [`availDayPattern${index}`]: dayPattern,
+      });
+    });
+  }
+
   async search(
     req: any,
     limit = 15,
@@ -961,6 +1108,7 @@ export class UsersService extends TenantAbstractService<User> {
       roleId?: number;
       jobPositionId?: number;
       locationId?: number;
+      availabilityDays?: string[];
       dynamicFilters?: Record<string, any>;
     },
   ): Promise<any> {
@@ -976,6 +1124,9 @@ export class UsersService extends TenantAbstractService<User> {
       const roleId = filters?.roleId;
       const jobPositionId = filters?.jobPositionId;
       const locationId = filters?.locationId;
+      const availabilityDays = (filters?.availabilityDays ?? [])
+        .map((day) => day.trim())
+        .filter(Boolean);
       const dynamicFilters = Object.entries(filters?.dynamicFilters || {}).reduce(
         (acc, [key, value]) => {
           const normalizedKey = String(key || '').trim();
@@ -992,7 +1143,16 @@ export class UsersService extends TenantAbstractService<User> {
         {} as Record<string, string>,
       );
       const hasFilters = Boolean(
-        name || email || username || address || phoneNumber || roleId || jobPositionId || locationId || Object.keys(dynamicFilters).length,
+        name ||
+          email ||
+          username ||
+          address ||
+          phoneNumber ||
+          roleId ||
+          jobPositionId ||
+          locationId ||
+          availabilityDays.length ||
+          Object.keys(dynamicFilters).length,
       );
 
       if (!hasFilters) {
@@ -1019,6 +1179,9 @@ export class UsersService extends TenantAbstractService<User> {
       if (roleId) qb.andWhere('role.id = :roleId', { roleId });
       if (jobPositionId) qb.andWhere('jobPosition.id = :jobPositionId', { jobPositionId });
       if (locationId) qb.andWhere('location.id = :locationId', { locationId });
+      if (availabilityDays.length) {
+        this.applyAvailabilityDaysFilter(qb, availabilityDays);
+      }
 
       const context = await this.getUsersSchemaContext(req);
       if (Object.keys(dynamicFilters).length) {
@@ -1043,13 +1206,11 @@ export class UsersService extends TenantAbstractService<User> {
             continue;
           }
 
-          dynamicQb.andWhere(
-            `LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${idx}), '')) LIKE :pathValue${idx}`,
-            {
-              [`pathKey${idx}`]: key,
-              [`pathValue${idx}`]: `%${value.toLowerCase()}%`,
-            },
-          );
+          const canonicalKey = context.aliasToCanonicalMap.get(key) || key;
+          const fieldDefinition =
+            context.fieldDefinitions.get(key) || context.fieldDefinitions.get(canonicalKey);
+
+          this.applyDynamicFieldFilter(dynamicQb, idx, key, value, fieldDefinition);
           idx += 1;
         }
 

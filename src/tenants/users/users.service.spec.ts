@@ -816,4 +816,190 @@ describe('UsersService dynamic fields', () => {
 
     expect(qb.andWhere).toHaveBeenCalledWith('user.address ILIKE :address', { address: '%Elm%' });
   });
+
+  it('search filters users by job_position alias', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+
+    const qb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const userRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    };
+
+    const dynamicRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    await service.search(req, 15, {
+      jobPositionId: 1,
+    });
+
+    expect(qb.andWhere).toHaveBeenCalledWith('jobPosition.id = :jobPositionId', { jobPositionId: 1 });
+  });
+
+  it('search filters users by availability_days on the user record', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+
+    const qb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const userRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    };
+
+    const dynamicRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    await service.search(req, 15, {
+      availabilityDays: ['saturday', 'sunday'],
+    });
+
+    expect(qb.andWhere).toHaveBeenCalledTimes(2);
+    expect(qb.andWhere.mock.calls[0][0]).toContain('split_part(COALESCE(user.availability_days');
+    expect(qb.andWhere.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        availPos0: 6,
+        availDayPattern0: '%saturday%',
+      }),
+    );
+    expect(qb.andWhere.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        availPos1: 7,
+        availDayPattern1: '%sunday%',
+      }),
+    );
+  });
+
+  it('search filters users by custom checkbox dynamic field option', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            {
+              fieldKey: 'checkbox_field',
+              fieldTypeName: 'checkbox',
+              isSystemField: false,
+              options: [
+                { label: 'Option 1', value: 'option_1' },
+                { label: 'Option 2', value: 'option_2' },
+              ],
+            },
+          ],
+        },
+      }),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const qb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const dynamicFilterQb: any = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+
+    const userRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    };
+
+    const dynamicRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(dynamicFilterQb),
+      findOne: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, { findOne: jest.fn() }],
+      [Location, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    await service.search(req, 15, {
+      dynamicFilters: { checkbox_field: 'option_1' },
+    });
+
+    expect(dynamicFilterQb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('jsonb_extract_path_text(dynamic.data'),
+      expect.objectContaining({
+        pathKey0_0: 'checkbox_field',
+        pathIndex0_0: '0',
+        pathOption0_0: 'option_1',
+      }),
+    );
+  });
 });
