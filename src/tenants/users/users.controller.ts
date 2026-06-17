@@ -43,10 +43,10 @@ export class UsersController {
     const username = typeof query?.username === 'string' ? query.username : undefined;
     const address = typeof query?.address === 'string' ? query.address : undefined;
     const phoneNumber = typeof query?.phone_number === 'string' ? query.phone_number : undefined;
-    const roleId = query?.role_id !== undefined ? Number(query.role_id) : undefined;
-    const jobPositionId =
-      query?.job_position_id !== undefined ? Number(query.job_position_id) : undefined;
-    const locationId = query?.location_id !== undefined ? Number(query.location_id) : undefined;
+    const roleId = this.parseOptionalQueryId(query?.role_id ?? query?.role);
+    const jobPositionId = this.parseOptionalQueryId(query?.job_position_id ?? query?.job_position);
+    const locationId = this.parseOptionalQueryId(query?.location_id ?? query?.location);
+    const availabilityDays = this.parseAvailabilityDaysQuery(query?.availability_days);
     const limit = query?.limit !== undefined ? Number(query.limit) : undefined;
 
     const reservedKeys = new Set([
@@ -56,8 +56,12 @@ export class UsersController {
       'address',
       'phone_number',
       'role_id',
+      'role',
       'job_position_id',
+      'job_position',
       'location_id',
+      'location',
+      'availability_days',
       'limit',
       'custom',
     ]);
@@ -88,11 +92,31 @@ export class UsersController {
       username,
       address,
       phoneNumber,
-      roleId: Number.isFinite(roleId) ? roleId : undefined,
-      jobPositionId: Number.isFinite(jobPositionId) ? jobPositionId : undefined,
-      locationId: Number.isFinite(locationId) ? locationId : undefined,
+      roleId,
+      jobPositionId,
+      locationId,
+      availabilityDays,
       dynamicFilters,
     });
+  }
+
+  private parseOptionalQueryId(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+
+    const id = Number(value);
+    return Number.isFinite(id) ? id : undefined;
+  }
+
+  private parseAvailabilityDaysQuery(value: unknown): string[] | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    const rawValues = Array.isArray(value) ? value : String(value).split(',');
+    const days = rawValues.map((day) => String(day).trim()).filter(Boolean);
+    return days.length ? days : undefined;
   }
 
   @TenantAccess('view-user')
