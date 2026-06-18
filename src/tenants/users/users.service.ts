@@ -1023,6 +1023,42 @@ export class UsersService extends TenantAbstractService<User> {
     const fieldType = fieldDefinition?.fieldType?.toLowerCase() ?? '';
     const truthySql = `('true', '1', 'yes')`;
 
+    // if (fieldType === 'checkbox') {
+    //   const selectedOptions = value
+    //     .split(',')
+    //     .map((option) => option.trim())
+    //     .filter(Boolean);
+
+    //   selectedOptions.forEach((optionValue, optionIdx) => {
+    //     const paramSuffix = `${idx}_${optionIdx}`;
+    //     const optionIndex = this.resolveCheckboxOptionIndex(fieldDefinition?.options ?? [], optionValue);
+
+    //     if (optionIndex !== null) {
+    //       dynamicQb.andWhere(
+    //         `(
+    //           LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathIndex${paramSuffix}), '')) IN ${truthySql}
+    //           OR LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathOption${paramSuffix}), '')) IN ${truthySql}
+    //         )`,
+    //         {
+    //           [`pathKey${paramSuffix}`]: key,
+    //           [`pathIndex${paramSuffix}`]: String(optionIndex),
+    //           [`pathOption${paramSuffix}`]: optionValue,
+    //         },
+    //       );
+    //       return;
+    //     }
+
+    //     dynamicQb.andWhere(
+    //       `LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathOption${paramSuffix}), '')) IN ${truthySql}`,
+    //       {
+    //         [`pathKey${paramSuffix}`]: key,
+    //         [`pathOption${paramSuffix}`]: optionValue,
+    //       },
+    //     );
+    //   });
+    //   return;
+    // }
+
     if (fieldType === 'checkbox') {
       const selectedOptions = value
         .split(',')
@@ -1031,28 +1067,12 @@ export class UsersService extends TenantAbstractService<User> {
 
       selectedOptions.forEach((optionValue, optionIdx) => {
         const paramSuffix = `${idx}_${optionIdx}`;
-        const optionIndex = this.resolveCheckboxOptionIndex(fieldDefinition?.options ?? [], optionValue);
-
-        if (optionIndex !== null) {
-          dynamicQb.andWhere(
-            `(
-              LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathIndex${paramSuffix}), '')) IN ${truthySql}
-              OR LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathOption${paramSuffix}), '')) IN ${truthySql}
-            )`,
-            {
-              [`pathKey${paramSuffix}`]: key,
-              [`pathIndex${paramSuffix}`]: String(optionIndex),
-              [`pathOption${paramSuffix}`]: optionValue,
-            },
-          );
-          return;
-        }
 
         dynamicQb.andWhere(
-          `LOWER(COALESCE(jsonb_extract_path_text(dynamic.data, :pathKey${paramSuffix}, :pathOption${paramSuffix}), '')) IN ${truthySql}`,
+          `dynamic.data->:key::text @> :value::jsonb`,
           {
-            [`pathKey${paramSuffix}`]: key,
-            [`pathOption${paramSuffix}`]: optionValue,
+            key,
+            value: JSON.stringify([optionValue]),
           },
         );
       });
