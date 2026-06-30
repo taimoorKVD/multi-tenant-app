@@ -12,10 +12,6 @@ async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
 
   try {
-    if (process.env.APP_ENV === 'production') {
-      throw new Error('Tenant reset cannot run in production.');
-    }
-
     const tenantService = app.get(TenantsService);
 
     const tenantRepository = app.get<Repository<Tenant>>(
