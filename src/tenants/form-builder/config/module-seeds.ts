@@ -270,6 +270,6 @@ export const FORM_BUILDER_MODULE_SEEDS: readonly FormBuilderModuleSeed[] = [
   { slug: 'users', name: 'Users', defaultFields: userDefaultFields },
   { slug: 'items', name: 'Items' },
   { slug: 'vendors', name: 'Vendors' },
-  { slug: 'job-positions', name: 'Job Positions' },
+  { slug: 'jobpositions', name: 'Job Positions' },
   { slug: 'locations', name: 'Locations', defaultFields: locationDefaultFields },
 ];
