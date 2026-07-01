@@ -7,6 +7,7 @@ import {MasterModule} from './master/master.module';
 import {TenantsModule} from "./tenants/tenants.module";
 import { MailModule } from './mail/mail.module';
 import { TenantResetService } from './tenant-reset/tenant-reset.service';
+import { SystemModule } from './master/system/system.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { TenantResetService } from './tenant-reset/tenant-reset.service';
       MasterModule,
       TenantsModule,
         MailModule,
+        SystemModule
   ],
   controllers: [AppController],
   providers: [TenantResetService],
