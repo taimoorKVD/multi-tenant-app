@@ -69,13 +69,8 @@ async function bootstrap() {
         exclude: [{path: '/', method: RequestMethod.GET}],
     });
 
-    console.log('Commit SHA:', process.env.VERCEL_GIT_COMMIT_SHA);
-console.log('Deployment ID:', process.env.VERCEL_DEPLOYMENT_ID);
     // Call your shared Swagger setup
     setupSwagger(app);
-
-    const tenantReset = app.get(TenantResetService);
-    await tenantReset.reset();
 
     await app.init();
     return expressApp;
