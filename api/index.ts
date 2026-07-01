@@ -9,6 +9,7 @@ import { TenantsService } from 'src/master/tenants/tenants.service';
 import { Repository } from 'typeorm';
 import { Tenant } from 'src/master/tenants/entities/tenant.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { TenantResetService } from 'src/tenant-reset/tenant-reset.service';
 
 let cachedServer: any;
 
@@ -71,35 +72,9 @@ async function bootstrap() {
     // Call your shared Swagger setup
     setupSwagger(app);
 
-        // ===== TEMPORARY STAGING RESET =====
-        if (process.env.APP_ENV === 'staging') {
-        console.log('Running Tenant Reset...');
-
-        const tenantService = app.get(TenantsService);
-
-        const tenantRepo = app.get<Repository<Tenant>>(
-            getRepositoryToken(Tenant),
-        );
-
-        const tenants = await tenantRepo.find();
-
-        for (const tenant of tenants) {
-            console.log(`Deleting ${tenant.name}`);
-            await tenantService.remove(tenant.id);
-        }
-
-        await tenantService.create({
-            name: 'brain',
-        } as any);
-
-        await tenantService.create({
-            name: 'kingdom-vision',
-        } as any);
-
-        console.log('Tenant Reset Completed');
-        }
-        // ============================
-
+    const tenantReset = app.get(TenantResetService);
+    await tenantReset.reset();
+    
     await app.init();
     return expressApp;
 }
