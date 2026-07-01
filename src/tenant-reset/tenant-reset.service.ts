@@ -10,7 +10,6 @@ export class TenantResetService {
   constructor(
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
-
     private readonly tenantService: TenantsService,
   ) {}
 
