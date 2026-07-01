@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm run reset:tenants && nest build",
+    "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -21,7 +21,6 @@
     "postinstall": "npm install ejs",
     "seed:master": "ts-node src/database/seeders/seed.ts",
     "seed:reset": "ts-node src/database/seeders/seed.ts --reset",
-    "reset:tenants": "ts-node -r tsconfig-paths/register src/scripts/reset-tenants.ts",
     "migration:run": "ts-node -r tsconfig-paths/register -e \"require('dotenv/config'); require('./src/database/datasource/master-datasource').MasterDataSource.initialize().then(ds => ds.runMigrations()).then(() => { console.log('Migrations complete'); process.exit(0); }).catch(e => { console.error(e); process.exit(1); })\"",
     "migration:revert": "ts-node -r tsconfig-paths/register -e \"require('dotenv/config'); require('./src/database/datasource/master-datasource').MasterDataSource.initialize().then(ds => ds.undoLastMigration()).then(() => { console.log('Migration reverted'); process.exit(0); }).catch(e => { console.error(e); process.exit(1); })\""
   },

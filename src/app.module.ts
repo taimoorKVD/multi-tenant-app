@@ -6,6 +6,7 @@ import {AppController} from './app.controller';
 import {MasterModule} from './master/master.module';
 import {TenantsModule} from "./tenants/tenants.module";
 import { MailModule } from './mail/mail.module';
+import { TenantResetService } from './tenant-reset/tenant-reset.service';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { MailModule } from './mail/mail.module';
         MailModule,
   ],
   controllers: [AppController],
+  providers: [TenantResetService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
