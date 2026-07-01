@@ -25,6 +25,7 @@ import {
   Form,
   FormStatus,
 } from '../../tenants/form-builder/entities';
+import { UnauthorizedException } from '@nestjs/common';
 
 @Injectable()
 export class TenantsService {
@@ -307,7 +308,7 @@ export class TenantsService {
         relations,
       });
 
-      if (!record) throw new NotFoundException(`Tenant not found for "${identifier}"`);
+      if (!record) throw new UnauthorizedException(`Tenant not found for "${identifier}"`);
 
       const clone = {...record};
       delete (clone as any).password;
@@ -389,12 +390,12 @@ export class TenantsService {
   async getTenantConnection(identifier: string): Promise<DataSource> {
     const tenant = await this.findOneFlexible(identifier);
     if (!tenant) {
-      throw new NotFoundException(`Tenant not found for "${identifier}"`);
+      throw new UnauthorizedException(`Tenant not found for "${identifier}"`);
     }
 
     if (!tenant.dbName) {
       throw new BadRequestException(
-          `Tenant "${identifier}" does not have a configured database.`,
+        `Tenant "${identifier}" does not have a configured database.`,
       );
     }
 
