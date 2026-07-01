@@ -15,7 +15,6 @@ import {StatesModule} from './states/states.module';
 import {MailAdminModule} from './mail/mail-admin.module';
 import { ActivityLogsModule } from './activity-logs';
 import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
-import { SystemController } from './system/system.controller';
 import { SystemModule } from './system/system.module';
 
 @Module({
@@ -32,7 +31,7 @@ import { SystemModule } from './system/system.module';
     StatesModule,
     MailAdminModule,
     ActivityLogsModule,
-    SystemModule,
+    SystemModule
   ],
   providers: [
     TenantsService,
@@ -43,6 +42,5 @@ import { SystemModule } from './system/system.module';
     },
   ],
   exports: [TenantsService, JwtService],
-  controllers: [SystemController],
 })
 export class MasterModule {}
