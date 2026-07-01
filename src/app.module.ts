@@ -15,6 +15,7 @@ import { SystemModule } from './master/system/system.module';
       MasterModule,
       TenantsModule,
         MailModule,
+        SystemModule
   ],
   controllers: [AppController],
   providers: [TenantResetService],

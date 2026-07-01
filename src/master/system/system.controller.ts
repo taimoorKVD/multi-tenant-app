@@ -1,7 +1,7 @@
 import { Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { TenantResetService } from 'src/tenant-reset/tenant-reset.service';
 
-@Controller('system')
+@Controller('master/system')
 export class SystemController {
   constructor(
     private readonly tenantResetService: TenantResetService,
