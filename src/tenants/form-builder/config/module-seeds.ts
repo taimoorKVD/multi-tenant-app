@@ -16,6 +16,7 @@ type FieldOptionSeed = {
 };
 
 export type FormBuilderFieldSeed = {
+  id?: string;
   key: string;
   label: string;
   name: string;
@@ -38,8 +39,18 @@ export type FormBuilderModuleSeed = {
   defaultFields?: readonly FormBuilderFieldSeed[];
 };
 
+/**
+ * Generates a field ID in the format: fld_<timestamp>_<randomstring>
+ */
+function generateFieldId(): string {
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substring(2, 9);
+  return `fld_${timestamp}_${randomString}`;
+}
+
 const userDefaultFields: readonly FormBuilderFieldSeed[] = [
   {
+    id: generateFieldId(),
     key: 'name',
     label: 'Name',
     name: 'name',
@@ -50,6 +61,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     systemMappingKey: 'name',
   },
   {
+    id: generateFieldId(),
     key: 'email',
     label: 'Email',
     name: 'email',
@@ -61,6 +73,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     systemMappingKey: 'email',
   },
   {
+    id: generateFieldId(),
     key: 'password',
     label: 'Password',
     name: 'password',
@@ -74,6 +87,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
 
 const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
   {
+    id: generateFieldId(),
     key: 'name',
     label: 'Name',
     name: 'name',
@@ -81,6 +95,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'address',
     label: 'Address',
     name: 'address',
@@ -88,6 +103,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'country_id',
     label: 'Country',
     name: 'country_id',
@@ -105,6 +121,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     },
   },
   {
+    id: generateFieldId(),
     key: 'state_id',
     label: 'State',
     name: 'state_id',
@@ -122,6 +139,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     },
   },
   {
+    id: generateFieldId(),
     key: 'city_id',
     label: 'City',
     name: 'city_id',
@@ -139,6 +157,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     },
   },
   {
+    id: generateFieldId(),
     key: 'postalCode',
     label: 'Postal Code',
     name: 'postalCode',
@@ -146,6 +165,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'latitude',
     label: 'Latitude',
     name: 'latitude',
@@ -153,6 +173,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'longitude',
     label: 'Longitude',
     name: 'longitude',

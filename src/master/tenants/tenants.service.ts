@@ -704,6 +704,7 @@ export class TenantsService {
 
       form.autosaveSchema = {
         fields: moduleSeed.defaultFields.map((item, index) => ({
+          id: item.id,
           fieldKey: item.key,
           label: item.label,
           name: item.name,
