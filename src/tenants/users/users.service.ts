@@ -134,6 +134,7 @@ export class UsersService extends TenantAbstractService<User> {
         fieldKey,
         field.name,
         field.label,
+        field.id,
         normalizedLabel,
         normalizedFieldKey,
         normalizedName,
