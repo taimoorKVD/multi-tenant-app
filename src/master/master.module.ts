@@ -15,6 +15,7 @@ import {StatesModule} from './states/states.module';
 import {MailAdminModule} from './mail/mail-admin.module';
 import { ActivityLogsModule } from './activity-logs';
 import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ActivityLogInterceptor } from '../common/interceptors/activity-log.inte
     StatesModule,
     MailAdminModule,
     ActivityLogsModule,
+    SystemModule
   ],
   providers: [
     TenantsService,

@@ -72,9 +72,6 @@ async function bootstrap() {
     // Call your shared Swagger setup
     setupSwagger(app);
 
-    const tenantReset = app.get(TenantResetService);
-    await tenantReset.reset();
-    
     await app.init();
     return expressApp;
 }
