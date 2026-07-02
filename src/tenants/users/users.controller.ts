@@ -29,7 +29,7 @@ export class UsersController {
     return this.usersService.paginate(
       req,
       Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
-      ['role', 'jobPosition', 'location'],
+      ['role'],
       Number.isFinite(parsedLimit) ? parsedLimit : undefined,
     );
   }
@@ -40,28 +40,14 @@ export class UsersController {
   search(@Req() req, @Query() query: Record<string, any>) {
     const name = typeof query?.name === 'string' ? query.name : undefined;
     const email = typeof query?.email === 'string' ? query.email : undefined;
-    const username = typeof query?.username === 'string' ? query.username : undefined;
-    const address = typeof query?.address === 'string' ? query.address : undefined;
-    const phoneNumber = typeof query?.phone_number === 'string' ? query.phone_number : undefined;
     const roleId = this.parseOptionalQueryId(query?.role_id ?? query?.role);
-    const jobPositionId = this.parseOptionalQueryId(query?.job_position_id ?? query?.job_position);
-    const locationId = this.parseOptionalQueryId(query?.location_id ?? query?.location);
-    const availabilityDays = this.parseAvailabilityDaysQuery(query?.availability_days);
     const limit = query?.limit !== undefined ? Number(query.limit) : undefined;
 
     const reservedKeys = new Set([
       'name',
       'email',
-      'username',
-      'address',
-      'phone_number',
       'role_id',
       'role',
-      'job_position_id',
-      'job_position',
-      'location_id',
-      'location',
-      'availability_days',
       'limit',
       'custom',
     ]);
@@ -89,13 +75,7 @@ export class UsersController {
     return this.usersService.search(req, Number.isFinite(limit) ? limit : undefined, {
       name,
       email,
-      username,
-      address,
-      phoneNumber,
       roleId,
-      jobPositionId,
-      locationId,
-      availabilityDays,
       dynamicFilters,
     });
   }
@@ -109,21 +89,11 @@ export class UsersController {
     return Number.isFinite(id) ? id : undefined;
   }
 
-  private parseAvailabilityDaysQuery(value: unknown): string[] | undefined {
-    if (value === undefined || value === null) {
-      return undefined;
-    }
-
-    const rawValues = Array.isArray(value) ? value : String(value).split(',');
-    const days = rawValues.map((day) => String(day).trim()).filter(Boolean);
-    return days.length ? days : undefined;
-  }
-
   @TenantAccess('view-user')
   @Get(':id')
   @TenantUsersSwagger.FindOne()
   findOne(@Req() req, @Param('id') id: number) {
-    return this.usersService.findOne(req, id, ['role', 'jobPosition', 'location']);
+    return this.usersService.findOne(req, id, ['role']);
   }
 
   @TenantAccess('edit-user')

@@ -11,8 +11,6 @@ import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
 import { SendUserCredentialsDto } from './dto';
-import { JobPosition } from '../job-positions/entities';
-import { Location } from '../locations/entities';
 import { MailService } from '../../mail/mail.service';
 import { User } from './entities';
 
@@ -31,15 +29,9 @@ export class UsersService extends TenantAbstractService<User> {
     'id',
     'name',
     'email',
-    'phone_number',
-    'address',
-    'username',
     'password',
     'plain_password',
     'role_id',
-    'job_position_id',
-    'location_id',
-    'availability_days',
     'is_system',
     'created_at',
     'updated_at',
@@ -48,29 +40,7 @@ export class UsersService extends TenantAbstractService<User> {
   private readonly ignoredPayloadKeys = new Set(['password_confirm', 'createdBy', 'updatedBy']);
 
   private readonly relationFieldAliases: Record<string, string> = {
-    job_position: 'job_position_id',
-    location: 'location_id',
     role: 'role_id',
-  };
-
-  private readonly weekdayPositions: Record<string, number> = {
-    monday: 1,
-    mon: 1,
-    tuesday: 2,
-    tue: 2,
-    tues: 2,
-    wednesday: 3,
-    wed: 3,
-    thursday: 4,
-    thu: 4,
-    thur: 4,
-    thurs: 4,
-    friday: 5,
-    fri: 5,
-    saturday: 6,
-    sat: 6,
-    sunday: 7,
-    sun: 7,
   };
 
   private getFrontendBaseUrl(): string {
@@ -464,15 +434,9 @@ export class UsersService extends TenantAbstractService<User> {
     return {
       name: user.name,
       email: user.email,
-      phone_number: user.phoneNumber,
-      address: user.address,
-      username: user.username,
       password: user.password,
       plain_password: user.plainPassword,
       role_id: user.role?.id,
-      job_position_id: user.jobPosition?.id,
-      location_id: user.location?.id,
-      availability_days: user.availabilityDays,
       ...staticPayload,
       ...dynamicPayload,
     };
@@ -529,33 +493,6 @@ export class UsersService extends TenantAbstractService<User> {
     await dynamicRepo.save(row);
   }
 
-  private formatJobPosition(jobPosition: JobPosition | null): Record<string, any> | null {
-    if (!jobPosition) return null;
-
-    const { createdAt, updatedAt, permissions, ...rest } = jobPosition;
-    return {
-      ...rest,
-      ...(permissions ? { permissions } : {}),
-      created_at: createdAt,
-      updated_at: updatedAt,
-    };
-  }
-
-  private formatLocation(location: Location | null): Record<string, any> | null {
-    if (!location) return null;
-
-    const { countryId, stateId, cityId, postalCode, createdAt, updatedAt, ...rest } = location;
-    return {
-      ...rest,
-      country_id: countryId,
-      state_id: stateId,
-      city_id: cityId,
-      postal_code: postalCode,
-      created_at: createdAt,
-      updated_at: updatedAt,
-    };
-  }
-
   private formatRole(role: Role | null): Record<string, any> | null {
     if (!role) return null;
 
@@ -589,14 +526,8 @@ export class UsersService extends TenantAbstractService<User> {
       id: user.id,
       name: user.name,
       email: user.email,
-      phone_number: user.phoneNumber ?? null,
-      address: user.address,
-      username: user.username,
       plain_password: user.plainPassword ?? null,
       role: this.formatRole(user.role ?? null),
-      job_position: this.formatJobPosition(user.jobPosition ?? null),
-      location: this.formatLocation(user.location ?? null),
-      availability_days: user.availabilityDays ?? null,
       is_system: user.isSystem,
       created_at: user.createdAt,
       updated_at: user.updatedAt,
@@ -611,8 +542,6 @@ export class UsersService extends TenantAbstractService<User> {
   ): Promise<void> {
     const userRepo = this.getRepo(req);
     const roleRepo: Repository<Role> = req.tenantConnection.getRepository(Role);
-    const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
-    const locationRepo: Repository<Location> = req.tenantConnection.getRepository(Location);
     const isCreate = options.isCreate ?? false;
 
     const shouldApplyScalar = (value: unknown) => isCreate || this.hasPresentValue(value);
@@ -631,25 +560,9 @@ export class UsersService extends TenantAbstractService<User> {
       user.email = staticPayload.email;
     }
 
-    if (shouldApplyScalar(staticPayload.phone_number) && staticPayload.phone_number !== undefined) {
-      user.phoneNumber = staticPayload.phone_number;
-    }
-
-    if (shouldApplyScalar(staticPayload.address) && staticPayload.address !== undefined) {
-      user.address = staticPayload.address;
-    }
-
-    if (shouldApplyScalar(staticPayload.username) && staticPayload.username !== undefined) {
-      user.username = staticPayload.username;
-    }
-
     if (this.hasPresentValue(staticPayload.password)) {
       user.password = staticPayload.password;
       user.plainPassword = staticPayload.plain_password || staticPayload.password;
-    }
-
-    if (staticPayload.availability_days !== undefined && (isCreate || staticPayload.availability_days !== null)) {
-      user.availabilityDays = staticPayload.availability_days?.length ? staticPayload.availability_days : null;
     }
 
     const roleId = this.coerceRelationId(staticPayload.role_id);
@@ -657,22 +570,6 @@ export class UsersService extends TenantAbstractService<User> {
       const newRole = await roleRepo.findOne({ where: { id: roleId } });
       if (!newRole) throw new BadRequestException(`Role with ID ${roleId} not found.`);
       user.role = newRole;
-    }
-
-    const jobPositionId = this.coerceRelationId(staticPayload.job_position_id);
-    if (jobPositionId !== null && jobPositionId !== user.jobPosition?.id) {
-      const newJobPosition = await jobPositionRepo.findOne({ where: { id: jobPositionId } });
-      if (!newJobPosition) {
-        throw new BadRequestException(`Job position with ID ${jobPositionId} not found.`);
-      }
-      user.jobPosition = newJobPosition;
-    }
-
-    const locationId = this.coerceRelationId(staticPayload.location_id);
-    if (locationId !== null && locationId !== user.location?.id) {
-      const newLocation = await locationRepo.findOne({ where: { id: locationId } });
-      if (!newLocation) throw new BadRequestException(`Location with ID ${locationId} not found.`);
-      user.location = newLocation;
     }
   }
 
@@ -806,7 +703,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const payload = await userRepo.findOne({
         where: { id: saved.id },
-        relations: ['role', 'jobPosition', 'location'],
+        relations: ['role'],
       });
 
       const dynamicData = context.moduleId
@@ -834,8 +731,7 @@ export class UsersService extends TenantAbstractService<User> {
           tenant_login_url: this.getTenantLoginUrl(),
           logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
           role_name: payload?.role?.name || null,
-          job_position_name: payload?.jobPosition?.name || null,
-          location_name: payload?.location?.name || null,
+
         },
       };
 
@@ -892,7 +788,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const user = await userRepo.findOne({
         where: { id },
-        relations: ['role', 'jobPosition', 'location'],
+        relations: ['role'],
       });
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
@@ -932,7 +828,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const payload = await userRepo.findOne({
         where: { id: updated.id },
-        relations: ['role', 'jobPosition', 'location'],
+        relations: ['role'],
       });
 
       const dynamicData = context.moduleId
@@ -959,8 +855,7 @@ export class UsersService extends TenantAbstractService<User> {
             tenant_login_url: this.getTenantLoginUrl(),
             logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
             role_name: payload?.role?.name || null,
-            job_position_name: payload?.jobPosition?.name || null,
-            location_name: payload?.location?.name || null,
+
           },
         })
         .catch((mailError) => {
@@ -1088,47 +983,13 @@ export class UsersService extends TenantAbstractService<User> {
     );
   }
 
-  private applyAvailabilityDaysFilter(qb: any, days: string[]): void {
-    days.forEach((day, index) => {
-      const normalized = day.trim().toLowerCase();
-      if (!normalized) {
-        return;
-      }
-
-      const position = this.weekdayPositions[normalized];
-      const dayPattern = `%${normalized}%`;
-
-      if (position) {
-        qb.andWhere(
-          `(LOWER(split_part(COALESCE(user.availability_days, ''), ',', :availPos${index})) IN ('true', '1', 'yes')
-            OR LOWER(COALESCE(user.availability_days, '')) LIKE :availDayPattern${index})`,
-          {
-            [`availPos${index}`]: position,
-            [`availDayPattern${index}`]: dayPattern,
-          },
-        );
-        return;
-      }
-
-      qb.andWhere(`LOWER(COALESCE(user.availability_days, '')) LIKE :availDayPattern${index}`, {
-        [`availDayPattern${index}`]: dayPattern,
-      });
-    });
-  }
-
   async search(
     req: any,
     limit = 15,
     filters?: {
       name?: string;
       email?: string;
-      username?: string;
-      address?: string;
-      phoneNumber?: string;
       roleId?: number;
-      jobPositionId?: number;
-      locationId?: number;
-      availabilityDays?: string[];
       dynamicFilters?: Record<string, any>;
     },
   ): Promise<any> {
@@ -1138,15 +999,7 @@ export class UsersService extends TenantAbstractService<User> {
       const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
       const name = filters?.name?.trim();
       const email = filters?.email?.trim();
-      const username = filters?.username?.trim();
-      const address = filters?.address?.trim();
-      const phoneNumber = filters?.phoneNumber?.trim();
       const roleId = filters?.roleId;
-      const jobPositionId = filters?.jobPositionId;
-      const locationId = filters?.locationId;
-      const availabilityDays = (filters?.availabilityDays ?? [])
-        .map((day) => day.trim())
-        .filter(Boolean);
       const dynamicFilters = Object.entries(filters?.dynamicFilters || {}).reduce(
         (acc, [key, value]) => {
           const normalizedKey = String(key || '').trim();
@@ -1165,13 +1018,7 @@ export class UsersService extends TenantAbstractService<User> {
       const hasFilters = Boolean(
         name ||
           email ||
-          username ||
-          address ||
-          phoneNumber ||
           roleId ||
-          jobPositionId ||
-          locationId ||
-          availabilityDays.length ||
           Object.keys(dynamicFilters).length,
       );
 
@@ -1187,21 +1034,11 @@ export class UsersService extends TenantAbstractService<User> {
       const qb = userRepo
         .createQueryBuilder('user')
         .leftJoinAndSelect('user.role', 'role')
-        .leftJoinAndSelect('user.jobPosition', 'jobPosition')
-        .leftJoinAndSelect('user.location', 'location')
         .where('user.isSystem = :isSystem', { isSystem: false });
 
       if (name) qb.andWhere('user.name ILIKE :name', { name: `%${name}%` });
       if (email) qb.andWhere('user.email ILIKE :email', { email: `%${email}%` });
-      if (username) qb.andWhere('user.username ILIKE :username', { username: `%${username}%` });
-      if (address) qb.andWhere('user.address ILIKE :address', { address: `%${address}%` });
-      if (phoneNumber) qb.andWhere('user.phone_number ILIKE :phoneNumber', { phoneNumber: `%${phoneNumber}%` });
       if (roleId) qb.andWhere('role.id = :roleId', { roleId });
-      if (jobPositionId) qb.andWhere('jobPosition.id = :jobPositionId', { jobPositionId });
-      if (locationId) qb.andWhere('location.id = :locationId', { locationId });
-      if (availabilityDays.length) {
-        this.applyAvailabilityDaysFilter(qb, availabilityDays);
-      }
 
       const context = await this.getUsersSchemaContext(req);
       if (Object.keys(dynamicFilters).length) {
@@ -1293,7 +1130,6 @@ export class UsersService extends TenantAbstractService<User> {
         data: {
           name: user.name,
           email: user.email,
-          username: user.username,
           password: dto.password || user.plainPassword || user.password,
           tenant_login_url: this.getTenantLoginUrl(),
           logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,

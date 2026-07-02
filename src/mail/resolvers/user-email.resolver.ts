@@ -28,7 +28,7 @@ export class UserEmailResolver extends BaseEmailResolver {
       const userRepo: Repository<User> = context.tenantConnection.getRepository(User);
       const user = await userRepo.findOne({
         where: { id: userId },
-        relations: ['role', 'jobPosition', 'location'],
+        relations: ['role'],
       });
 
       if (user) {
@@ -38,10 +38,7 @@ export class UserEmailResolver extends BaseEmailResolver {
           first_name: data.first_name ?? (userName.split(' ')[0] || null),
           full_name: data.full_name ?? user.name,
           email: data.email ?? user.email,
-          username: data.username ?? user.username,
           role_name: data.role_name ?? user.role?.name ?? null,
-          location_name: data.location_name ?? user.location?.name ?? null,
-          job_position_name: data.job_position_name ?? user.jobPosition?.name ?? null,
         });
       }
     }
