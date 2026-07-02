@@ -16,6 +16,7 @@ type FieldOptionSeed = {
 };
 
 export type FormBuilderFieldSeed = {
+  id?: string;
   key: string;
   label: string;
   name: string;
@@ -38,147 +39,55 @@ export type FormBuilderModuleSeed = {
   defaultFields?: readonly FormBuilderFieldSeed[];
 };
 
+/**
+ * Generates a field ID in the format: fld_<timestamp>_<randomstring>
+ */
+function generateFieldId(): string {
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substring(2, 9);
+  return `fld_${timestamp}_${randomString}`;
+}
+
 const userDefaultFields: readonly FormBuilderFieldSeed[] = [
   {
+    id: generateFieldId(),
     key: 'name',
     label: 'Name',
     name: 'name',
     type: 'text',
+    isRequired: true,
     isEditable: true,
     isSystemField: true,
     systemMappingKey: 'name',
   },
   {
+    id: generateFieldId(),
     key: 'email',
     label: 'Email',
     name: 'email',
     type: 'email',
+    isRequired: true,
     isEditable: true,
     isUnique: true,
     isSystemField: true,
     systemMappingKey: 'email',
   },
   {
-    key: 'phone_number',
-    label: 'Phone Number',
-    name: 'phone_number',
-    type: 'phone',
-    isEditable: true,
-    isSystemField: true,
-    systemMappingKey: 'phone_number',
-  },
-  {
-    key: 'address',
-    label: 'Address',
-    name: 'address',
-    type: 'address_fields',
-    isEditable: true,
-    isSystemField: true,
-    systemMappingKey: 'address',
-  },
-  {
-    key: 'username',
-    label: 'Username',
-    name: 'username',
-    type: 'text',
-    isEditable: true,
-    isUnique: true,
-    isSystemField: true,
-    systemMappingKey: 'username',
-  },
-  {
+    id: generateFieldId(),
     key: 'password',
     label: 'Password',
     name: 'password',
     type: 'password',
+    isRequired: true,
     isEditable: true,
     isSystemField: true,
     systemMappingKey: 'password',
-  },
-  {
-    key: 'role_id',
-    label: 'Role',
-    name: 'role_id',
-    type: 'dropdown',
-    isEditable: true,
-    isShow: false,
-    isSystemField: true,
-    systemMappingKey: 'role_id',
-    optionSource: {
-      type: 'dynamic',
-      method: 'GET',
-      endpoint: 'roles',
-      response: {
-        dataPath: 'data',
-        labelKey: 'name',
-        valueKey: 'id',
-      },
-    },
-  },
-  {
-    key: 'job_position_id',
-    label: 'Job Position',
-    name: 'job_position_id',
-    type: 'dropdown',
-    isEditable: true,
-    isSystemField: true,
-    systemMappingKey: 'job_position_id',
-    optionSource: {
-      type: 'dynamic',
-      method: 'GET',
-      endpoint: 'jobpositions',
-      response: {
-        dataPath: 'data',
-        labelKey: 'name',
-        valueKey: 'id',
-      },
-    },
-  },
-  {
-    key: 'location_id',
-    label: 'Location',
-    name: 'location_id',
-    type: 'dropdown',
-    isEditable: true,
-    isSystemField: true,
-    systemMappingKey: 'location_id',
-    optionSource: {
-      type: 'dynamic',
-      method: 'GET',
-      endpoint: 'locations',
-      response: {
-        dataPath: 'data',
-        labelKey: 'name',
-        valueKey: 'id',
-      },
-    },
-  },
-  {
-    key: 'availability_days',
-    label: 'Availability Days',
-    name: 'availability_days',
-    type: 'checkbox',
-    isEditable: true,
-    isSystemField: true,
-    systemMappingKey: 'availability_days',
-    options: [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ].map((day) => ({
-      label: day,
-      value: day.toLowerCase(),
-      isDefault: false,
-    })),
   },
 ];
 
 const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
   {
+    id: generateFieldId(),
     key: 'name',
     label: 'Name',
     name: 'name',
@@ -186,6 +95,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'address',
     label: 'Address',
     name: 'address',
@@ -193,6 +103,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'country_id',
     label: 'Country',
     name: 'country_id',
@@ -210,6 +121,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     },
   },
   {
+    id: generateFieldId(),
     key: 'state_id',
     label: 'State',
     name: 'state_id',
@@ -227,6 +139,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     },
   },
   {
+    id: generateFieldId(),
     key: 'city_id',
     label: 'City',
     name: 'city_id',
@@ -244,6 +157,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     },
   },
   {
+    id: generateFieldId(),
     key: 'postalCode',
     label: 'Postal Code',
     name: 'postalCode',
@@ -251,6 +165,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'latitude',
     label: 'Latitude',
     name: 'latitude',
@@ -258,6 +173,7 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: true,
   },
   {
+    id: generateFieldId(),
     key: 'longitude',
     label: 'Longitude',
     name: 'longitude',

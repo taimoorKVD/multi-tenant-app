@@ -776,7 +776,7 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: userId },
-      relations: ['role', 'role.permissions', 'jobPosition', 'location'],
+      relations: ['role', 'role.permissions'],
     });
 
     if (!user) {
@@ -794,9 +794,6 @@ export class TenantAuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        phone_number: user.phoneNumber,
-        address: user.address,
-        username: user.username,
         email_verified: emailVerified,
         role: user.role
           ? {
@@ -805,9 +802,6 @@ export class TenantAuthService {
               permissions: user.role.permissions ?? [],
             }
           : null,
-        job_position: user.jobPosition,
-        location: user.location,
-        availability_days: user.availabilityDays ?? [],
         is_system: user.isSystem,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,

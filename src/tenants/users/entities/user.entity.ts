@@ -35,14 +35,14 @@ export class User {
   // @Column() //Same email should be allowed in different tenants
   email: string | null;
 
-  @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
-  phoneNumber: string | null;
+  // @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
+  // phoneNumber: string | null;
 
-  @Column({ type: 'varchar', nullable: true, length: 255 })
-  address: string | null;
+  // @Column({ type: 'varchar', nullable: true, length: 255 })
+  // address: string | null;
 
-  @Column({ type: 'varchar', nullable: true, length: 100 })
-  username: string | null;
+  // @Column({ type: 'varchar', nullable: true, length: 100 })
+  // username: string | null;
 
   @Exclude()
   @Column({ type: 'varchar', nullable: true })
@@ -55,16 +55,16 @@ export class User {
   @JoinColumn({ name: 'role_id' })
   role: Role;
 
-  @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'job_position_id' })
-  jobPosition: JobPosition | null;
+  // @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
+  // @JoinColumn({ name: 'job_position_id' })
+  // jobPosition: JobPosition | null;
 
-  @ManyToOne(() => Location, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'location_id' })
-  location: Location | null;
+  // @ManyToOne(() => Location, { nullable: true, onDelete: 'SET NULL' })
+  // @JoinColumn({ name: 'location_id' })
+  // location: Location | null;
 
-  @Column('simple-array', { name: 'availability_days', nullable: true })
-  availabilityDays: string[] | null;
+  // @Column('simple-array', { name: 'availability_days', nullable: true })
+  // availabilityDays: string[] | null;
 
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem: boolean;

@@ -91,13 +91,9 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
     const createResult = await service.create(req, {
       name: `Integration User ${uniqueKey}`,
       email: `integration.${uniqueKey}@kingdomvision.com`,
-      username: `integration_${uniqueKey}`,
       password: 'Secret123!',
       password_confirm: 'Secret123!',
       role_id: createdRoleId,
-      job_position_id: 1,
-      location_id: 1,
-      availability_days: ['Monday', 'Tuesday'],
       favorite_color: 'blue',
       employee_code: `EMP-${uniqueKey}`,
       department: 'QA',
@@ -137,7 +133,6 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
     );
 
     const updateResult = await service.update(req, userId, {
-      phone_number: '+1 555 0101',
       favorite_color: 'green',
       emergency_contact: '+1 555 0909',
     });
@@ -146,7 +141,6 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
     expect(updateResult.tenant).toBe('tenant_kingdomvision');
     expect(updateResult.data.favorite_color).toBe('green');
     expect(updateResult.data.emergency_contact).toBe('+1 555 0909');
-    expect(updateResult.data.phone_number).toBe('+1 555 0101');
 
     const dynamicRowAfterUpdate = await dynamicRepo.findOne({
       where: { moduleId: usersModuleId, entityId: userId },
