@@ -93,6 +93,54 @@ export class FormsService {
     return formRepo.save(form);
   }
 
+  private preserveFieldMetadata(oldFields: any[], newFields: any[]): any[] {
+    const idByFieldId = new Map<string, string>();
+    const idByFieldKey = new Map<string, string>();
+
+    for (const field of oldFields || []) {
+      const fieldId = String(field?.id || '').trim();
+      const fieldKey = String(field?.fieldKey || field?.name || '').trim();
+      if (fieldId) idByFieldId.set(fieldId, fieldId);
+      if (fieldId && fieldKey) idByFieldKey.set(fieldKey, fieldId);
+    }
+
+    return (newFields || []).map((field, index) => {
+      const next = { ...field };
+      const fieldKey = String(next.fieldKey || next.name || '').trim();
+      let fieldId = String(next.id || '').trim();
+
+      if (!fieldId) {
+        fieldId = (fieldKey ? idByFieldKey.get(fieldKey) : undefined) || '';
+      }
+      if (!fieldId) {
+        const oldAtIndex = oldFields?.[index];
+        fieldId = String(oldAtIndex?.id || '').trim();
+      }
+      if (fieldId) {
+        next.id = fieldId;
+      }
+
+      const oldField =
+        (oldFields || []).find((item) => String(item?.id || '').trim() === fieldId) || oldFields?.[index];
+      const dataKeys = new Set<string>(
+        [
+          ...(Array.isArray(oldField?.dataKeys) ? oldField.dataKeys : []),
+          ...(Array.isArray(next.dataKeys) ? next.dataKeys : []),
+          oldField?.fieldKey,
+          oldField?.name,
+          next.fieldKey,
+          next.name,
+          fieldId,
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean),
+      );
+
+      next.dataKeys = [...dataKeys];
+      return next;
+    });
+  }
+
   private sanitizeSchemaFields(fields: any[]): any[] {
     return fields.map((field) => {
       if (!field || typeof field !== 'object' || Array.isArray(field)) {
@@ -451,9 +499,20 @@ export class FormsService {
     }
 
     this.assertSchemaPayload(dto.schema);
-    const sanitizedSchema = this.sanitizeSchemaSnapshot(dto.schema);
+    const oldSchema = this.normalizeSchemaSnapshot(
+      entity as Form & { module?: DynamicModule | null },
+      entity.autosaveSchema,
+    );
+    const oldFields = Array.isArray(oldSchema.fields) ? oldSchema.fields : [];
 
-    const oldSchema = this.normalizeSchemaSnapshot(entity as Form & { module?: DynamicModule | null }, entity.autosaveSchema);
+    const sanitizedSchema = this.sanitizeSchemaSnapshot(dto.schema);
+    sanitizedSchema.fields = this.preserveFieldMetadata(oldFields, sanitizedSchema.fields);
+    const { fields: fieldsWithIds } = this.dynamicFieldsService.backfillMissingFieldIds(
+      sanitizedSchema.fields,
+      entity.module?.slug || '',
+    );
+    sanitizedSchema.fields = fieldsWithIds;
+
     const oldStatus = entity.status;
 
     entity.autosaveSchema = sanitizedSchema;
@@ -462,6 +521,13 @@ export class FormsService {
     entity.updatedBy = this.getActorId(req, dto.updatedBy || null);
 
     const data = await repo.save(entity);
+
+    await this.dynamicFieldsService.migrateDynamicDataKeysOnSchemaChange(
+      req,
+      entity.moduleId,
+      oldFields,
+      sanitizedSchema.fields,
+    );
 
     await this.auditLogService.log(req, {
       entityType: 'form',

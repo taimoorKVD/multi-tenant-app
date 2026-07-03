@@ -118,7 +118,7 @@ describe('ItemsService dynamic fields', () => {
         moduleId: 10,
         entityId: 1,
         formVersionId: 30,
-        data: expect.objectContaining({ item_no: 'ITM-1001', cost: '120.50' }),
+        data: expect.objectContaining({ fld_item_no: 'ITM-1001', fld_item_cost: '120.50' }),
       }),
     );
 
@@ -200,7 +200,7 @@ describe('ItemsService dynamic fields', () => {
     expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Beef Tenderloin' }));
     expect(dynamicRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ item_no: 'ITM-1001', cost: '99.99' }),
+        data: expect.objectContaining({ fld_item_no: 'ITM-1001', fld_item_cost: '99.99' }),
       }),
     );
     expect(result.success).toBe(true);

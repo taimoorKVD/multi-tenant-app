@@ -101,9 +101,10 @@ export class ItemsService extends TenantAbstractService<Item> {
         context.activeVersionId,
         dynamicPayload,
         actor,
+        context,
       );
 
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
 
       return {
         success: true,
@@ -145,7 +146,7 @@ export class ItemsService extends TenantAbstractService<Item> {
       const saved = await repo.save(entity);
 
       if (Object.keys(dynamicPayload).length) {
-        const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+        const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
         await this.dynamicFields.upsertDynamicRow(
           req,
           context.moduleId,
@@ -153,10 +154,11 @@ export class ItemsService extends TenantAbstractService<Item> {
           context.activeVersionId,
           { ...existing, ...dynamicPayload },
           actor,
+          context,
         );
       }
 
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
 
       return {
         success: true,
@@ -189,6 +191,7 @@ export class ItemsService extends TenantAbstractService<Item> {
         req,
         context.moduleId,
         data.map((item) => item.id),
+        context,
       );
 
       return {
@@ -216,7 +219,7 @@ export class ItemsService extends TenantAbstractService<Item> {
       }
 
       const context = await this.getContext(req);
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, entity.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, entity.id, context);
 
       return {
         success: true,
@@ -276,6 +279,7 @@ export class ItemsService extends TenantAbstractService<Item> {
         req,
         context.moduleId,
         items.map((item) => item.id),
+        context,
       );
 
       const data = items.map((item) => this.buildItemResponse(item, dynamicRows.get(item.id) || {}, context));

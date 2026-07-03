@@ -139,9 +139,10 @@ export class LocationsService extends TenantAbstractService<Location> {
         context.activeVersionId,
         dynamicPayload,
         actor,
+        context,
       );
 
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
 
       return {
         success: true,
@@ -178,7 +179,7 @@ export class LocationsService extends TenantAbstractService<Location> {
       const saved = await repo.save(entity);
 
       if (Object.keys(dynamicPayload).length) {
-        const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+        const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
         await this.dynamicFields.upsertDynamicRow(
           req,
           context.moduleId,
@@ -186,10 +187,11 @@ export class LocationsService extends TenantAbstractService<Location> {
           context.activeVersionId,
           { ...existing, ...dynamicPayload },
           actor,
+          context,
         );
       }
 
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
 
       return {
         success: true,
@@ -222,6 +224,7 @@ export class LocationsService extends TenantAbstractService<Location> {
         req,
         context.moduleId,
         data.map((location) => location.id),
+        context,
       );
 
       return {
@@ -251,7 +254,7 @@ export class LocationsService extends TenantAbstractService<Location> {
       }
 
       const context = await this.getContext(req);
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, entity.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, entity.id, context);
 
       return {
         success: true,
@@ -319,6 +322,7 @@ export class LocationsService extends TenantAbstractService<Location> {
         req,
         context.moduleId,
         locations.map((location) => location.id),
+        context,
       );
 
       const data = locations.map((location) =>

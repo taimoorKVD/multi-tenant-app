@@ -121,7 +121,7 @@ describe('LocationsService dynamic fields', () => {
       expect.objectContaining({ name: 'HQ', address: '123 Main St', countryId: 5, postalCode: '10001' }),
     );
     expect(dynamicRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ note: 'Main branch' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ fld_loc_note: 'Main branch' }) }),
     );
 
     expect(result.success).toBe(true);
@@ -205,7 +205,7 @@ describe('LocationsService dynamic fields', () => {
 
     expect(locationRepo.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'HQ West' }));
     expect(dynamicRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ note: 'updated' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ fld_loc_note: 'updated' }) }),
     );
     expect(result.success).toBe(true);
     expect(result.data.fld_loc_name).toBe('HQ West');

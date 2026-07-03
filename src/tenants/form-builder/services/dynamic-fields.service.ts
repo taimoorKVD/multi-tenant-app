@@ -8,6 +8,15 @@ export interface DynamicFieldDefinition {
   options: Array<{ label: string; value: string }>;
 }
 
+export interface SchemaFieldRef {
+  id: string;
+  fieldKey: string;
+  canonicalKey: string;
+  name: string;
+  isSystemField: boolean;
+  dataKeys: string[];
+}
+
 export interface DynamicSchemaContext {
   moduleId: number | null;
   formId: number | null;
@@ -17,6 +26,8 @@ export interface DynamicSchemaContext {
   fieldLabels: Map<string, string>;
   aliasToCanonicalMap: Map<string, string>;
   fieldIdByCanonicalKey: Map<string, string>;
+  fieldIdByAnyKey: Map<string, string>;
+  schemaFields: SchemaFieldRef[];
   fieldDefinitions: Map<string, DynamicFieldDefinition>;
 }
 
@@ -173,6 +184,8 @@ export class DynamicFieldsService {
         fieldLabels: new Map(),
         aliasToCanonicalMap,
         fieldIdByCanonicalKey: new Map(),
+        fieldIdByAnyKey: new Map(),
+        schemaFields: [],
         fieldDefinitions: new Map(),
       };
     };
@@ -204,12 +217,15 @@ export class DynamicFieldsService {
     const fieldLabels = new Map<string, string>();
     const aliasToCanonicalMap = new Map<string, string>();
     const fieldIdByCanonicalKey = new Map<string, string>();
+    const fieldIdByAnyKey = new Map<string, string>();
+    const schemaFields: SchemaFieldRef[] = [];
     const fieldDefinitions = new Map<string, DynamicFieldDefinition>();
 
     const fields = backfilledFields;
 
     for (const field of fields) {
       const fieldKey = String(field.fieldKey || field.name || '').trim();
+      const fieldName = String(field.name || fieldKey || '').trim();
       const systemMappingKey = String(field.systemMappingKey || '').trim();
       const canonicalKey =
         field.isSystemField && systemMappingKey ? systemMappingKey : systemMappingKey || fieldKey;
@@ -218,6 +234,20 @@ export class DynamicFieldsService {
       fieldLabels.set(canonicalKey, String(field.label || canonicalKey).trim() || canonicalKey);
 
       const fieldId = String(field.id || '').trim();
+      const dataKeys = Array.from(
+        new Set(
+          [
+            ...(Array.isArray(field.dataKeys) ? field.dataKeys : []),
+            fieldId,
+            canonicalKey,
+            fieldKey,
+            fieldName,
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      );
+
       if (fieldId) {
         fieldIdByCanonicalKey.set(canonicalKey, fieldId);
         if (fieldKey) fieldIdByCanonicalKey.set(fieldKey, fieldId);
@@ -229,6 +259,7 @@ export class DynamicFieldsService {
         field.name,
         field.label,
         field.id,
+        ...dataKeys,
         this.normalizeFieldAlias(field.label || ''),
         this.normalizeFieldAlias(field.fieldKey || ''),
         this.normalizeFieldAlias(field.name || ''),
@@ -240,6 +271,10 @@ export class DynamicFieldsService {
         aliasToCanonicalMap.set(alias, canonicalKey);
         const normalizedAlias = this.normalizeFieldAlias(alias);
         if (normalizedAlias) aliasToCanonicalMap.set(normalizedAlias, canonicalKey);
+        if (fieldId) {
+          fieldIdByAnyKey.set(alias, fieldId);
+          if (normalizedAlias) fieldIdByAnyKey.set(normalizedAlias, fieldId);
+        }
       }
 
       if (field.isSystemField) systemFieldKeys.add(canonicalKey);
@@ -255,6 +290,17 @@ export class DynamicFieldsService {
       const definition: DynamicFieldDefinition = { fieldType, options };
       fieldDefinitions.set(canonicalKey, definition);
       if (fieldKey) fieldDefinitions.set(fieldKey, definition);
+
+      if (fieldId) {
+        schemaFields.push({
+          id: fieldId,
+          fieldKey,
+          canonicalKey,
+          name: fieldName,
+          isSystemField: Boolean(field.isSystemField),
+          dataKeys,
+        });
+      }
     }
 
     for (const [alias, canonical] of Object.entries(relationFieldAliases)) {
@@ -280,8 +326,155 @@ export class DynamicFieldsService {
       fieldLabels,
       aliasToCanonicalMap,
       fieldIdByCanonicalKey,
+      fieldIdByAnyKey,
+      schemaFields,
       fieldDefinitions,
     };
+  }
+
+  resolveFieldIdForDataKey(context: DynamicSchemaContext, key: string): string | null {
+    const trimmed = String(key || '').trim();
+    if (!trimmed) return null;
+
+    const direct = context.fieldIdByAnyKey.get(trimmed);
+    if (direct) return direct;
+
+    const normalized = this.normalizeFieldAlias(trimmed);
+    if (normalized) {
+      const fromNormalized = context.fieldIdByAnyKey.get(normalized);
+      if (fromNormalized) return fromNormalized;
+    }
+
+    if (trimmed.startsWith('fld_')) {
+      return context.schemaFields.some((field) => field.id === trimmed) ? trimmed : null;
+    }
+
+    return null;
+  }
+
+  normalizeDynamicDataToFieldIds(
+    data: Record<string, any>,
+    context: DynamicSchemaContext,
+  ): Record<string, any> {
+    const result: Record<string, any> = {};
+    const fieldIdValues = new Map<string, any>();
+    const aliasValues = new Map<string, any>();
+
+    for (const [key, value] of Object.entries(data || {})) {
+      const fieldId = this.resolveFieldIdForDataKey(context, key);
+      if (!fieldId) {
+        result[key] = value;
+        continue;
+      }
+
+      if (key === fieldId) {
+        fieldIdValues.set(fieldId, value);
+        continue;
+      }
+
+      aliasValues.set(fieldId, value);
+    }
+
+    for (const [fieldId, value] of fieldIdValues.entries()) {
+      result[fieldId] = value;
+    }
+
+    for (const [fieldId, value] of aliasValues.entries()) {
+      result[fieldId] = value;
+    }
+
+    return result;
+  }
+
+  private findDynamicValueForField(
+    dynamicData: Record<string, any>,
+    field: SchemaFieldRef,
+    context: DynamicSchemaContext,
+    consumedKeys: Set<string>,
+  ): unknown {
+    const lookupKeys = Array.from(
+      new Set([field.id, field.canonicalKey, field.fieldKey, field.name, ...field.dataKeys].filter(Boolean)),
+    );
+
+    for (const key of lookupKeys) {
+      if (!Object.prototype.hasOwnProperty.call(dynamicData, key)) continue;
+      consumedKeys.add(key);
+      return dynamicData[key];
+    }
+
+    for (const [key, value] of Object.entries(dynamicData)) {
+      if (consumedKeys.has(key)) continue;
+      if (this.resolveFieldIdForDataKey(context, key) === field.id) {
+        consumedKeys.add(key);
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * When a form schema changes (label / fieldKey rename), migrate stored dynamic
+   * values from legacy keys onto the stable field id.
+   */
+  async migrateDynamicDataKeysOnSchemaChange(
+    req: any,
+    moduleId: number | null,
+    oldFields: any[],
+    newFields: any[],
+  ): Promise<void> {
+    if (!moduleId) return;
+
+    const renames = new Map<string, string>();
+
+    for (const newField of newFields || []) {
+      const fieldId = String(newField?.id || '').trim();
+      if (!fieldId) continue;
+
+      const oldField = (oldFields || []).find((field) => String(field?.id || '').trim() === fieldId);
+      const keys = new Set<string>(
+        [
+          ...(Array.isArray(oldField?.dataKeys) ? oldField.dataKeys : []),
+          oldField?.fieldKey,
+          oldField?.name,
+          newField?.fieldKey,
+          newField?.name,
+          ...(Array.isArray(newField?.dataKeys) ? newField.dataKeys : []),
+        ]
+          .map((value) => String(value || '').trim())
+          .filter((value) => value && value !== fieldId),
+      );
+
+      for (const key of keys) {
+        renames.set(key, fieldId);
+      }
+    }
+
+    if (!renames.size) return;
+
+    const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
+    const rows = await dynamicRepo.find({ where: { moduleId } });
+
+    for (const row of rows) {
+      const data = { ...(row.data || {}) };
+      let changed = false;
+
+      for (const [legacyKey, fieldId] of renames.entries()) {
+        if (!Object.prototype.hasOwnProperty.call(data, legacyKey)) continue;
+        if (!Object.prototype.hasOwnProperty.call(data, fieldId)) {
+          data[fieldId] = data[legacyKey];
+        }
+        if (legacyKey !== fieldId) {
+          delete data[legacyKey];
+        }
+        changed = true;
+      }
+
+      if (changed) {
+        row.data = data;
+        await dynamicRepo.save(row);
+      }
+    }
   }
 
   resolveCanonicalKey(context: DynamicSchemaContext, key: string): string {
@@ -389,20 +582,32 @@ export class DynamicFieldsService {
     }
 
     const idKeyed: Record<string, any> = {};
+    const consumedKeys = new Set<string>();
 
     for (const [canonicalKey, value] of Object.entries(systemValues)) {
       const fieldId = fieldIdByCanonicalKey.get(canonicalKey);
       if (fieldId && !(fieldId in idKeyed)) idKeyed[fieldId] = value;
     }
 
-    for (const [key, value] of Object.entries(filteredDynamicData)) {
-      const canonicalKey = this.resolveCanonicalKey(context, key);
-      const fieldId = fieldIdByCanonicalKey.get(canonicalKey) || fieldIdByCanonicalKey.get(key);
-      if (fieldId && !(fieldId in idKeyed)) {
-        idKeyed[fieldId] = value;
-      } else if (!fieldId) {
-        idKeyed[key] = value;
+    for (const field of context.schemaFields) {
+      if (field.isSystemField) continue;
+
+      const value = this.findDynamicValueForField(filteredDynamicData, field, context, consumedKeys);
+      if (value !== undefined) {
+        idKeyed[field.id] = value;
       }
+    }
+
+    for (const [key, value] of Object.entries(filteredDynamicData)) {
+      if (consumedKeys.has(key)) continue;
+
+      const fieldId = this.resolveFieldIdForDataKey(context, key);
+      if (fieldId) {
+        if (!(fieldId in idKeyed)) idKeyed[fieldId] = value;
+        continue;
+      }
+
+      idKeyed[key] = value;
     }
 
     return { ...idKeyed, ...meta };
@@ -412,6 +617,7 @@ export class DynamicFieldsService {
     req: any,
     moduleId: number | null,
     entityIds: number[],
+    context?: DynamicSchemaContext,
   ): Promise<Map<number, Record<string, any>>> {
     const result = new Map<number, Record<string, any>>();
     if (!moduleId || !entityIds.length) return result;
@@ -419,7 +625,11 @@ export class DynamicFieldsService {
     const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
     const rows = await dynamicRepo.find({ where: { moduleId, entityId: In(entityIds) } });
     for (const row of rows) {
-      result.set(row.entityId, row.data || {});
+      const data = row.data || {};
+      result.set(
+        row.entityId,
+        context ? this.normalizeDynamicDataToFieldIds(data, context) : data,
+      );
     }
     return result;
   }
@@ -428,11 +638,13 @@ export class DynamicFieldsService {
     req: any,
     moduleId: number | null,
     entityId: number,
+    context?: DynamicSchemaContext,
   ): Promise<Record<string, any>> {
     if (!moduleId) return {};
     const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
     const row = await dynamicRepo.findOne({ where: { moduleId, entityId } });
-    return row?.data || {};
+    const data = row?.data || {};
+    return context ? this.normalizeDynamicDataToFieldIds(data, context) : data;
   }
 
   async upsertDynamicRow(
@@ -442,8 +654,11 @@ export class DynamicFieldsService {
     formVersionId: number | null,
     data: Record<string, any>,
     actorId: number | null,
+    context?: DynamicSchemaContext,
   ): Promise<void> {
     if (!moduleId) return;
+
+    const payload = context ? this.normalizeDynamicDataToFieldIds(data, context) : data;
 
     const dynamicRepo: Repository<EntityDynamicData> = req.tenantConnection.getRepository(EntityDynamicData);
     let row = await dynamicRepo.findOne({ where: { moduleId, entityId } });
@@ -453,13 +668,13 @@ export class DynamicFieldsService {
         moduleId,
         entityId,
         formVersionId,
-        data,
+        data: payload,
         createdBy: actorId,
         updatedBy: actorId,
       });
     } else {
       row.formVersionId = formVersionId;
-      row.data = data;
+      row.data = payload;
       row.updatedBy = actorId;
     }
 
@@ -553,8 +768,9 @@ export class DynamicFieldsService {
       const canonicalKey = this.resolveCanonicalKey(context, key);
       const fieldDefinition =
         context.fieldDefinitions.get(key) || context.fieldDefinitions.get(canonicalKey);
+      const storageKey = this.resolveFieldIdForDataKey(context, key) || canonicalKey;
 
-      this.applyDynamicFieldFilter(dynamicQb, idx, canonicalKey, value, fieldDefinition);
+      this.applyDynamicFieldFilter(dynamicQb, idx, storageKey, value, fieldDefinition);
       idx += 1;
     }
 
