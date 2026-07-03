@@ -151,7 +151,7 @@ describe('UsersService dynamic fields', () => {
         entityId: 101,
         formVersionId: 30,
         data: expect.objectContaining({
-          favorite_color: 'blue',
+          fld_test_favorite_color: 'blue',
           employee_code: 'EMP-001',
           department: 'Operations',
           nickname: 'JD',
@@ -167,6 +167,89 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.nickname).toBe('JD');
     expect(result.data.fld_test_name).toBe('John Doe');
     expect((mailServiceMock.sendTemplateMail as any)).not.toHaveBeenCalled();
+  });
+
+  it('paginate keeps fld_* keys when a custom field label/fieldKey changed in form builder', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { id: 'fld_test_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            { id: 'fld_test_email', fieldKey: 'email', isSystemField: true, systemMappingKey: 'email', isRequired: true },
+            {
+              id: 'fld_test_address',
+              fieldKey: 'address',
+              label: 'Home Address',
+              isSystemField: false,
+              dataKeys: ['textarea_field', 'address'],
+            },
+          ],
+        },
+      }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const userRepo = {
+      findAndCount: jest.fn().mockResolvedValue([
+        [
+          {
+            id: 6,
+            name: 'Simon Patrick',
+            email: 'vutunuhy@mailinator.com',
+            plainPassword: 'Pa$$w0rd!',
+            password: 'hash',
+            role: { id: 1, name: 'Admin' },
+            isSystem: false,
+            createdAt: new Date('2026-07-03T17:00:26.714Z'),
+            updatedAt: new Date('2026-07-03T17:00:26.714Z'),
+          },
+        ],
+        1,
+      ]),
+    };
+
+    const dynamicRepo = {
+      find: jest.fn().mockResolvedValue([
+        {
+          moduleId: 10,
+          entityId: 6,
+          data: { textarea_field: 'In minim sed neque e' },
+        },
+      ]),
+      findOne: jest.fn(),
+      createQueryBuilder: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.paginate(req, 1, ['role'], 15);
+
+    expect(result.success).toBe(true);
+    expect(result.data[0].fld_test_address).toBe('In minim sed neque e');
+    expect(result.data[0].address).toBeUndefined();
+    expect(result.data[0].textarea_field).toBeUndefined();
   });
 
   it('rejects create when a required form-builder field is missing', async () => {
@@ -408,7 +491,7 @@ describe('UsersService dynamic fields', () => {
     expect(dynamicRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
-          favorite_color: 'blue',
+          fld_test_favorite_color: 'blue',
           legacy_tag: 'old-value',
           employee_code: 'EMP-009',
           emergency_contact: '+1 999 111',
@@ -671,7 +754,7 @@ describe('UsersService dynamic fields', () => {
     expect(dynamicFilterQb.andWhere).toHaveBeenCalledWith(
       `dynamic.data->:key::text @> :value::jsonb`,
       {
-        key: 'checkbox_field',
+        key: 'fld_test_checkbox',
         value: '["option_1"]',
       },
     );

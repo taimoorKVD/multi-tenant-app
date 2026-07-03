@@ -212,7 +212,7 @@ export class UsersService extends TenantAbstractService<User> {
       const repo = this.getRepo(req);
       const data = await repo.find({ where: { isSystem: Not(true) } as any, relations });
       const context = await this.getUsersSchemaContext(req);
-      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, data.map((user) => user.id));
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, data.map((user) => user.id), context);
 
       return {
         success: true,
@@ -250,7 +250,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const [data, total] = await repo.findAndCount(queryOptions);
       const context = await this.getUsersSchemaContext(req);
-      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, data.map((user) => user.id));
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, data.map((user) => user.id), context);
 
       return {
         success: true,
@@ -279,7 +279,7 @@ export class UsersService extends TenantAbstractService<User> {
       if (!entity) throw new NotFoundException(`User with ID ${id} not found`);
 
       const context = await this.getUsersSchemaContext(req);
-      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, [entity.id]);
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, [entity.id], context);
 
       return {
         success: true,
@@ -328,6 +328,7 @@ export class UsersService extends TenantAbstractService<User> {
         context.activeVersionId,
         dynamicPayload,
         this.getActorId(req),
+        context,
       );
 
       const payload = await userRepo.findOne({
@@ -335,7 +336,7 @@ export class UsersService extends TenantAbstractService<User> {
         relations: ['role'],
       });
 
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
 
       /*
       const mailPayload = {
@@ -427,7 +428,7 @@ export class UsersService extends TenantAbstractService<User> {
         context.systemFieldKeys,
       ));
       const existingDynamic = context.moduleId
-        ? await this.dynamicFields.loadDynamicRow(req, context.moduleId, user.id)
+        ? await this.dynamicFields.loadDynamicRow(req, context.moduleId, user.id, context)
         : {};
       const mergedDynamic = {
         ...existingDynamic,
@@ -449,6 +450,7 @@ export class UsersService extends TenantAbstractService<User> {
         context.activeVersionId,
         mergedDynamic,
         this.getActorId(req),
+        context,
       );
 
       const payload = await userRepo.findOne({
@@ -456,7 +458,7 @@ export class UsersService extends TenantAbstractService<User> {
         relations: ['role'],
       });
 
-      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, updated.id);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, updated.id, context);
 
       /*
       void this.mailService
@@ -604,7 +606,7 @@ export class UsersService extends TenantAbstractService<User> {
       qb.orderBy('user.id', 'DESC').take(take);
 
       const users = await qb.getMany();
-      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, users.map((user) => user.id));
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(req, context.moduleId, users.map((user) => user.id), context);
 
       const data = users.map((user) =>
         this.buildUserResponse(user, dynamicRows.get(user.id) || {}, context),
