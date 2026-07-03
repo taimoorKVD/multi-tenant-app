@@ -69,6 +69,7 @@ export class UsersService extends TenantAbstractService<User> {
     requiredFieldKeys: Set<string>;
     fieldLabels: Map<string, string>;
     aliasToCanonicalMap: Map<string, string>;
+    fieldIdByCanonicalKey: Map<string, string>;
     fieldDefinitions: Map<string, { fieldType: string; options: Array<{ label: string; value: string }> }>;
   }> {
     const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
@@ -85,6 +86,7 @@ export class UsersService extends TenantAbstractService<User> {
         requiredFieldKeys: new Set(),
         fieldLabels: new Map(),
         aliasToCanonicalMap: new Map(),
+        fieldIdByCanonicalKey: new Map(),
         fieldDefinitions: new Map(),
       };
     }
@@ -103,6 +105,7 @@ export class UsersService extends TenantAbstractService<User> {
         requiredFieldKeys: new Set(),
         fieldLabels: new Map(),
         aliasToCanonicalMap: new Map(),
+        fieldIdByCanonicalKey: new Map(),
         fieldDefinitions: new Map(),
       };
     }
@@ -113,6 +116,7 @@ export class UsersService extends TenantAbstractService<User> {
     const requiredFieldKeys = new Set<string>();
     const fieldLabels = new Map<string, string>();
     const aliasToCanonicalMap = new Map<string, string>();
+    const fieldIdByCanonicalKey = new Map<string, string>();
     const fieldDefinitions = new Map<string, { fieldType: string; options: Array<{ label: string; value: string }> }>();
 
     const fields = form.autosaveSchema?.fields || [];
@@ -125,6 +129,12 @@ export class UsersService extends TenantAbstractService<User> {
       if (!canonicalKey) continue;
 
       fieldLabels.set(canonicalKey, String(field.label || canonicalKey).trim() || canonicalKey);
+
+      const fieldId = String(field.id || '').trim();
+      if (fieldId) {
+        fieldIdByCanonicalKey.set(canonicalKey, fieldId);
+        if (fieldKey) fieldIdByCanonicalKey.set(fieldKey, fieldId);
+      }
 
       const normalizedLabel = this.normalizeFieldAlias(field.label || '');
       const normalizedFieldKey = this.normalizeFieldAlias(field.fieldKey || '');
@@ -196,6 +206,7 @@ export class UsersService extends TenantAbstractService<User> {
       requiredFieldKeys,
       fieldLabels,
       aliasToCanonicalMap,
+      fieldIdByCanonicalKey,
       fieldDefinitions,
     };
   }
@@ -512,6 +523,7 @@ export class UsersService extends TenantAbstractService<User> {
     schemaContext?: {
       systemFieldKeys: Set<string>;
       aliasToCanonicalMap: Map<string, string>;
+      fieldIdByCanonicalKey?: Map<string, string>;
     },
   ): Record<string, any> {
     const filteredDynamicData = schemaContext
@@ -522,16 +534,58 @@ export class UsersService extends TenantAbstractService<User> {
         )
       : dynamicData;
 
-    return {
-      ...filteredDynamicData,
+    const meta: Record<string, any> = {
       id: user.id,
-      name: user.name,
-      email: user.email,
-      plain_password: user.plainPassword ?? null,
-      role: this.formatRole(user.role ?? null),
       is_system: user.isSystem,
       created_at: user.createdAt,
       updated_at: user.updatedAt,
+    };
+
+    const fieldIdByCanonicalKey = schemaContext?.fieldIdByCanonicalKey;
+    if (!fieldIdByCanonicalKey || fieldIdByCanonicalKey.size === 0) {
+      // No field-id schema available: keep the legacy, human-readable shape.
+      return {
+        ...filteredDynamicData,
+        name: user.name,
+        email: user.email,
+        ...meta,
+      };
+    }
+
+    // Expose every form-field value keyed by its stable field id (fld_...) so the
+    // frontend matches values by id instead of by label/name/key (which can change).
+    // The human-readable field keys are intentionally omitted.
+    const aliasToCanonicalMap = schemaContext?.aliasToCanonicalMap;
+    const idKeyed: Record<string, any> = {};
+
+    const assignById = (canonicalKey: string, value: any) => {
+      const fieldId = fieldIdByCanonicalKey.get(canonicalKey);
+      if (fieldId && !(fieldId in idKeyed)) {
+        idKeyed[fieldId] = value;
+      }
+    };
+
+    assignById('name', user.name);
+    assignById('email', user.email);
+    assignById('password', user.plainPassword ?? null);
+    assignById('plain_password', user.plainPassword ?? null);
+    assignById('role_id', user.role?.id ?? null);
+    assignById('is_system', user.isSystem);
+
+    for (const [key, value] of Object.entries(filteredDynamicData || {})) {
+      const canonicalKey =
+        aliasToCanonicalMap?.get(key) ||
+        aliasToCanonicalMap?.get(this.normalizeFieldAlias(key)) ||
+        key;
+      const fieldId = fieldIdByCanonicalKey.get(canonicalKey) || fieldIdByCanonicalKey.get(key);
+      if (fieldId && !(fieldId in idKeyed)) {
+        idKeyed[fieldId] = value;
+      }
+    }
+
+    return {
+      ...idKeyed,
+      ...meta,
     };
   }
 
@@ -589,6 +643,7 @@ export class UsersService extends TenantAbstractService<User> {
           this.buildUserResponse(user, dynamicRows.get(user.id) || {}, {
             systemFieldKeys: context.systemFieldKeys,
             aliasToCanonicalMap: context.aliasToCanonicalMap,
+            fieldIdByCanonicalKey: context.fieldIdByCanonicalKey,
           }),
         ),
       };
@@ -634,6 +689,7 @@ export class UsersService extends TenantAbstractService<User> {
           this.buildUserResponse(user, dynamicRows.get(user.id) || {}, {
             systemFieldKeys: context.systemFieldKeys,
             aliasToCanonicalMap: context.aliasToCanonicalMap,
+            fieldIdByCanonicalKey: context.fieldIdByCanonicalKey,
           }),
         ),
       };
@@ -660,6 +716,7 @@ export class UsersService extends TenantAbstractService<User> {
         data: this.buildUserResponse(entity, dynamicRows.get(entity.id) || {}, {
           systemFieldKeys: context.systemFieldKeys,
           aliasToCanonicalMap: context.aliasToCanonicalMap,
+          fieldIdByCanonicalKey: context.fieldIdByCanonicalKey,
         }),
       };
     } catch (error) {
@@ -771,6 +828,7 @@ export class UsersService extends TenantAbstractService<User> {
         data: this.buildUserResponse(payload as User, dynamicData, {
           systemFieldKeys: context.systemFieldKeys,
           aliasToCanonicalMap: context.aliasToCanonicalMap,
+          fieldIdByCanonicalKey: context.fieldIdByCanonicalKey,
         }),
       };
     } catch (error) {
@@ -871,6 +929,7 @@ export class UsersService extends TenantAbstractService<User> {
         data: this.buildUserResponse(payload as User, dynamicData, {
           systemFieldKeys: context.systemFieldKeys,
           aliasToCanonicalMap: context.aliasToCanonicalMap,
+          fieldIdByCanonicalKey: context.fieldIdByCanonicalKey,
         }),
       };
     } catch (error) {
@@ -1032,6 +1091,8 @@ export class UsersService extends TenantAbstractService<User> {
         };
       }
 
+      const context = await this.getUsersSchemaContext(req);
+
       const qb = userRepo
         .createQueryBuilder('user')
         .leftJoinAndSelect('user.role', 'role')
@@ -1041,8 +1102,36 @@ export class UsersService extends TenantAbstractService<User> {
       if (email) qb.andWhere('user.email ILIKE :email', { email: `%${email}%` });
       if (roleId) qb.andWhere('role.id = :roleId', { roleId });
 
-      const context = await this.getUsersSchemaContext(req);
-      if (Object.keys(dynamicFilters).length) {
+      // Split incoming dynamic filters (which may be keyed by field id, name,
+      // label, or key) into system-field filters (applied to the users table)
+      // and true dynamic filters (applied to entity_dynamic_data).
+      const trueDynamicFilters: Record<string, string> = {};
+      for (const [key, value] of Object.entries(dynamicFilters)) {
+        const canonicalKey =
+          context.aliasToCanonicalMap.get(key) ||
+          context.aliasToCanonicalMap.get(this.normalizeFieldAlias(key)) ||
+          key;
+
+        switch (canonicalKey) {
+          case 'name':
+            qb.andWhere('user.name ILIKE :sysName', { sysName: `%${value}%` });
+            break;
+          case 'email':
+            qb.andWhere('user.email ILIKE :sysEmail', { sysEmail: `%${value}%` });
+            break;
+          case 'role_id': {
+            const parsedRoleId = Number(value);
+            if (Number.isFinite(parsedRoleId)) {
+              qb.andWhere('role.id = :sysRoleId', { sysRoleId: parsedRoleId });
+            }
+            break;
+          }
+          default:
+            trueDynamicFilters[key] = value;
+        }
+      }
+
+      if (Object.keys(trueDynamicFilters).length) {
         if (!context.moduleId) {
           return {
             success: true,
@@ -1059,16 +1148,19 @@ export class UsersService extends TenantAbstractService<User> {
           .where('dynamic.moduleId = :moduleId', { moduleId: context.moduleId });
 
         let idx = 0;
-        for (const [key, value] of Object.entries(dynamicFilters)) {
+        for (const [key, value] of Object.entries(trueDynamicFilters)) {
           if (!/^[a-zA-Z0-9_\-]+$/.test(key)) {
             continue;
           }
 
-          const canonicalKey = context.aliasToCanonicalMap.get(key) || key;
+          const canonicalKey =
+            context.aliasToCanonicalMap.get(key) ||
+            context.aliasToCanonicalMap.get(this.normalizeFieldAlias(key)) ||
+            key;
           const fieldDefinition =
             context.fieldDefinitions.get(key) || context.fieldDefinitions.get(canonicalKey);
 
-          this.applyDynamicFieldFilter(dynamicQb, idx, key, value, fieldDefinition);
+          this.applyDynamicFieldFilter(dynamicQb, idx, canonicalKey, value, fieldDefinition);
           idx += 1;
         }
 
@@ -1098,6 +1190,7 @@ export class UsersService extends TenantAbstractService<User> {
         this.buildUserResponse(user, dynamicRows.get(user.id) || {}, {
           systemFieldKeys: context.systemFieldKeys,
           aliasToCanonicalMap: context.aliasToCanonicalMap,
+          fieldIdByCanonicalKey: context.fieldIdByCanonicalKey,
         }),
       );
 
