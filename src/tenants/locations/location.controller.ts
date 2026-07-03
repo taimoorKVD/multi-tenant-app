@@ -1,7 +1,6 @@
 import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req} from '@nestjs/common';
 import {LocationsService} from './locations.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
-import {CreateLocationDto, UpdateLocationDto} from "./dto";
 import {TenantLocationsSwagger} from './swagger';
 
 @TenantLocationsSwagger.Tags()
@@ -14,8 +13,8 @@ export class LocationsController {
     @TenantAccess('create-location')
     @Post()
     @TenantLocationsSwagger.Create()
-    create(@Req() req, @Body() dto: CreateLocationDto) {
-        return this.locationsService.create(req, dto);
+    create(@Req() req, @Body() body: any) {
+        return this.locationsService.create(req, body);
     }
 
     @TenantAccess('view-location')
@@ -36,24 +35,10 @@ export class LocationsController {
     @TenantAccess('view-location')
     @Get('search')
     @TenantLocationsSwagger.Search()
-    search(
-        @Req() req,
-        @Query('name') name?: string,
-        @Query('address') address?: string,
-        @Query('postal_code') postalCode?: string,
-        @Query('country_id') countryId?: string,
-        @Query('state_id') stateId?: string,
-        @Query('city_id') cityId?: string,
-        @Query('limit') limit?: string,
-    ) {
-        return this.locationsService.search(req, limit ? Number(limit) : undefined, {
-            name,
-            address,
-            postalCode,
-            countryId: countryId ? Number(countryId) : undefined,
-            stateId: stateId ? Number(stateId) : undefined,
-            cityId: cityId ? Number(cityId) : undefined,
-        });
+    search(@Req() req, @Query() query: Record<string, any>) {
+        const limit = query?.limit !== undefined ? Number(query.limit) : undefined;
+        const { limit: _limit, ...filters } = query || {};
+        return this.locationsService.search(req, Number.isFinite(limit) ? limit : undefined, filters);
     }
 
     @TenantAccess('view-location')
@@ -66,8 +51,8 @@ export class LocationsController {
     @TenantAccess('edit-location')
     @Put(':id')
     @TenantLocationsSwagger.Update()
-    update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLocationDto) {
-        return this.locationsService.update(req, id, dto);
+    update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() body: any) {
+        return this.locationsService.update(req, id, body);
     }
 
     @TenantAccess('delete-location')

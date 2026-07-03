@@ -1,6 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req } from '@nestjs/common';
 import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
-import { CreateItemDto, UpdateItemDto } from './dto';
 import { ItemsService } from './items.service';
 import { TenantItemsSwagger } from './swagger';
 
@@ -13,8 +12,8 @@ export class ItemsController {
   @TenantAccess('create-item')
   @Post()
   @TenantItemsSwagger.Create()
-  create(@Req() req, @Body() dto: CreateItemDto) {
-    return this.itemsService.create(req, dto);
+  create(@Req() req, @Body() body: any) {
+    return this.itemsService.create(req, body);
   }
 
   @TenantAccess('view-item')
@@ -35,8 +34,10 @@ export class ItemsController {
   @TenantAccess('view-item')
   @Get('search')
   @TenantItemsSwagger.Search()
-  search(@Req() req, @Query('name') name?: string, @Query('limit') limit?: string) {
-    return this.itemsService.search(req, limit ? Number(limit) : undefined, { name });
+  search(@Req() req, @Query() query: Record<string, any>) {
+    const limit = query?.limit !== undefined ? Number(query.limit) : undefined;
+    const { limit: _limit, ...filters } = query || {};
+    return this.itemsService.search(req, Number.isFinite(limit) ? limit : undefined, filters);
   }
 
   @TenantAccess('view-item')
@@ -49,8 +50,8 @@ export class ItemsController {
   @TenantAccess('edit-item')
   @Put(':id')
   @TenantItemsSwagger.Update()
-  update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateItemDto) {
-    return this.itemsService.update(req, id, dto);
+  update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() body: any) {
+    return this.itemsService.update(req, id, body);
   }
 
   @TenantAccess('delete-item')

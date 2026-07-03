@@ -277,6 +277,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'name',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'name',
     placeholder: 'Enter name',
   },
   {
@@ -286,6 +288,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'address',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'address',
     placeholder: 'Enter address',
   },
   {
@@ -295,6 +299,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'country_id',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'country_id',
     placeholder: 'Select country',
     optionSource: {
       type: 'dynamic',
@@ -314,6 +320,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'state_id',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'state_id',
     placeholder: 'Select state',
     optionSource: {
       type: 'dynamic',
@@ -333,6 +341,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'city_id',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'city_id',
     placeholder: 'Select city',
     optionSource: {
       type: 'dynamic',
@@ -352,6 +362,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'postalCode',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'postalCode',
     placeholder: 'Enter postal code',
   },
   {
@@ -361,6 +373,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'latitude',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'latitude',
     placeholder: 'Enter latitude',
   },
   {
@@ -370,6 +384,8 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'longitude',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'longitude',
     placeholder: 'Enter longitude',
   },
 ];
