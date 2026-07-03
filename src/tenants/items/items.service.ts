@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, ILike, In, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { CreateItemDto, UpdateItemDto } from './dto';
 import { Item } from './entities';
-import { Vendor } from '../vendors/entities';
-import { ReportingCategory } from '../reporting-categories/entities';
+// import { ILike, In } from 'typeorm';
+// import { Vendor } from '../vendors/entities';
+// import { ReportingCategory } from '../reporting-categories/entities';
 
 @Injectable()
 export class ItemsService extends TenantAbstractService<Item> {
@@ -16,58 +17,44 @@ export class ItemsService extends TenantAbstractService<Item> {
     return super.getRepo(req);
   }
 
-  private async resolveReportingCategories(req: any, ids?: number[]) {
-    if (!ids?.length) return [];
+  // private async resolveReportingCategories(req: any, ids?: number[]) {
+  //   if (!ids?.length) return [];
 
-    const categoryRepo = req.tenantConnection.getRepository(ReportingCategory);
-    const categories = await categoryRepo.find({ where: { id: In(ids) } });
+  //   const categoryRepo = req.tenantConnection.getRepository(ReportingCategory);
+  //   const categories = await categoryRepo.find({ where: { id: In(ids) } });
 
-    if (categories.length !== ids.length) {
-      throw new BadRequestException('One or more reportingCategoryIds are invalid.');
-    }
+  //   if (categories.length !== ids.length) {
+  //     throw new BadRequestException('One or more reportingCategoryIds are invalid.');
+  //   }
 
-    return categories;
-  }
+  //   return categories;
+  // }
 
-  private async resolveVendor(req: any, vendorId?: number | null) {
-    if (vendorId === undefined || vendorId === null) return null;
+  // private async resolveVendor(req: any, vendorId?: number | null) {
+  //   if (vendorId === undefined || vendorId === null) return null;
 
-    const vendorRepo = req.tenantConnection.getRepository(Vendor);
-    const vendor = await vendorRepo.findOneBy({ id: vendorId });
-    if (!vendor) {
-      throw new BadRequestException(`Vendor with ID ${vendorId} not found.`);
-    }
+  //   const vendorRepo = req.tenantConnection.getRepository(Vendor);
+  //   const vendor = await vendorRepo.findOneBy({ id: vendorId });
+  //   if (!vendor) {
+  //     throw new BadRequestException(`Vendor with ID ${vendorId} not found.`);
+  //   }
 
-    return vendor;
-  }
+  //   return vendor;
+  // }
 
   async create(req: any, dto: CreateItemDto) {
     const repo = this.getRepo(req);
-    const itemNo = dto.itemNo.trim();
-    const existing = await repo.findOne({ where: { itemNo: ILike(itemNo) } as any });
+    const name = dto.name.trim();
 
-    if (existing) {
-      throw new BadRequestException('An item with this item number already exists.');
+    if (!name) {
+      throw new BadRequestException('Name is required.');
     }
 
-    const vendor = await this.resolveVendor(req, dto.vendorId ?? null);
-    const reportingCategories = await this.resolveReportingCategories(req, dto.reportingCategoryIds);
-
     const entity = repo.create({
-      itemNo,
-      name: dto.name.trim(),
-      description: dto.description ?? null,
-      size: dto.size ?? null,
-      cost: dto.cost,
-      par: dto.par ?? null,
-      vendorId: vendor?.id ?? null,
-      vendor,
-      isActive: dto.isActive !== undefined ? dto.isActive : true,
+      name,
       createdBy: dto.createdBy ?? null,
       updatedBy: dto.updatedBy ?? null,
-      reportingCategories,
     });
-
     const saved = await repo.save(entity);
 
     return {
@@ -79,37 +66,16 @@ export class ItemsService extends TenantAbstractService<Item> {
   }
 
   async paginate(req: any, page = 1, relations: string[] = [], limit?: number) {
-    const resolvedRelations = relations.length ? relations : ['vendor', 'reportingCategories'];
-    return super.paginate(req, page, resolvedRelations, limit);
+    return super.paginate(req, page, relations, limit);
   }
 
-  async search(
-    req: any,
-    limit = 15,
-    filters?: {
-      itemNo?: string;
-      name?: string;
-      isActive?: boolean;
-      vendorId?: number;
-      reportingCategoryIds?: number[];
-    },
-  ) {
+  async search(req: any, limit = 15, filters?: { name?: string }) {
     const repo = this.getRepo(req);
     const parsedLimit = Number(limit);
     const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
-    const qb = repo
-      .createQueryBuilder('item')
-      .leftJoinAndSelect('item.vendor', 'vendor')
-      .leftJoinAndSelect('item.reportingCategories', 'category')
-      .distinct(true);
+    const qb = repo.createQueryBuilder('item');
 
-    if (filters?.itemNo) qb.andWhere('item.item_no ILIKE :itemNo', { itemNo: `%${filters.itemNo.trim()}%` });
     if (filters?.name) qb.andWhere('item.name ILIKE :name', { name: `%${filters.name.trim()}%` });
-    if (filters?.isActive !== undefined) qb.andWhere('item.isActive = :isActive', { isActive: filters.isActive });
-    if (filters?.vendorId) qb.andWhere('item.vendor_id = :vendorId', { vendorId: filters.vendorId });
-    if (filters?.reportingCategoryIds && filters.reportingCategoryIds.length > 0) {
-      qb.andWhere('category.id IN (:...categoryIds)', { categoryIds: filters.reportingCategoryIds });
-    }
 
     const [data, total] = await qb.orderBy('item.id', 'DESC').take(take).getManyAndCount();
 
@@ -122,46 +88,20 @@ export class ItemsService extends TenantAbstractService<Item> {
   }
 
   async findOne(req: any, id: number) {
-    return super.findOne(req, id, ['vendor', 'reportingCategories']);
+    return super.findOne(req, id);
   }
 
   async update(req: any, id: number, dto: UpdateItemDto) {
     const repo = this.getRepo(req);
-    const entity = await repo.findOne({ where: { id } as any, relations: ['vendor', 'reportingCategories'] });
+    const entity = await repo.findOne({ where: { id } as any });
 
     if (!entity) {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
-    if (dto.itemNo !== undefined) {
-      const itemNo = dto.itemNo.trim();
-      if (itemNo !== entity.itemNo) {
-        const duplicate = await repo.findOne({ where: { itemNo: ILike(itemNo) } as any });
-        if (duplicate && duplicate.id !== id) {
-          throw new BadRequestException('An item with this item number already exists.');
-        }
-      }
-      entity.itemNo = itemNo;
-    }
-
     if (dto.name !== undefined) entity.name = dto.name.trim();
-    if (dto.description !== undefined) entity.description = dto.description ?? null;
-    if (dto.size !== undefined) entity.size = dto.size ?? null;
-    if (dto.cost !== undefined) entity.cost = dto.cost;
-    if (dto.par !== undefined) entity.par = dto.par ?? null;
-    if (dto.isActive !== undefined) entity.isActive = dto.isActive;
     if (dto.createdBy !== undefined) entity.createdBy = dto.createdBy;
     if (dto.updatedBy !== undefined) entity.updatedBy = dto.updatedBy;
-
-    if (dto.vendorId !== undefined) {
-      const vendor = await this.resolveVendor(req, dto.vendorId);
-      entity.vendorId = vendor?.id ?? null;
-      entity.vendor = vendor;
-    }
-
-    if (dto.reportingCategoryIds !== undefined) {
-      entity.reportingCategories = await this.resolveReportingCategories(req, dto.reportingCategoryIds);
-    }
 
     const saved = await repo.save(entity);
 
