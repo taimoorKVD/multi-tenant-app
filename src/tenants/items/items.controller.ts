@@ -35,31 +35,8 @@ export class ItemsController {
   @TenantAccess('view-item')
   @Get('search')
   @TenantItemsSwagger.Search()
-  search(
-    @Req() req,
-    @Query('item_no') itemNo?: string,
-    @Query('name') name?: string,
-    @Query('isActive') isActive?: string,
-    @Query('vendor_id') vendorId?: string,
-    @Query('reporting_category_ids') reportingCategoryIds?: string | string[],
-    @Query('limit') limit?: string,
-  ) {
-    // Accept both single and multiple values for reporting_category_ids
-    let categoryIds: number[] | undefined = undefined;
-    if (reportingCategoryIds) {
-      if (Array.isArray(reportingCategoryIds)) {
-        categoryIds = reportingCategoryIds.map(Number).filter((v) => !isNaN(v));
-      } else if (typeof reportingCategoryIds === 'string') {
-        categoryIds = reportingCategoryIds.split(',').map((v) => Number(v.trim())).filter((v) => !isNaN(v));
-      }
-    }
-    return this.itemsService.search(req, limit ? Number(limit) : undefined, {
-      itemNo,
-      name,
-      isActive: typeof isActive === 'string' ? isActive === 'true' : undefined,
-      vendorId: vendorId ? Number(vendorId) : undefined,
-      reportingCategoryIds: categoryIds,
-    });
+  search(@Req() req, @Query('name') name?: string, @Query('limit') limit?: string) {
+    return this.itemsService.search(req, limit ? Number(limit) : undefined, { name });
   }
 
   @TenantAccess('view-item')
