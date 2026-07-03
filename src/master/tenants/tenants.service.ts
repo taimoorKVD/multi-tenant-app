@@ -712,6 +712,7 @@ export class TenantsService {
           placeholder: item.placeholder ?? 'Placeholder text',
           helpText: item.helpText ?? null,
           isRequired: item.isRequired ?? false,
+          isEditable: item.isEditable ?? true,
           isUnique: item.isUnique ?? false,
           isReadonly: !(item.isEditable ?? true),
           isSystemField: item.isSystemField ?? false,
