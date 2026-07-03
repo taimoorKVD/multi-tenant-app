@@ -6,9 +6,12 @@ import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.
 import { Role } from '../role/entities';
 import { User } from './entities';
 import { UsersService } from './users.service';
+import { DynamicFieldsService } from '../form-builder/services';
 
 describe('UsersService dynamic fields', () => {
   let service: UsersService;
+
+  const dynamicFieldsService = new DynamicFieldsService();
 
   const baseUserRepoForCtor = {
     target: User,
@@ -24,7 +27,7 @@ describe('UsersService dynamic fields', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new UsersService(dataSourceMock, mailServiceMock);
+    service = new UsersService(dataSourceMock, mailServiceMock, dynamicFieldsService);
   });
 
   function buildReq(repos: Map<any, any>) {
@@ -55,14 +58,15 @@ describe('UsersService dynamic fields', () => {
         moduleId: 10,
         autosaveSchema: {
           fields: [
-            { fieldKey: 'name', isSystemField: true, isRequired: true },
-            { fieldKey: 'email', isSystemField: true, isRequired: true },
-            { fieldKey: 'password', isSystemField: true, isRequired: true },
-            { fieldKey: 'role_id', isSystemField: true, isRequired: true },
-            { fieldKey: 'favorite_color', isSystemField: false, isRequired: false },
+            { id: 'fld_test_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            { id: 'fld_test_email', fieldKey: 'email', isSystemField: true, systemMappingKey: 'email', isRequired: true },
+            { id: 'fld_test_password', fieldKey: 'password', isSystemField: true, systemMappingKey: 'password', isRequired: true },
+            { id: 'fld_test_role_id', fieldKey: 'role_id', isSystemField: true, systemMappingKey: 'role_id', isRequired: true },
+            { id: 'fld_test_favorite_color', fieldKey: 'favorite_color', isSystemField: false, isRequired: false },
           ],
         },
       }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
     };
 
     const versionRepo = {
@@ -157,11 +161,11 @@ describe('UsersService dynamic fields', () => {
 
     expect(result.success).toBe(true);
     expect(result.tenant).toBe('tenant_kingdomvision');
-    expect(result.data.favorite_color).toBe('blue');
+    expect(result.data.fld_test_favorite_color).toBe('blue');
     expect(result.data.employee_code).toBe('EMP-001');
     expect(result.data.department).toBe('Operations');
     expect(result.data.nickname).toBe('JD');
-    expect(result.data.name).toBe('John Doe');
+    expect(result.data.fld_test_name).toBe('John Doe');
     expect((mailServiceMock.sendTemplateMail as any)).not.toHaveBeenCalled();
   });
 
@@ -176,13 +180,14 @@ describe('UsersService dynamic fields', () => {
         moduleId: 10,
         autosaveSchema: {
           fields: [
-            { fieldKey: 'name', isSystemField: true, isRequired: true },
-            { fieldKey: 'email', isSystemField: true, isRequired: true },
-            { fieldKey: 'password', isSystemField: true, isRequired: true },
-            { fieldKey: 'favorite_color', label: 'Favorite Color', isSystemField: false, isRequired: 'true' },
+            { id: 'fld_test_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            { id: 'fld_test_email', fieldKey: 'email', isSystemField: true, systemMappingKey: 'email', isRequired: true },
+            { id: 'fld_test_password', fieldKey: 'password', isSystemField: true, systemMappingKey: 'password', isRequired: true },
+            { id: 'fld_test_favorite_color', fieldKey: 'favorite_color', label: 'Favorite Color', isSystemField: false, isRequired: 'true' },
           ],
         },
       }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
     };
 
     const versionRepo = {
@@ -245,11 +250,12 @@ describe('UsersService dynamic fields', () => {
         moduleId: 10,
         autosaveSchema: {
           fields: [
-            { fieldKey: 'email', label: 'Email', isSystemField: true, isRequired: true },
-            { fieldKey: 'password', label: 'Password', isSystemField: true, isRequired: true },
+            { id: 'fld_test_email', fieldKey: 'email', label: 'Email', isSystemField: true, systemMappingKey: 'email', isRequired: true },
+            { id: 'fld_test_password', fieldKey: 'password', label: 'Password', isSystemField: true, systemMappingKey: 'password', isRequired: true },
           ],
         },
       }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
     };
 
     const versionRepo = {
@@ -315,7 +321,7 @@ describe('UsersService dynamic fields', () => {
       }),
     );
     expect(result.success).toBe(true);
-    expect(result.data.name).toBeNull();
+    expect(result.data.fld_test_email).toBe('john@kingdomvision.com');
   });
 
   it('update merges new dynamic fields with existing dynamic data', async () => {
@@ -412,7 +418,7 @@ describe('UsersService dynamic fields', () => {
 
     expect(result.success).toBe(true);
     expect(result.tenant).toBe('tenant_kingdomvision');
-    expect(result.data.favorite_color).toBe('blue');
+    expect(result.data.fld_test_favorite_color).toBe('blue');
     expect(result.data.legacy_tag).toBe('old-value');
     expect(result.data.employee_code).toBe('EMP-009');
     expect(result.data.emergency_contact).toBe('+1 999 111');
@@ -429,14 +435,15 @@ describe('UsersService dynamic fields', () => {
         moduleId: 10,
         autosaveSchema: {
           fields: [
-            { fieldKey: 'name', isSystemField: true, isRequired: true },
-            { fieldKey: 'email', isSystemField: true, isRequired: true },
-            { fieldKey: 'password', isSystemField: true, isRequired: true },
-            { fieldKey: 'role_id', isSystemField: true, isRequired: true },
-            { fieldKey: 'favorite_color', isSystemField: false, isRequired: true },
+            { id: 'fld_test_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            { id: 'fld_test_email', fieldKey: 'email', isSystemField: true, systemMappingKey: 'email', isRequired: true },
+            { id: 'fld_test_password', fieldKey: 'password', isSystemField: true, systemMappingKey: 'password', isRequired: true },
+            { id: 'fld_test_role_id', fieldKey: 'role_id', isSystemField: true, systemMappingKey: 'role_id', isRequired: true },
+            { id: 'fld_test_favorite_color', fieldKey: 'favorite_color', isSystemField: false, isRequired: true },
           ],
         },
       }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
     };
 
     const versionRepo = {
@@ -598,6 +605,7 @@ describe('UsersService dynamic fields', () => {
         autosaveSchema: {
           fields: [
             {
+              id: 'fld_test_checkbox',
               fieldKey: 'checkbox_field',
               fieldTypeName: 'checkbox',
               isSystemField: false,
@@ -609,6 +617,7 @@ describe('UsersService dynamic fields', () => {
           ],
         },
       }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
     };
 
     const versionRepo = {
@@ -660,12 +669,11 @@ describe('UsersService dynamic fields', () => {
     });
 
     expect(dynamicFilterQb.andWhere).toHaveBeenCalledWith(
-      expect.stringContaining('jsonb_extract_path_text(dynamic.data'),
-      expect.objectContaining({
-        pathKey0_0: 'checkbox_field',
-        pathIndex0_0: '0',
-        pathOption0_0: 'option_1',
-      }),
+      `dynamic.data->:key::text @> :value::jsonb`,
+      {
+        key: 'checkbox_field',
+        value: '["option_1"]',
+      },
     );
   });
 });

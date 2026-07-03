@@ -17,12 +17,14 @@ import {
 } from '../entities';
 import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../config/module-seeds';
 import { AuditLogService } from './audit-log.service';
+import { DynamicFieldsService } from './dynamic-fields.service';
 
 @Injectable()
 export class FormsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly auditLogService: AuditLogService,
+    private readonly dynamicFieldsService: DynamicFieldsService,
   ) {}
 
   private getActorId(req: any, fallback?: number | null): number | null {
@@ -78,6 +80,17 @@ export class FormsService {
     const schema = form.autosaveSchema || { fields: [] };
 
     return this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, schema);
+  }
+
+  private async ensureFormFieldIds(req: any, form: Form, slug: string): Promise<Form> {
+    const formRepo = req.tenantConnection.getRepository(Form);
+    const rawFields = form.autosaveSchema?.fields || [];
+    const { fields, changed } = this.dynamicFieldsService.backfillMissingFieldIds(rawFields, slug);
+
+    if (!changed) return form;
+
+    form.autosaveSchema = { ...(form.autosaveSchema || {}), fields };
+    return formRepo.save(form);
   }
 
   private sanitizeSchemaFields(fields: any[]): any[] {
@@ -195,6 +208,7 @@ export class FormsService {
     const existing = form.autosaveSchema || {};
 
     const fields = defaultFields.map((item, index) => ({
+      id: item.id,
       fieldKey: item.key,
       label: item.label,
       name: item.name,
@@ -257,6 +271,8 @@ export class FormsService {
     });
 
     if (form) {
+      form = await this.ensureFormFieldIds(req, form, slug);
+
       const versionRepo = req.tenantConnection.getRepository(FormVersion);
       const activeVersion = await versionRepo.findOne({
         where: { formId: form.id, isActive: true },

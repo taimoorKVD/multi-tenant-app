@@ -1,15 +1,37 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
-import { CreateItemDto, UpdateItemDto } from './dto';
 import { Item } from './entities';
-// import { ILike, In } from 'typeorm';
-// import { Vendor } from '../vendors/entities';
-// import { ReportingCategory } from '../reporting-categories/entities';
+import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
 
 @Injectable()
 export class ItemsService extends TenantAbstractService<Item> {
-  constructor(private readonly dataSource: DataSource) {
+  private readonly moduleSlug = 'items';
+
+  private readonly fallbackSystemFieldKeys = new Set([
+    'id',
+    'name',
+    'created_at',
+    'updated_at',
+    'created_by',
+    'updated_by',
+  ]);
+
+  private readonly ignoredPayloadKeys = new Set([
+    'id',
+    'createdBy',
+    'updatedBy',
+    'created_by',
+    'updated_by',
+    'created_at',
+    'updated_at',
+    'limit',
+  ]);
+
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly dynamicFields: DynamicFieldsService,
+  ) {
     super(dataSource.getRepository(Item));
   }
 
@@ -17,99 +39,269 @@ export class ItemsService extends TenantAbstractService<Item> {
     return super.getRepo(req);
   }
 
-  // private async resolveReportingCategories(req: any, ids?: number[]) {
-  //   if (!ids?.length) return [];
+  private getActorId(req: any): number | null {
+    const candidate = req?.user?.id ?? req?.user?.sub ?? req?.user?.userId ?? null;
+    if (candidate === null || candidate === undefined) return null;
+    const actorId = Number(candidate);
+    return Number.isFinite(actorId) ? actorId : null;
+  }
 
-  //   const categoryRepo = req.tenantConnection.getRepository(ReportingCategory);
-  //   const categories = await categoryRepo.find({ where: { id: In(ids) } });
-
-  //   if (categories.length !== ids.length) {
-  //     throw new BadRequestException('One or more reportingCategoryIds are invalid.');
-  //   }
-
-  //   return categories;
-  // }
-
-  // private async resolveVendor(req: any, vendorId?: number | null) {
-  //   if (vendorId === undefined || vendorId === null) return null;
-
-  //   const vendorRepo = req.tenantConnection.getRepository(Vendor);
-  //   const vendor = await vendorRepo.findOneBy({ id: vendorId });
-  //   if (!vendor) {
-  //     throw new BadRequestException(`Vendor with ID ${vendorId} not found.`);
-  //   }
-
-  //   return vendor;
-  // }
-
-  async create(req: any, dto: CreateItemDto) {
-    const repo = this.getRepo(req);
-    const name = dto.name.trim();
-
-    if (!name) {
-      throw new BadRequestException('Name is required.');
-    }
-
-    const entity = repo.create({
-      name,
-      createdBy: dto.createdBy ?? null,
-      updatedBy: dto.updatedBy ?? null,
+  private getContext(req: any): Promise<DynamicSchemaContext> {
+    return this.dynamicFields.getSchemaContext(req, this.moduleSlug, {
+      fallbackSystemFieldKeys: this.fallbackSystemFieldKeys,
     });
-    const saved = await repo.save(entity);
-
-    return {
-      success: true,
-      message: 'Item created successfully',
-      tenant: req.tenantConnection.options.database,
-      data: saved,
-    };
   }
 
-  async paginate(req: any, page = 1, relations: string[] = [], limit?: number) {
-    return super.paginate(req, page, relations, limit);
+  private buildItemResponse(
+    item: Item,
+    dynamicData: Record<string, any>,
+    context: DynamicSchemaContext,
+  ): Record<string, any> {
+    return this.dynamicFields.buildResponse(
+      context,
+      { name: item.name },
+      dynamicData,
+      {
+        id: item.id,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+      },
+    );
   }
 
-  async search(req: any, limit = 15, filters?: { name?: string }) {
-    const repo = this.getRepo(req);
-    const parsedLimit = Number(limit);
-    const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
-    const qb = repo.createQueryBuilder('item');
+  async create(req: any, body: Record<string, any>): Promise<any> {
+    try {
+      const context = await this.getContext(req);
+      const repo = this.getRepo(req);
+      const actor = this.getActorId(req);
 
-    if (filters?.name) qb.andWhere('item.name ILIKE :name', { name: `%${filters.name.trim()}%` });
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap);
+      const { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+        normalized,
+        context.systemFieldKeys,
+        this.ignoredPayloadKeys,
+      );
 
-    const [data, total] = await qb.orderBy('item.id', 'DESC').take(take).getManyAndCount();
+      const name = String(staticPayload.name ?? '').trim();
+      if (!name) {
+        throw new BadRequestException('Name is required.');
+      }
 
-    return {
-      success: true,
-      tenant: req.tenantConnection.options.database,
-      meta: { total, page: 1, lastPage: Math.ceil(total / take) || 1 },
-      data,
-    };
-  }
+      const entity = repo.create({
+        name,
+        createdBy: this.coerceId(body.createdBy) ?? actor,
+        updatedBy: this.coerceId(body.updatedBy) ?? actor,
+      });
+      const saved = await repo.save(entity);
 
-  async findOne(req: any, id: number) {
-    return super.findOne(req, id);
-  }
+      await this.dynamicFields.upsertDynamicRow(
+        req,
+        context.moduleId,
+        saved.id,
+        context.activeVersionId,
+        dynamicPayload,
+        actor,
+      );
 
-  async update(req: any, id: number, dto: UpdateItemDto) {
-    const repo = this.getRepo(req);
-    const entity = await repo.findOne({ where: { id } as any });
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
 
-    if (!entity) {
-      throw new NotFoundException(`Item with ID ${id} not found`);
+      return {
+        success: true,
+        message: 'Item created successfully',
+        tenant: req.tenantConnection.options.database,
+        data: this.buildItemResponse(saved, dynamicData, context),
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      console.error('Item creation failed:', error);
+      throw new InternalServerErrorException(`Failed to create item: ${(error as Error).message}`);
     }
+  }
 
-    if (dto.name !== undefined) entity.name = dto.name.trim();
-    if (dto.createdBy !== undefined) entity.createdBy = dto.createdBy;
-    if (dto.updatedBy !== undefined) entity.updatedBy = dto.updatedBy;
+  async update(req: any, id: number, body: Record<string, any>): Promise<any> {
+    try {
+      const context = await this.getContext(req);
+      const repo = this.getRepo(req);
+      const actor = this.getActorId(req);
 
-    const saved = await repo.save(entity);
+      const entity = await repo.findOne({ where: { id } as any });
+      if (!entity) {
+        throw new NotFoundException(`Item with ID ${id} not found`);
+      }
 
-    return {
-      success: true,
-      message: 'Item updated successfully',
-      tenant: req.tenantConnection.options.database,
-      data: saved,
-    };
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap);
+      const { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+        normalized,
+        context.systemFieldKeys,
+        this.ignoredPayloadKeys,
+      );
+
+      if (staticPayload.name !== undefined && this.dynamicFields.hasPresentValue(staticPayload.name)) {
+        entity.name = String(staticPayload.name).trim();
+      }
+      const updatedBy = this.coerceId(body.updatedBy) ?? actor;
+      if (updatedBy !== null) entity.updatedBy = updatedBy;
+
+      const saved = await repo.save(entity);
+
+      if (Object.keys(dynamicPayload).length) {
+        const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+        await this.dynamicFields.upsertDynamicRow(
+          req,
+          context.moduleId,
+          saved.id,
+          context.activeVersionId,
+          { ...existing, ...dynamicPayload },
+          actor,
+        );
+      }
+
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id);
+
+      return {
+        success: true,
+        message: 'Item updated successfully',
+        tenant: req.tenantConnection.options.database,
+        data: this.buildItemResponse(saved, dynamicData, context),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      console.error('Item update failed:', error);
+      throw new InternalServerErrorException(`Failed to update item: ${(error as Error).message}`);
+    }
+  }
+
+  async paginate(req: any, page = 1, relations: string[] = [], limit?: number): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
+      const currentPage = Math.max(Number(page) || 1, 1);
+      const queryOptions: any = { order: { id: 'DESC' } as any };
+
+      if (parsedLimit && parsedLimit > 0) {
+        queryOptions.take = Math.min(Math.max(parsedLimit, 1), 100);
+        queryOptions.skip = (currentPage - 1) * queryOptions.take;
+      }
+
+      const [data, total] = await repo.findAndCount(queryOptions);
+      const context = await this.getContext(req);
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(
+        req,
+        context.moduleId,
+        data.map((item) => item.id),
+      );
+
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        meta: {
+          total,
+          page: currentPage,
+          lastPage: queryOptions.take ? Math.ceil(total / queryOptions.take) || 1 : 1,
+        },
+        data: data.map((item) => this.buildItemResponse(item, dynamicRows.get(item.id) || {}, context)),
+      };
+    } catch (error) {
+      console.error('Item pagination failed:', error);
+      throw new InternalServerErrorException('Failed to paginate items');
+    }
+  }
+
+  async findOne(req: any, id: number): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const entity = await repo.findOne({ where: { id } as any });
+      if (!entity) {
+        throw new NotFoundException(`Item with ID ${id} not found`);
+      }
+
+      const context = await this.getContext(req);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, entity.id);
+
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        data: this.buildItemResponse(entity, dynamicData, context),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      console.error('Item findOne failed:', error);
+      throw new InternalServerErrorException('Failed to retrieve item');
+    }
+  }
+
+  async search(req: any, limit = 15, filters?: Record<string, any>): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const parsedLimit = Number(limit);
+      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
+
+      const rawFilters = Object.entries(filters || {}).reduce((acc, [key, value]) => {
+        const normalizedKey = String(key || '').trim();
+        if (!normalizedKey || this.ignoredPayloadKeys.has(normalizedKey)) return acc;
+        const normalizedValue =
+          typeof value === 'string' ? value.trim() : value === undefined || value === null ? '' : String(value);
+        if (!normalizedValue) return acc;
+        acc[normalizedKey] = normalizedValue;
+        return acc;
+      }, {} as Record<string, string>);
+
+      if (!Object.keys(rawFilters).length) {
+        return { success: true, tenant: req.tenantConnection.options.database, count: 0, data: [] };
+      }
+
+      const context = await this.getContext(req);
+      const qb = repo.createQueryBuilder('item');
+
+      const trueDynamicFilters: Record<string, string> = {};
+      for (const [key, value] of Object.entries(rawFilters)) {
+        const canonicalKey = this.dynamicFields.resolveCanonicalKey(context, key);
+        if (canonicalKey === 'name') {
+          qb.andWhere('item.name ILIKE :name', { name: `%${value}%` });
+        } else {
+          trueDynamicFilters[key] = value;
+        }
+      }
+
+      const matchedIds = await this.dynamicFields.findDynamicMatchedIds(req, context, trueDynamicFilters);
+      if (matchedIds !== null) {
+        if (!matchedIds.length) {
+          return { success: true, tenant: req.tenantConnection.options.database, count: 0, data: [] };
+        }
+        qb.andWhere('item.id IN (:...dynamicIds)', { dynamicIds: matchedIds });
+      }
+
+      const items = await qb.orderBy('item.id', 'DESC').take(take).getMany();
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(
+        req,
+        context.moduleId,
+        items.map((item) => item.id),
+      );
+
+      const data = items.map((item) => this.buildItemResponse(item, dynamicRows.get(item.id) || {}, context));
+
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        count: data.length,
+        data,
+      };
+    } catch (error) {
+      console.error('Item search failed:', error);
+      throw new InternalServerErrorException(`Failed to search items: ${(error as Error).message}`);
+    }
+  }
+
+  async delete(req: any, id: number): Promise<any> {
+    const context = await this.getContext(req);
+    const result = await super.delete(req, id);
+    await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
+    return result;
+  }
+
+  private coerceId(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
   }
 }

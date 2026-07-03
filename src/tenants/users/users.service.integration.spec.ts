@@ -6,6 +6,7 @@ import { DynamicModule, EntityDynamicData } from '../form-builder/entities';
 import { Role } from '../role/entities';
 import { User } from './entities';
 import { UsersService } from './users.service';
+import { DynamicFieldsService } from '../form-builder/services';
 
 const runRealTenantDbTests = process.env.RUN_REAL_TENANT_DB_TESTS === 'true';
 const keepIntegrationData = process.env.KEEP_INTEGRATION_USER === 'true';
@@ -32,7 +33,7 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
 
   beforeAll(async () => {
     dataSource = await getTenantDataSource('tenant_kingdomvision');
-    service = new UsersService(dataSource as any, mailServiceMock);
+    service = new UsersService(dataSource as any, mailServiceMock, new DynamicFieldsService());
 
     userRepo = dataSource.getRepository(User);
     roleRepo = dataSource.getRepository(Role);

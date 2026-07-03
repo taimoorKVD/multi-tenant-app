@@ -59,6 +59,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: false,
     isSystemField: true,
     systemMappingKey: 'name',
+    placeholder: 'Enter name',
   },
   {
     id: generateFieldId(),
@@ -71,6 +72,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     isUnique: true,
     isSystemField: true,
     systemMappingKey: 'email',
+    placeholder: 'Enter email',
   },
   {
     id: generateFieldId(),
@@ -82,6 +84,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: false,
     isSystemField: true,
     systemMappingKey: 'password',
+    placeholder: 'Enter password',
   },
   {
     id: generateFieldId(),
@@ -90,6 +93,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'phoneNumber',
     type: 'text',
     isEditable: true,
+    placeholder: 'Enter phone number',
   },
   {
     id: generateFieldId(),
@@ -98,6 +102,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'address',
     type: 'text',
     isEditable: true,
+    placeholder: 'Enter address',
   },
   {
     id: generateFieldId(),
@@ -106,6 +111,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'username',
     type: 'text',
     isEditable: true,
+    placeholder: 'Enter username',
   },
   {
     id: generateFieldId(),
@@ -114,6 +120,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'jobPosition',
     type: 'dropdown',
     isEditable: true,
+    placeholder: 'Select job position',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -132,6 +139,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'location',
     type: 'dropdown',
     isEditable: true,
+    placeholder: 'Select location',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -150,6 +158,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'availabilityDays',
     type: 'checkbox',
     isEditable: true,
+    placeholder: 'Select availability days',
     options: [
       { label: 'Monday', value: 'monday' },
       { label: 'Tuesday', value: 'tuesday' },
@@ -173,7 +182,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     isEditable: false,
     isSystemField: true,
     systemMappingKey: 'name',
-    placeholder: 'Placeholder text',
+    placeholder: 'Enter item name',
   },
   {
     id: generateFieldId(),
@@ -182,7 +191,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'item_no',
     type: 'text',
     isEditable: true,
-    placeholder: 'Input text',
+    placeholder: 'Enter item number',
   },
   {
     id: generateFieldId(),
@@ -191,7 +200,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'size',
     type: 'text',
     isEditable: true,
-    placeholder: 'Placeholder text',
+    placeholder: 'Enter size',
   },
   {
     id: generateFieldId(),
@@ -200,7 +209,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'cost',
     type: 'number',
     isEditable: true,
-    placeholder: 'Placeholder text',
+    placeholder: 'Enter cost',
   },
   {
     id: generateFieldId(),
@@ -209,7 +218,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'data_enter',
     type: 'text',
     isEditable: true,
-    placeholder: 'Placeholder text',
+    placeholder: 'Enter data',
   },
   {
     id: generateFieldId(),
@@ -218,7 +227,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'par',
     type: 'number',
     isEditable: true,
-    placeholder: 'Placeholder text',
+    placeholder: 'Enter par',
   },
   {
     id: generateFieldId(),
@@ -227,7 +236,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'vendor_id',
     type: 'dropdown',
     isEditable: true,
-    placeholder: 'Text Input',
+    placeholder: 'Select vendor',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -246,7 +255,7 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'reporting_group',
     type: 'dropdown',
     isEditable: true,
-    placeholder: 'Select Category',
+    placeholder: 'Select reporting group',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -268,6 +277,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'name',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'name',
+    placeholder: 'Enter name',
   },
   {
     id: generateFieldId(),
@@ -276,6 +288,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'address',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'address',
+    placeholder: 'Enter address',
   },
   {
     id: generateFieldId(),
@@ -284,6 +299,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'country_id',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'country_id',
+    placeholder: 'Select country',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -302,6 +320,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'state_id',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'state_id',
+    placeholder: 'Select state',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -320,6 +341,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'city_id',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'city_id',
+    placeholder: 'Select city',
     optionSource: {
       type: 'dynamic',
       method: 'GET',
@@ -338,6 +362,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'postalCode',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'postalCode',
+    placeholder: 'Enter postal code',
   },
   {
     id: generateFieldId(),
@@ -346,6 +373,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'latitude',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'latitude',
+    placeholder: 'Enter latitude',
   },
   {
     id: generateFieldId(),
@@ -354,6 +384,9 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'longitude',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'longitude',
+    placeholder: 'Enter longitude',
   },
 ];
 
