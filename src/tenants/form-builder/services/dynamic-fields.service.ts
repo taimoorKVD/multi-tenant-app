@@ -116,15 +116,13 @@ export class DynamicFieldsService {
     dynamicPayload: Record<string, any>,
     aliasToCanonicalMap: Map<string, string>,
     systemFieldKeys: Set<string>,
+    context?: DynamicSchemaContext,
   ): { staticPayload: Record<string, any>; dynamicPayload: Record<string, any> } {
     const nextStaticPayload = { ...staticPayload };
     const nextDynamicPayload = { ...dynamicPayload };
 
     for (const [key, value] of Object.entries(dynamicPayload || {})) {
-      const canonicalKey =
-        aliasToCanonicalMap.get(key) ||
-        aliasToCanonicalMap.get(this.normalizeFieldAlias(key)) ||
-        key;
+      const canonicalKey = this.resolvePayloadCanonicalKey(context, aliasToCanonicalMap, key);
 
       if (!systemFieldKeys.has(canonicalKey) || !this.hasPresentValue(value)) continue;
 
@@ -543,16 +541,36 @@ export class DynamicFieldsService {
   }
 
   resolveCanonicalKey(context: DynamicSchemaContext, key: string): string {
-    return (
-      context.aliasToCanonicalMap.get(key) ||
-      context.aliasToCanonicalMap.get(this.normalizeFieldAlias(key)) ||
-      key
-    );
+    return this.resolvePayloadCanonicalKey(context, context.aliasToCanonicalMap, key);
+  }
+
+  /** Maps any incoming payload key (fld_ id, fieldKey, label alias) to its canonical key. */
+  resolvePayloadCanonicalKey(
+    context: DynamicSchemaContext | undefined,
+    aliasToCanonicalMap: Map<string, string>,
+    key: string,
+  ): string {
+    const trimmed = String(key || '').trim();
+    if (!trimmed) return trimmed;
+
+    const fromAlias =
+      aliasToCanonicalMap.get(trimmed) ||
+      aliasToCanonicalMap.get(this.normalizeFieldAlias(trimmed));
+    if (fromAlias) return fromAlias;
+
+    if (!context) return trimmed;
+
+    const fieldId = this.resolveFieldIdForDataKey(context, trimmed);
+    if (!fieldId) return trimmed;
+
+    const field = context.schemaFields.find((item) => item.id === fieldId);
+    return field?.canonicalKey || field?.fieldKey || trimmed;
   }
 
   resolvePayloadAliases(
     payload: Record<string, any>,
     aliasToCanonicalMap: Map<string, string>,
+    context?: DynamicSchemaContext,
   ): Record<string, any> {
     const normalizedPayload: Record<string, any> = {};
 
@@ -560,8 +578,7 @@ export class DynamicFieldsService {
       const key = String(rawKey || '').trim();
       if (!key) continue;
 
-      const normalizedKey = this.normalizeFieldAlias(key);
-      const canonicalKey = aliasToCanonicalMap.get(key) || aliasToCanonicalMap.get(normalizedKey) || key;
+      const canonicalKey = this.resolvePayloadCanonicalKey(context, aliasToCanonicalMap, key);
 
       const hasCanonicalValue = Object.prototype.hasOwnProperty.call(normalizedPayload, canonicalKey);
       if (!hasCanonicalValue) {

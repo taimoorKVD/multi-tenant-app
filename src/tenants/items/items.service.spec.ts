@@ -133,6 +133,51 @@ describe('ItemsService dynamic fields', () => {
     expect(result.data.item_no).toBeUndefined();
   });
 
+  it('create accepts fld_* keyed payload from the form builder', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+
+    const itemRepo = {
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => ({
+        id: 2,
+        name: payload.name,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+      })),
+    };
+
+    const dynamicRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ moduleId: 10, entityId: 2, data: { fld_item_cost: '9.99' } }),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [Item, itemRepo],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.create(req, {
+      fld_item_name: 'Chicken Breast',
+      fld_item_cost: '9.99',
+    });
+
+    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Chicken Breast' }));
+    expect(result.success).toBe(true);
+    expect(result.data.fld_item_name).toBe('Chicken Breast');
+    expect(result.data.fld_item_cost).toBe('9.99');
+  });
+
   it('create throws when name is missing', async () => {
     const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
