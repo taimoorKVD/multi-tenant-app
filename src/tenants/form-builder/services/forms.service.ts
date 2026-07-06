@@ -94,47 +94,71 @@ export class FormsService {
   }
 
   private preserveFieldMetadata(oldFields: any[], newFields: any[]): any[] {
-    const idByFieldId = new Map<string, string>();
+    const oldById = new Map<string, any>();
     const idByFieldKey = new Map<string, string>();
 
     for (const field of oldFields || []) {
       const fieldId = String(field?.id || '').trim();
       const fieldKey = String(field?.fieldKey || field?.name || '').trim();
-      if (fieldId) idByFieldId.set(fieldId, fieldId);
-      if (fieldId && fieldKey) idByFieldKey.set(fieldKey, fieldId);
+      if (fieldId) oldById.set(fieldId, field);
+      if (fieldId && fieldKey && !idByFieldKey.has(fieldKey)) idByFieldKey.set(fieldKey, fieldId);
     }
 
-    return (newFields || []).map((field, index) => {
+    // Resolve each new field's id first (id -> fieldKey match; never positional,
+    // which is what previously let a reordered field inherit another's metadata).
+    const resolved = (newFields || []).map((field) => {
       const next = { ...field };
       const fieldKey = String(next.fieldKey || next.name || '').trim();
       let fieldId = String(next.id || '').trim();
+      if (!fieldId && fieldKey) fieldId = idByFieldKey.get(fieldKey) || '';
+      if (fieldId) next.id = fieldId;
+      return next;
+    });
 
-      if (!fieldId) {
-        fieldId = (fieldKey ? idByFieldKey.get(fieldKey) : undefined) || '';
+    // Authoritative ownership of identity keys (id, fieldKey, name + normalized
+    // variants) so a field's dataKeys can never retain a key that belongs to a
+    // different field.
+    const ownerByKey = new Map<string, string>();
+    const normalize = (value: string) => this.dynamicFieldsService.normalizeFieldAlias(value);
+    for (const field of resolved) {
+      const fieldId = String(field.id || '').trim();
+      if (!fieldId) continue;
+      for (const raw of [fieldId, field.fieldKey, field.name]) {
+        const key = String(raw || '').trim();
+        if (!key) continue;
+        if (!ownerByKey.has(key)) ownerByKey.set(key, fieldId);
+        const normalized = normalize(key);
+        if (normalized && !ownerByKey.has(normalized)) ownerByKey.set(normalized, fieldId);
       }
-      if (!fieldId) {
-        const oldAtIndex = oldFields?.[index];
-        fieldId = String(oldAtIndex?.id || '').trim();
-      }
-      if (fieldId) {
-        next.id = fieldId;
-      }
+    }
 
-      const oldField =
-        (oldFields || []).find((item) => String(item?.id || '').trim() === fieldId) || oldFields?.[index];
-      const dataKeys = new Set<string>(
-        [
-          ...(Array.isArray(oldField?.dataKeys) ? oldField.dataKeys : []),
-          ...(Array.isArray(next.dataKeys) ? next.dataKeys : []),
-          oldField?.fieldKey,
-          oldField?.name,
-          next.fieldKey,
-          next.name,
-          fieldId,
-        ]
-          .map((value) => String(value || '').trim())
-          .filter(Boolean),
-      );
+    const isOwnedByOther = (key: string, fieldId: string) => {
+      const owner = ownerByKey.get(key) ?? ownerByKey.get(normalize(key));
+      return !!owner && owner !== fieldId;
+    };
+
+    return resolved.map((next) => {
+      const fieldId = String(next.id || '').trim();
+      const oldField = fieldId ? oldById.get(fieldId) : undefined;
+
+      const candidates = [
+        ...(Array.isArray(oldField?.dataKeys) ? oldField.dataKeys : []),
+        ...(Array.isArray(next.dataKeys) ? next.dataKeys : []),
+        oldField?.fieldKey,
+        oldField?.name,
+        next.fieldKey,
+        next.name,
+        fieldId,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+      const dataKeys = new Set<string>();
+      for (const key of candidates) {
+        // Keep the key only when it is unowned or owned by this same field.
+        if (isOwnedByOther(key, fieldId)) continue;
+        dataKeys.add(key);
+      }
 
       next.dataKeys = [...dataKeys];
       return next;
