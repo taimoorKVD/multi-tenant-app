@@ -27,6 +27,15 @@ export interface DynamicSchemaContext {
   aliasToCanonicalMap: Map<string, string>;
   fieldIdByCanonicalKey: Map<string, string>;
   fieldIdByAnyKey: Map<string, string>;
+  /** Set of every valid field id in the current schema. */
+  fieldIdSet: Set<string>;
+  /**
+   * Authoritative owner of a key. Maps a field's own identity keys (id,
+   * canonicalKey, fieldKey, name + normalized variants) to that field's id.
+   * Used so a field can never claim another field's identity key even if a
+   * stale/contaminated `dataKeys` entry references it.
+   */
+  identityKeyOwner: Map<string, string>;
   schemaFields: SchemaFieldRef[];
   fieldDefinitions: Map<string, DynamicFieldDefinition>;
 }
@@ -185,6 +194,8 @@ export class DynamicFieldsService {
         aliasToCanonicalMap,
         fieldIdByCanonicalKey: new Map(),
         fieldIdByAnyKey: new Map(),
+        fieldIdSet: new Set(),
+        identityKeyOwner: new Map(),
         schemaFields: [],
         fieldDefinitions: new Map(),
       };
@@ -218,11 +229,39 @@ export class DynamicFieldsService {
     const aliasToCanonicalMap = new Map<string, string>();
     const fieldIdByCanonicalKey = new Map<string, string>();
     const fieldIdByAnyKey = new Map<string, string>();
+    const fieldIdSet = new Set<string>();
+    const identityKeyOwner = new Map<string, string>();
     const schemaFields: SchemaFieldRef[] = [];
     const fieldDefinitions = new Map<string, DynamicFieldDefinition>();
 
     const fields = backfilledFields;
 
+    // Pass 1: record authoritative ownership of every field's identity keys so a
+    // field can never later claim another field's id/canonical/fieldKey/name via
+    // a stale `dataKeys` entry.
+    for (const field of fields) {
+      const fieldKey = String(field.fieldKey || field.name || '').trim();
+      const fieldName = String(field.name || fieldKey || '').trim();
+      const systemMappingKey = String(field.systemMappingKey || '').trim();
+      const canonicalKey =
+        field.isSystemField && systemMappingKey ? systemMappingKey : systemMappingKey || fieldKey;
+      const fieldId = String(field.id || '').trim();
+      if (!canonicalKey || !fieldId) continue;
+
+      fieldIdSet.add(fieldId);
+
+      const identityKeys = [fieldId, canonicalKey, fieldKey, fieldName]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+      for (const key of identityKeys) {
+        if (!identityKeyOwner.has(key)) identityKeyOwner.set(key, fieldId);
+        const normalized = this.normalizeFieldAlias(key);
+        if (normalized && !identityKeyOwner.has(normalized)) identityKeyOwner.set(normalized, fieldId);
+      }
+    }
+
+    // Pass 2: build alias / canonical / definition maps.
     for (const field of fields) {
       const fieldKey = String(field.fieldKey || field.name || '').trim();
       const fieldName = String(field.name || fieldKey || '').trim();
@@ -234,18 +273,17 @@ export class DynamicFieldsService {
       fieldLabels.set(canonicalKey, String(field.label || canonicalKey).trim() || canonicalKey);
 
       const fieldId = String(field.id || '').trim();
+
+      // Drop any dataKeys that are authoritatively owned by a different field —
+      // this neutralizes historical contamination without a data migration.
+      const sanitizedDataKeys = (Array.isArray(field.dataKeys) ? field.dataKeys : [])
+        .map((value) => String(value || '').trim())
+        .filter((value) => value && this.keyOwnerIsSelfOrNone(identityKeyOwner, value, fieldId));
+
       const dataKeys = Array.from(
-        new Set(
-          [
-            ...(Array.isArray(field.dataKeys) ? field.dataKeys : []),
-            fieldId,
-            canonicalKey,
-            fieldKey,
-            fieldName,
-          ]
-            .map((value) => String(value || '').trim())
-            .filter(Boolean),
-        ),
+        new Set([...sanitizedDataKeys, fieldId, canonicalKey, fieldKey, fieldName]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)),
       );
 
       if (fieldId) {
@@ -268,12 +306,16 @@ export class DynamicFieldsService {
         .filter(Boolean);
 
       for (const alias of aliases) {
-        aliasToCanonicalMap.set(alias, canonicalKey);
+        if (!aliasToCanonicalMap.has(alias)) aliasToCanonicalMap.set(alias, canonicalKey);
         const normalizedAlias = this.normalizeFieldAlias(alias);
-        if (normalizedAlias) aliasToCanonicalMap.set(normalizedAlias, canonicalKey);
-        if (fieldId) {
-          fieldIdByAnyKey.set(alias, fieldId);
-          if (normalizedAlias) fieldIdByAnyKey.set(normalizedAlias, fieldId);
+        if (normalizedAlias && !aliasToCanonicalMap.has(normalizedAlias)) {
+          aliasToCanonicalMap.set(normalizedAlias, canonicalKey);
+        }
+        if (fieldId && this.keyOwnerIsSelfOrNone(identityKeyOwner, alias, fieldId)) {
+          if (!fieldIdByAnyKey.has(alias)) fieldIdByAnyKey.set(alias, fieldId);
+          if (normalizedAlias && !fieldIdByAnyKey.has(normalizedAlias)) {
+            fieldIdByAnyKey.set(normalizedAlias, fieldId);
+          }
         }
       }
 
@@ -327,15 +369,39 @@ export class DynamicFieldsService {
       aliasToCanonicalMap,
       fieldIdByCanonicalKey,
       fieldIdByAnyKey,
+      fieldIdSet,
+      identityKeyOwner,
       schemaFields,
       fieldDefinitions,
     };
+  }
+
+  /** True when `key` is unowned or owned by `fieldId` (not by another field). */
+  private keyOwnerIsSelfOrNone(
+    identityKeyOwner: Map<string, string>,
+    key: string,
+    fieldId: string,
+  ): boolean {
+    const trimmed = String(key || '').trim();
+    if (!trimmed) return false;
+    const owner = identityKeyOwner.get(trimmed) ?? identityKeyOwner.get(this.normalizeFieldAlias(trimmed));
+    return !owner || owner === fieldId;
   }
 
   resolveFieldIdForDataKey(context: DynamicSchemaContext, key: string): string | null {
     const trimmed = String(key || '').trim();
     if (!trimmed) return null;
 
+    // A stored key that is itself a valid field id is authoritative.
+    if (context.fieldIdSet.has(trimmed)) return trimmed;
+
+    // Authoritative identity owner (canonical / fieldKey / name).
+    const owner =
+      context.identityKeyOwner.get(trimmed) ??
+      context.identityKeyOwner.get(this.normalizeFieldAlias(trimmed));
+    if (owner) return owner;
+
+    // Fallback: historical dataKeys aliases.
     const direct = context.fieldIdByAnyKey.get(trimmed);
     if (direct) return direct;
 
@@ -343,10 +409,6 @@ export class DynamicFieldsService {
     if (normalized) {
       const fromNormalized = context.fieldIdByAnyKey.get(normalized);
       if (fromNormalized) return fromNormalized;
-    }
-
-    if (trimmed.startsWith('fld_')) {
-      return context.schemaFields.some((field) => field.id === trimmed) ? trimmed : null;
     }
 
     return null;
@@ -397,7 +459,10 @@ export class DynamicFieldsService {
     );
 
     for (const key of lookupKeys) {
+      if (consumedKeys.has(key)) continue;
       if (!Object.prototype.hasOwnProperty.call(dynamicData, key)) continue;
+      // Never claim a stored key that authoritatively belongs to another field.
+      if (!this.keyOwnerIsSelfOrNone(context.identityKeyOwner, key, field.id)) continue;
       consumedKeys.add(key);
       return dynamicData[key];
     }
@@ -589,8 +654,19 @@ export class DynamicFieldsService {
       if (fieldId && !(fieldId in idKeyed)) idKeyed[fieldId] = value;
     }
 
+    // Pass 1: stored keys that ARE an exact field id are authoritative — attribute
+    // them to that field before any dataKeys-based resolution so a field can never
+    // steal another field's id-keyed value.
+    for (const [key, value] of Object.entries(filteredDynamicData)) {
+      if (!context.fieldIdSet.has(key)) continue;
+      if (!(key in idKeyed)) idKeyed[key] = value;
+      consumedKeys.add(key);
+    }
+
+    // Pass 2: attribute remaining values by each field's identity / historical keys.
     for (const field of context.schemaFields) {
       if (field.isSystemField) continue;
+      if (field.id in idKeyed) continue;
 
       const value = this.findDynamicValueForField(filteredDynamicData, field, context, consumedKeys);
       if (value !== undefined) {
@@ -598,6 +674,7 @@ export class DynamicFieldsService {
       }
     }
 
+    // Pass 3: pass through orphans (keys that map to no current field).
     for (const [key, value] of Object.entries(filteredDynamicData)) {
       if (consumedKeys.has(key)) continue;
 
