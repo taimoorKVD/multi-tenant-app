@@ -1,9 +1,9 @@
 import {IsNotEmpty, IsNumber, IsOptional, IsString} from 'class-validator';
 
 export class CreateLocationDto {
-    @IsNotEmpty()
+    @IsOptional()
     @IsString()
-    name: string;
+    name?: string;
 
     @IsOptional() @IsString() address?: string;
     @IsOptional() @IsNumber() country_id?: number;
