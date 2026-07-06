@@ -52,6 +52,51 @@ export class ItemsService extends TenantAbstractService<Item> {
     });
   }
 
+  private isEmptyRequiredValue(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (Array.isArray(value)) return value.length === 0;
+    return false;
+  }
+
+  private assertCreatePayloadRequiredFields(
+    payload: Record<string, any>,
+    requiredFieldKeys: Set<string>,
+    fieldLabels: Map<string, string> = new Map(),
+  ): void {
+    const missing = Array.from(requiredFieldKeys).filter((key) =>
+      this.isEmptyRequiredValue(payload[key]),
+    );
+
+    if (!missing.length) return;
+
+    throw new BadRequestException({
+      message: missing.map((key) => `${fieldLabels.get(key) || key} is required.`),
+      error: 'Bad Request',
+      statusCode: 400,
+      fields: missing.reduce(
+        (acc, key) => ({
+          ...acc,
+          [key]: `${fieldLabels.get(key) || key} is required.`,
+        }),
+        {} as Record<string, string>,
+      ),
+    });
+  }
+
+  private applyStaticPayloadToItem(
+    item: Item,
+    staticPayload: Record<string, any>,
+    isCreate: boolean,
+  ): void {
+    if (
+      staticPayload.name !== undefined &&
+      (isCreate || this.dynamicFields.hasPresentValue(staticPayload.name))
+    ) {
+      item.name = String(staticPayload.name).trim();
+    }
+  }
+
   private buildItemResponse(
     item: Item,
     dynamicData: Record<string, any>,
@@ -75,23 +120,27 @@ export class ItemsService extends TenantAbstractService<Item> {
       const repo = this.getRepo(req);
       const actor = this.getActorId(req);
 
-      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap);
-      const { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      this.assertCreatePayloadRequiredFields(normalized, context.requiredFieldKeys, context.fieldLabels);
+
+      let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalized,
         context.systemFieldKeys,
         this.ignoredPayloadKeys,
       );
-
-      const name = String(staticPayload.name ?? '').trim();
-      if (!name) {
-        throw new BadRequestException('Name is required.');
-      }
+      ({ staticPayload, dynamicPayload } = this.dynamicFields.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+        context,
+      ));
 
       const entity = repo.create({
-        name,
         createdBy: this.coerceId(body.createdBy) ?? actor,
         updatedBy: this.coerceId(body.updatedBy) ?? actor,
       });
+      this.applyStaticPayloadToItem(entity, staticPayload, true);
       const saved = await repo.save(entity);
 
       await this.dynamicFields.upsertDynamicRow(
@@ -130,16 +179,21 @@ export class ItemsService extends TenantAbstractService<Item> {
         throw new NotFoundException(`Item with ID ${id} not found`);
       }
 
-      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap);
-      const { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalized,
         context.systemFieldKeys,
         this.ignoredPayloadKeys,
       );
+      ({ staticPayload, dynamicPayload } = this.dynamicFields.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+        context,
+      ));
 
-      if (staticPayload.name !== undefined && this.dynamicFields.hasPresentValue(staticPayload.name)) {
-        entity.name = String(staticPayload.name).trim();
-      }
+      this.applyStaticPayloadToItem(entity, staticPayload, false);
       const updatedBy = this.coerceId(body.updatedBy) ?? actor;
       if (updatedBy !== null) entity.updatedBy = updatedBy;
 

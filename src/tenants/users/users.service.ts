@@ -297,7 +297,7 @@ export class UsersService extends TenantAbstractService<User> {
       const context = await this.getUsersSchemaContext(req);
       const userRepo: Repository<User> = this.getRepo(req);
 
-      const normalizedDto = this.dynamicFields.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
+      const normalizedDto = this.dynamicFields.resolvePayloadAliases(dto, context.aliasToCanonicalMap, context);
       this.assertCreatePayloadRequiredFields(normalizedDto, context.requiredFieldKeys, context.fieldLabels);
       let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalizedDto,
@@ -309,6 +309,7 @@ export class UsersService extends TenantAbstractService<User> {
         dynamicPayload,
         context.aliasToCanonicalMap,
         context.systemFieldKeys,
+        context,
       ));
 
       if (staticPayload.email) {
@@ -415,7 +416,7 @@ export class UsersService extends TenantAbstractService<User> {
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
 
-      const normalizedDto = this.dynamicFields.resolvePayloadAliases(dto, context.aliasToCanonicalMap);
+      const normalizedDto = this.dynamicFields.resolvePayloadAliases(dto, context.aliasToCanonicalMap, context);
       let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalizedDto,
         context.systemFieldKeys,
@@ -426,6 +427,7 @@ export class UsersService extends TenantAbstractService<User> {
         dynamicPayload,
         context.aliasToCanonicalMap,
         context.systemFieldKeys,
+        context,
       ));
       const existingDynamic = context.moduleId
         ? await this.dynamicFields.loadDynamicRow(req, context.moduleId, user.id, context)

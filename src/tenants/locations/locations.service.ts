@@ -69,6 +69,45 @@ export class LocationsService extends TenantAbstractService<Location> {
     return Number.isFinite(num) ? num : null;
   }
 
+  private isEmptyRequiredValue(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (Array.isArray(value)) return value.length === 0;
+    return false;
+  }
+
+  private assertCreatePayloadRequiredFields(
+    payload: Record<string, any>,
+    requiredFieldKeys: Set<string>,
+    fieldLabels: Map<string, string> = new Map(),
+  ): void {
+    const missing = Array.from(requiredFieldKeys).filter((key) =>
+      this.isEmptyRequiredValue(payload[key]),
+    );
+
+    if (!missing.length) return;
+
+    throw new BadRequestException({
+      message: missing.map((key) => `${fieldLabels.get(key) || key} is required.`),
+      error: 'Bad Request',
+      statusCode: 400,
+      fields: missing.reduce(
+        (acc, key) => ({
+          ...acc,
+          [key]: `${fieldLabels.get(key) || key} is required.`,
+        }),
+        {} as Record<string, string>,
+      ),
+    });
+  }
+
+  private getActorId(req: any): number | null {
+    const candidate = req?.user?.id ?? req?.user?.sub ?? req?.user?.userId ?? null;
+    if (candidate === null || candidate === undefined) return null;
+    const actorId = Number(candidate);
+    return Number.isFinite(actorId) ? actorId : null;
+  }
+
   private applyStaticPayload(entity: Location, staticPayload: Record<string, any>, isCreate: boolean): void {
     for (const [canonicalKey, prop] of Object.entries(this.stringColumns)) {
       if (!(canonicalKey in staticPayload)) continue;
@@ -116,17 +155,21 @@ export class LocationsService extends TenantAbstractService<Location> {
       const repo = this.getRepo(req);
       const actor = this.getActorId(req);
 
-      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap);
-      const { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      this.assertCreatePayloadRequiredFields(normalized, context.requiredFieldKeys, context.fieldLabels);
+
+      let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalized,
         context.systemFieldKeys,
         this.ignoredPayloadKeys,
       );
-
-      const name = String(staticPayload.name ?? '').trim();
-      if (!name) {
-        throw new BadRequestException('Name is required.');
-      }
+      ({ staticPayload, dynamicPayload } = this.dynamicFields.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+        context,
+      ));
 
       const entity = repo.create();
       this.applyStaticPayload(entity, staticPayload, true);
@@ -168,12 +211,19 @@ export class LocationsService extends TenantAbstractService<Location> {
         throw new NotFoundException(`Location with ID ${id} not found`);
       }
 
-      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap);
-      const { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalized,
         context.systemFieldKeys,
         this.ignoredPayloadKeys,
       );
+      ({ staticPayload, dynamicPayload } = this.dynamicFields.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+        context,
+      ));
 
       this.applyStaticPayload(entity, staticPayload, false);
       const saved = await repo.save(entity);
@@ -346,12 +396,5 @@ export class LocationsService extends TenantAbstractService<Location> {
     const result = await super.delete(req, id);
     await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
     return result;
-  }
-
-  private getActorId(req: any): number | null {
-    const candidate = req?.user?.id ?? req?.user?.sub ?? req?.user?.userId ?? null;
-    if (candidate === null || candidate === undefined) return null;
-    const actorId = Number(candidate);
-    return Number.isFinite(actorId) ? actorId : null;
   }
 }
