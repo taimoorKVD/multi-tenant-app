@@ -174,14 +174,14 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
 const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
   {
     id: generateFieldId(),
-    key: 'name',
+    key: 'item_name',
     label: 'Item Name',
-    name: 'name',
+    name: 'item_name',
     type: 'text',
     isRequired: true,
     isEditable: false,
     isSystemField: true,
-    systemMappingKey: 'name',
+    systemMappingKey: 'item_name',
     placeholder: 'Enter item name',
   },
   {
