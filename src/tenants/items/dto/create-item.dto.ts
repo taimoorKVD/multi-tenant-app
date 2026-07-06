@@ -3,9 +3,10 @@
 import { IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateItemDto {
+  @IsOptional()
   @IsString()
   @MaxLength(150)
-  name!: string;
+  name?: string;
 
   @IsOptional()
   @IsInt()
