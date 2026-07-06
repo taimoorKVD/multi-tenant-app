@@ -556,7 +556,7 @@ export class DynamicFieldsService {
     const fromAlias =
       aliasToCanonicalMap.get(trimmed) ||
       aliasToCanonicalMap.get(this.normalizeFieldAlias(trimmed));
-    if (fromAlias) return fromAlias;
+    if (fromAlias) return this.finalizePayloadCanonicalKey(aliasToCanonicalMap, fromAlias);
 
     if (!context) return trimmed;
 
@@ -564,7 +564,16 @@ export class DynamicFieldsService {
     if (!fieldId) return trimmed;
 
     const field = context.schemaFields.find((item) => item.id === fieldId);
-    return field?.canonicalKey || field?.fieldKey || trimmed;
+    const resolved = field?.canonicalKey || field?.fieldKey || trimmed;
+    return this.finalizePayloadCanonicalKey(aliasToCanonicalMap, resolved);
+  }
+
+  /** Follow one more alias hop (e.g. item_name -> name via relationFieldAliases). */
+  private finalizePayloadCanonicalKey(aliasToCanonicalMap: Map<string, string>, key: string): string {
+    const remapped =
+      aliasToCanonicalMap.get(key) ||
+      aliasToCanonicalMap.get(this.normalizeFieldAlias(key));
+    return remapped && remapped !== key ? remapped : key;
   }
 
   resolvePayloadAliases(

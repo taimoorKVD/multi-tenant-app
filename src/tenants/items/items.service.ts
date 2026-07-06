@@ -10,7 +10,7 @@ export class ItemsService extends TenantAbstractService<Item> {
 
   private readonly fallbackSystemFieldKeys = new Set([
     'id',
-    'name',
+    'item_name',
     'created_at',
     'updated_at',
     'created_by',
@@ -62,11 +62,18 @@ export class ItemsService extends TenantAbstractService<Item> {
   private assertCreatePayloadRequiredFields(
     payload: Record<string, any>,
     requiredFieldKeys: Set<string>,
+    context: DynamicSchemaContext,
     fieldLabels: Map<string, string> = new Map(),
   ): void {
-    const missing = Array.from(requiredFieldKeys).filter((key) =>
-      this.isEmptyRequiredValue(payload[key]),
-    );
+    const missing = Array.from(requiredFieldKeys).filter((key) => {
+      const storageKey = this.dynamicFields.resolvePayloadCanonicalKey(
+        context,
+        context.aliasToCanonicalMap,
+        key,
+      );
+      const value = payload[storageKey] ?? payload[key];
+      return this.isEmptyRequiredValue(value);
+    });
 
     if (!missing.length) return;
 
@@ -90,10 +97,10 @@ export class ItemsService extends TenantAbstractService<Item> {
     isCreate: boolean,
   ): void {
     if (
-      staticPayload.name !== undefined &&
-      (isCreate || this.dynamicFields.hasPresentValue(staticPayload.name))
+      staticPayload.item_name !== undefined &&
+      (isCreate || this.dynamicFields.hasPresentValue(staticPayload.item_name))
     ) {
-      item.name = String(staticPayload.name).trim();
+      item.itemName = String(staticPayload.item_name).trim();
     }
   }
 
@@ -104,7 +111,7 @@ export class ItemsService extends TenantAbstractService<Item> {
   ): Record<string, any> {
     return this.dynamicFields.buildResponse(
       context,
-      { name: item.name },
+      { item_name: item.itemName },
       dynamicData,
       {
         id: item.id,
@@ -121,7 +128,12 @@ export class ItemsService extends TenantAbstractService<Item> {
       const actor = this.getActorId(req);
 
       const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
-      this.assertCreatePayloadRequiredFields(normalized, context.requiredFieldKeys, context.fieldLabels);
+      this.assertCreatePayloadRequiredFields(
+        normalized,
+        context.requiredFieldKeys,
+        context,
+        context.fieldLabels,
+      );
 
       let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalized,
@@ -313,8 +325,8 @@ export class ItemsService extends TenantAbstractService<Item> {
       const trueDynamicFilters: Record<string, string> = {};
       for (const [key, value] of Object.entries(rawFilters)) {
         const canonicalKey = this.dynamicFields.resolveCanonicalKey(context, key);
-        if (canonicalKey === 'name') {
-          qb.andWhere('item.name ILIKE :name', { name: `%${value}%` });
+        if (canonicalKey === 'item_name') {
+          qb.andWhere('item.itemName ILIKE :item_name', { item_name: `%${value}%` });
         } else {
           trueDynamicFilters[key] = value;
         }

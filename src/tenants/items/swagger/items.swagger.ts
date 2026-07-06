@@ -15,7 +15,7 @@ export const TenantItemsSwagger = {
           valid: {
             summary: 'Create item',
             value: {
-              name: 'Beef Sirloin',
+              item_name: 'Beef Sirloin',
               createdBy: 1,
               updatedBy: 1,
             },
@@ -36,8 +36,8 @@ export const TenantItemsSwagger = {
 
   Search: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Search items', description: 'Filters items by name.' }),
-      ApiQuery({ name: 'name', required: false, type: String, example: 'Orange' }),
+      ApiOperation({ summary: 'Search items', description: 'Filters items by item_name.' }),
+      ApiQuery({ name: 'item_name', required: false, type: String, example: 'Orange' }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
       ApiResponse({ status: 200, description: 'Matching items fetched successfully.' }),
     ),
@@ -60,7 +60,7 @@ export const TenantItemsSwagger = {
           valid: {
             summary: 'Update item',
             value: {
-              name: 'Beef Tenderloin',
+              item_name: 'Beef Tenderloin',
               updatedBy: 2,
             },
           },
