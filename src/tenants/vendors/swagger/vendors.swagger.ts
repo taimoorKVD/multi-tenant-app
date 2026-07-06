@@ -18,7 +18,7 @@ export const TenantVendorsSwagger = {
           valid: {
             summary: 'Create vendor example',
             value: {
-              name: 'Fresh Foods Supplier',
+              vendor_name: 'Fresh Foods Supplier',
               address: '250 Market Street',
               country_id: 1,
               state_id: 1,
@@ -30,22 +30,8 @@ export const TenantVendorsSwagger = {
               contact_email: 'john@freshfoods.com',
               website: 'https://freshfoods.com',
               username: 'freshfoods_vendor',
-              password: 'StrongVendorPass123',
               min_order: 150,
-              payment_methods: ['cod', 'eft'],
-              contacts: [
-                {
-                  name: 'John Carter',
-                  phone_number: '+1 310 555 0101',
-                  email: 'john@freshfoods.com',
-                  is_primary: true,
-                },
-              ],
-              order_deadlines: [
-                { day: 'monday' },
-                { day: 'wednesday' },
-                { day: 'friday' },
-              ],
+              order_deadline_days: ['monday', 'wednesday', 'friday'],
               instructions: 'Deliver between 8AM and 11AM',
             },
           },
@@ -85,7 +71,7 @@ export const TenantVendorsSwagger = {
         description: 'Filters tenant vendors using explicit field-by-field filters.',
       }),
       ApiQuery({
-        name: 'name',
+        name: 'vendor_name',
         required: false,
         type: String,
         example: 'fresh',
@@ -171,15 +157,7 @@ export const TenantVendorsSwagger = {
             summary: 'Update vendor example',
             value: {
               city_id: 5202,
-              payment_methods: ['eft'],
-              contacts: [
-                {
-                  name: 'Maya Scott',
-                  phone_number: '+1 310 555 0102',
-                  email: 'maya@freshfoods.com',
-                  is_primary: true,
-                },
-              ],
+              email: 'maya@freshfoods.com',
               instructions: 'Use back entrance for deliveries.',
             },
           },

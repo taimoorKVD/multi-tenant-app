@@ -5,7 +5,7 @@ import {Permission} from '../tenants/permission/entities';
 import {Product} from '../tenants/products/entities';
 import {JobPosition} from "../tenants/job-positions/entities";
 import {Location} from "../tenants/locations/entities";
-import {Vendor, VendorContact, VendorOrderDeadline} from '../tenants/vendors/entities';
+import {Vendor} from '../tenants/vendors/entities';
 import { ReportingGroup } from '../tenants/reporting-groups/entities';
 import { ReportingCategory } from '../tenants/reporting-categories/entities';
 import { Item } from '../tenants/items/entities';
@@ -77,8 +77,6 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       JobPosition,
       Location,
       Vendor,
-      VendorContact,
-      VendorOrderDeadline,
       ReportingGroup,
       ReportingCategory,
       Item,

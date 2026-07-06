@@ -1,362 +1,360 @@
-import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
-import {DataSource, Raw, Repository} from 'typeorm';
-import {
-  CreateVendorContactDto,
-  CreateVendorDto,
-  CreateVendorOrderDeadlineDto,
-  UpdateVendorDto,
-} from './dto';
-import {
-  Vendor,
-  VendorContact,
-  VendorOrderDay,
-  VendorOrderDeadline,
-  VendorPaymentMethod,
-} from './entities';
-import {TenantAbstractService} from '../../common/abstract';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { DataSource, Repository } from 'typeorm';
+import { TenantAbstractService } from '../../common/abstract';
+import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+import { Vendor } from './entities';
 
 @Injectable()
 export class VendorsService extends TenantAbstractService<Vendor> {
-  constructor(private readonly dataSource: DataSource) {
+  private readonly moduleSlug = 'vendors';
+
+  private readonly fallbackSystemFieldKeys = new Set([
+    'id',
+    'vendor_name',
+    'created_at',
+    'updated_at',
+    'created_by',
+    'updated_by',
+  ]);
+
+  private readonly ignoredPayloadKeys = new Set([
+    'id',
+    'createdBy',
+    'updatedBy',
+    'created_by',
+    'updated_by',
+    'created_at',
+    'updated_at',
+    'limit',
+  ]);
+
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly dynamicFields: DynamicFieldsService,
+  ) {
     super(dataSource.getRepository(Vendor));
   }
 
-  private async findByName(repo: Repository<Vendor>, name: string) {
-    return repo.findOne({
-      where: {
-        name: Raw((alias) => `LOWER(${alias}) = LOWER(:name)`, {name}),
-      } as any,
+  protected getRepo(req: any): Repository<Vendor> {
+    return super.getRepo(req);
+  }
+
+  private getActorId(req: any): number | null {
+    const candidate = req?.user?.id ?? req?.user?.sub ?? req?.user?.userId ?? null;
+    if (candidate === null || candidate === undefined) return null;
+    const actorId = Number(candidate);
+    return Number.isFinite(actorId) ? actorId : null;
+  }
+
+  private getContext(req: any): Promise<DynamicSchemaContext> {
+    return this.dynamicFields.getSchemaContext(req, this.moduleSlug, {
+      fallbackSystemFieldKeys: this.fallbackSystemFieldKeys,
     });
   }
 
-  private normalizePaymentMethods(dto: Pick<CreateVendorDto, 'payment_cod' | 'payment_eft' | 'payment_methods'>) {
-    const paymentMethods = new Set<VendorPaymentMethod>(dto.payment_methods ?? []);
-
-    if (dto.payment_cod) {
-      paymentMethods.add(VendorPaymentMethod.COD);
-    }
-
-    if (dto.payment_eft) {
-      paymentMethods.add(VendorPaymentMethod.EFT);
-    }
-
-    return paymentMethods.size ? Array.from(paymentMethods) : null;
+  private isEmptyRequiredValue(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (Array.isArray(value)) return value.length === 0;
+    return false;
   }
 
-  private normalizeOrderDeadlineDays(days?: VendorOrderDay[]) {
-    return days?.length ? Array.from(new Set(days)) : [];
-  }
+  private assertCreatePayloadRequiredFields(
+    payload: Record<string, any>,
+    requiredFieldKeys: Set<string>,
+    context: DynamicSchemaContext,
+    fieldLabels: Map<string, string> = new Map(),
+  ): void {
+    const missing = Array.from(requiredFieldKeys).filter((key) => {
+      const storageKey = this.dynamicFields.resolvePayloadCanonicalKey(
+        context,
+        context.aliasToCanonicalMap,
+        key,
+      );
+      const value = payload[storageKey] ?? payload[key];
+      return this.isEmptyRequiredValue(value);
+    });
 
-  private mapContact(contact: CreateVendorContactDto, fallbackPrimary = false): VendorContact {
-    const entity = new VendorContact();
-    entity.name = contact.name.trim();
-    entity.phoneNumber = contact.phone_number?.trim() || null;
-    entity.email = contact.email?.trim().toLowerCase() || null;
-    entity.isPrimary = contact.is_primary ?? fallbackPrimary;
-    return entity;
-  }
+    if (!missing.length) return;
 
-  private buildContacts(dto: Pick<CreateVendorDto, 'contact_person' | 'contact_phone' | 'contact_email' | 'contacts'>) {
-    if (dto.contacts?.length) {
-      return dto.contacts.map((contact, index) => this.mapContact(contact, index === 0));
-    }
-
-    if (dto.contact_person || dto.contact_phone || dto.contact_email) {
-      return [
-        this.mapContact(
-          {
-            name: dto.contact_person ?? 'Primary Contact',
-            phone_number: dto.contact_phone,
-            email: dto.contact_email,
-            is_primary: true,
-          },
-          true,
-        ),
-      ];
-    }
-
-    return [];
-  }
-
-  private mapOrderDeadline(deadline: CreateVendorOrderDeadlineDto): VendorOrderDeadline {
-    const entity = new VendorOrderDeadline();
-    entity.day = deadline.day;
-    return entity;
-  }
-
-  private buildOrderDeadlines(
-    dto: Pick<CreateVendorDto, 'order_deadline_days' | 'order_deadlines'>,
-  ): VendorOrderDeadline[] {
-    const days = dto.order_deadlines?.length
-      ? dto.order_deadlines.map((deadline) => deadline.day)
-      : this.normalizeOrderDeadlineDays(dto.order_deadline_days);
-
-    return Array.from(new Set(days)).map((day) => this.mapOrderDeadline({day}));
-  }
-
-  private async loadVendor(repo: Repository<Vendor>, id: number) {
-    return repo.findOne({
-      where: {id} as any,
-      relations: ['contacts', 'orderDeadlines'],
+    throw new BadRequestException({
+      message: missing.map((key) => `${fieldLabels.get(key) || key} is required.`),
+      error: 'Bad Request',
+      statusCode: 400,
+      fields: missing.reduce(
+        (acc, key) => ({
+          ...acc,
+          [key]: `${fieldLabels.get(key) || key} is required.`,
+        }),
+        {} as Record<string, string>,
+      ),
     });
   }
 
-  private formatVendor(vendor: Vendor) {
-    const {
-      contacts,
-      orderDeadlines,
-      phoneNumber,
-      countryId,
-      stateId,
-      cityId,
-      paymentMethods,
-      minOrder,
-      createdAt,
-      updatedAt,
-      ...rest
-    } = vendor;
-
-    return this.sanitizeEntity({
-      ...rest,
-      phone_number: phoneNumber,
-      country_id: countryId,
-      state_id: stateId,
-      city_id: cityId,
-      payment_methods: paymentMethods,
-      min_order: minOrder,
-      created_at: createdAt,
-      updated_at: updatedAt,
-      contacts: (contacts ?? []).map((contact) => ({
-        id: contact.id,
-        name: contact.name,
-        phone_number: contact.phoneNumber,
-        email: contact.email,
-        is_primary: contact.isPrimary,
-      })),
-      order_deadlines: (orderDeadlines ?? []).map((deadline) => ({
-        id: deadline.id,
-        day: deadline.day,
-      })),
-    });
+  private applyStaticPayloadToVendor(
+    vendor: Vendor,
+    staticPayload: Record<string, any>,
+    isCreate: boolean,
+  ): void {
+    if (
+      staticPayload.vendor_name !== undefined &&
+      (isCreate || this.dynamicFields.hasPresentValue(staticPayload.vendor_name))
+    ) {
+      vendor.vendorName = String(staticPayload.vendor_name).trim();
+    }
   }
 
-  async create(req: any, dto: CreateVendorDto): Promise<any> {
+  private buildVendorResponse(
+    vendor: Vendor,
+    dynamicData: Record<string, any>,
+    context: DynamicSchemaContext,
+  ): Record<string, any> {
+    return this.dynamicFields.buildResponse(
+      context,
+      { vendor_name: vendor.vendorName },
+      dynamicData,
+      {
+        id: vendor.id,
+        created_by: vendor.createdBy,
+        updated_by: vendor.updatedBy,
+        created_at: vendor.createdAt,
+        updated_at: vendor.updatedAt,
+      },
+    );
+  }
+
+  async create(req: any, body: Record<string, any>): Promise<any> {
     try {
+      const context = await this.getContext(req);
       const repo = this.getRepo(req);
-      const name = dto.name.trim();
-      const existing = await this.findByName(repo, name);
-      if (existing) {
-        throw new BadRequestException('A vendor with this name already exists.');
-      }
+      const actor = this.getActorId(req);
 
-      const entity = repo.create({
-        name,
-        address: dto.address ?? null,
-        countryId: dto.country_id ?? null,
-        stateId: dto.state_id ?? null,
-        cityId: dto.city_id ?? null,
-        phoneNumber: dto.phone_number ?? null,
-        email: dto.email ?? null,
-        website: dto.website ?? null,
-        username: dto.username ?? null,
-        password: dto.password ?? null,
-        minOrder: dto.min_order ?? null,
-        paymentMethods: this.normalizePaymentMethods(dto),
-        instructions: dto.instructions ?? null,
-        contacts: this.buildContacts(dto),
-        orderDeadlines: this.buildOrderDeadlines(dto),
-      });
-
-      const saved = await repo.save(entity);
-      const hydrated = await this.loadVendor(repo, saved.id);
-
-      return {
-        success: true,
-        message: 'Record created successfully',
-        tenant: req.tenantConnection.options.database,
-        data: hydrated ? this.formatVendor(hydrated) : null,
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
-      console.error('Vendor create failed:', error);
-      throw new InternalServerErrorException('Failed to create vendor');
-    }
-  }
-
-  async update(req: any, id: number, dto: UpdateVendorDto): Promise<any> {
-    try {
-      const repo = this.getRepo(req);
-      const existing = await this.loadVendor(repo, id);
-
-      if (!existing) {
-        throw new NotFoundException(`Record with ID ${id} not found`);
-      }
-
-      if (dto.name !== undefined) {
-        const name = dto.name.trim();
-        if (name !== existing.name) {
-          const duplicate = await this.findByName(repo, name);
-          if (duplicate && duplicate.id !== id) {
-            throw new BadRequestException('A vendor with this name already exists.');
-          }
-        }
-        existing.name = name;
-      }
-
-      if (dto.address !== undefined) existing.address = dto.address;
-      if (dto.country_id !== undefined) existing.countryId = dto.country_id;
-      if (dto.state_id !== undefined) existing.stateId = dto.state_id;
-      if (dto.city_id !== undefined) existing.cityId = dto.city_id;
-      if (dto.phone_number !== undefined) existing.phoneNumber = dto.phone_number;
-      if (dto.email !== undefined) existing.email = dto.email;
-      if (dto.website !== undefined) existing.website = dto.website;
-      if (dto.username !== undefined) existing.username = dto.username;
-      if (dto.password !== undefined) existing.password = dto.password;
-      if (dto.min_order !== undefined) existing.minOrder = dto.min_order;
-      if (dto.instructions !== undefined) existing.instructions = dto.instructions;
-
-      if (
-        dto.payment_cod !== undefined ||
-        dto.payment_eft !== undefined ||
-        dto.payment_methods !== undefined
-      ) {
-        existing.paymentMethods = this.normalizePaymentMethods({
-          payment_cod: dto.payment_cod ?? existing.paymentMethods?.includes(VendorPaymentMethod.COD),
-          payment_eft: dto.payment_eft ?? existing.paymentMethods?.includes(VendorPaymentMethod.EFT),
-          payment_methods: dto.payment_methods,
-        });
-      }
-
-      if (
-        dto.contacts !== undefined ||
-        dto.contact_person !== undefined ||
-        dto.contact_phone !== undefined ||
-        dto.contact_email !== undefined
-      ) {
-        existing.contacts = this.buildContacts(dto);
-      }
-
-      if (dto.order_deadlines !== undefined || dto.order_deadline_days !== undefined) {
-        const deadlineRepo = repo.manager.getRepository(VendorOrderDeadline);
-        await deadlineRepo.delete({
-          vendor: {id},
-        });
-        existing.orderDeadlines = this.buildOrderDeadlines(dto);
-      }
-
-      const saved = await repo.save(existing);
-      const hydrated = await this.loadVendor(repo, saved.id);
-
-      return {
-        success: true,
-        message: 'Record updated successfully',
-        tenant: req.tenantConnection.options.database,
-        data: hydrated ? this.formatVendor(hydrated) : null,
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
-        throw error;
-      }
-
-      console.error('Vendor update failed:', error);
-      throw new InternalServerErrorException('Failed to update vendor');
-    }
-  }
-
-  async search(
-    req: any,
-    limit = 15,
-    filters?: {
-      name?: string;
-      email?: string;
-      username?: string;
-      phoneNumber?: string;
-      countryId?: number;
-      stateId?: number;
-      cityId?: number;
-    },
-  ): Promise<any> {
-    try {
-      const vendorRepo = this.getRepo(req);
-      const parsedLimit = Number(limit);
-      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
-      const name = filters?.name?.trim();
-      const email = filters?.email?.trim();
-      const username = filters?.username?.trim();
-      const phoneNumber = filters?.phoneNumber?.trim();
-      const countryId = filters?.countryId;
-      const stateId = filters?.stateId;
-      const cityId = filters?.cityId;
-      const hasFilters = Boolean(
-        name || email || username || phoneNumber || countryId || stateId || cityId,
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      this.assertCreatePayloadRequiredFields(
+        normalized,
+        context.requiredFieldKeys,
+        context,
+        context.fieldLabels,
       );
 
-      if (!hasFilters) {
-        return {
-          success: true,
-          tenant: req.tenantConnection.options.database,
-          count: 0,
-          data: [],
-        };
+      let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+        normalized,
+        context.systemFieldKeys,
+        this.ignoredPayloadKeys,
+      );
+      ({ staticPayload, dynamicPayload } = this.dynamicFields.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+        context,
+      ));
+
+      const entity = repo.create({
+        createdBy: this.coerceId(body.createdBy) ?? actor,
+        updatedBy: this.coerceId(body.updatedBy) ?? actor,
+      });
+      this.applyStaticPayloadToVendor(entity, staticPayload, true);
+      const saved = await repo.save(entity);
+
+      await this.dynamicFields.upsertDynamicRow(
+        req,
+        context.moduleId,
+        saved.id,
+        context.activeVersionId,
+        dynamicPayload,
+        actor,
+        context,
+      );
+
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
+
+      return {
+        success: true,
+        message: 'Vendor created successfully',
+        tenant: req.tenantConnection.options.database,
+        data: this.buildVendorResponse(saved, dynamicData, context),
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      console.error('Vendor creation failed:', error);
+      throw new InternalServerErrorException(`Failed to create vendor: ${(error as Error).message}`);
+    }
+  }
+
+  async update(req: any, id: number, body: Record<string, any>): Promise<any> {
+    try {
+      const context = await this.getContext(req);
+      const repo = this.getRepo(req);
+      const actor = this.getActorId(req);
+
+      const entity = await repo.findOne({ where: { id } as any });
+      if (!entity) {
+        throw new NotFoundException(`Vendor with ID ${id} not found`);
       }
 
-      const qb = vendorRepo
-        .createQueryBuilder('vendor')
-        .leftJoinAndSelect('vendor.contacts', 'contact')
-        .distinct(true);
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
+        normalized,
+        context.systemFieldKeys,
+        this.ignoredPayloadKeys,
+      );
+      ({ staticPayload, dynamicPayload } = this.dynamicFields.promoteDynamicSystemFields(
+        staticPayload,
+        dynamicPayload,
+        context.aliasToCanonicalMap,
+        context.systemFieldKeys,
+        context,
+      ));
 
-      if (name) {
-        qb.andWhere('vendor.name ILIKE :name', {name: `%${name}%`});
+      this.applyStaticPayloadToVendor(entity, staticPayload, false);
+      const updatedBy = this.coerceId(body.updatedBy) ?? actor;
+      if (updatedBy !== null) entity.updatedBy = updatedBy;
+
+      const saved = await repo.save(entity);
+
+      if (Object.keys(dynamicPayload).length) {
+        const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
+        await this.dynamicFields.upsertDynamicRow(
+          req,
+          context.moduleId,
+          saved.id,
+          context.activeVersionId,
+          { ...existing, ...dynamicPayload },
+          actor,
+          context,
+        );
       }
 
-      if (email) {
-        qb.andWhere('vendor.email ILIKE :email', {email: `%${email}%`});
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
+
+      return {
+        success: true,
+        message: 'Vendor updated successfully',
+        tenant: req.tenantConnection.options.database,
+        data: this.buildVendorResponse(saved, dynamicData, context),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      console.error('Vendor update failed:', error);
+      throw new InternalServerErrorException(`Failed to update vendor: ${(error as Error).message}`);
+    }
+  }
+
+  async paginate(req: any, page = 1, relations: string[] = [], limit?: number): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const parsedLimit = limit !== undefined ? Number(limit) : undefined;
+      const currentPage = Math.max(Number(page) || 1, 1);
+      const queryOptions: any = { order: { id: 'DESC' } as any };
+
+      if (parsedLimit && parsedLimit > 0) {
+        queryOptions.take = Math.min(Math.max(parsedLimit, 1), 100);
+        queryOptions.skip = (currentPage - 1) * queryOptions.take;
       }
 
-      if (username) {
-        qb.andWhere('vendor.username ILIKE :username', {username: `%${username}%`});
+      const [data, total] = await repo.findAndCount(queryOptions);
+      const context = await this.getContext(req);
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(
+        req,
+        context.moduleId,
+        data.map((vendor) => vendor.id),
+        context,
+      );
+
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        meta: {
+          total,
+          page: currentPage,
+          lastPage: queryOptions.take ? Math.ceil(total / queryOptions.take) || 1 : 1,
+        },
+        data: data.map((vendor) =>
+          this.buildVendorResponse(vendor, dynamicRows.get(vendor.id) || {}, context),
+        ),
+      };
+    } catch (error) {
+      console.error('Vendor pagination failed:', error);
+      throw new InternalServerErrorException('Failed to paginate vendors');
+    }
+  }
+
+  async findOne(req: any, id: number): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const entity = await repo.findOne({ where: { id } as any });
+      if (!entity) {
+        throw new NotFoundException(`Vendor with ID ${id} not found`);
       }
 
-      if (phoneNumber) {
-        qb.andWhere('vendor.phoneNumber ILIKE :phoneNumber', {
-          phoneNumber: `%${phoneNumber}%`,
-        });
+      const context = await this.getContext(req);
+      const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, entity.id, context);
+
+      return {
+        success: true,
+        tenant: req.tenantConnection.options.database,
+        data: this.buildVendorResponse(entity, dynamicData, context),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      console.error('Vendor findOne failed:', error);
+      throw new InternalServerErrorException('Failed to retrieve vendor');
+    }
+  }
+
+  async search(req: any, limit = 15, filters?: Record<string, any>): Promise<any> {
+    try {
+      const repo = this.getRepo(req);
+      const parsedLimit = Number(limit);
+      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
+
+      const rawFilters = Object.entries(filters || {}).reduce((acc, [key, value]) => {
+        const normalizedKey = String(key || '').trim();
+        if (!normalizedKey || this.ignoredPayloadKeys.has(normalizedKey)) return acc;
+        const normalizedValue =
+          typeof value === 'string' ? value.trim() : value === undefined || value === null ? '' : String(value);
+        if (!normalizedValue) return acc;
+        acc[normalizedKey] = normalizedValue;
+        return acc;
+      }, {} as Record<string, string>);
+
+      if (!Object.keys(rawFilters).length) {
+        return { success: true, tenant: req.tenantConnection.options.database, count: 0, data: [] };
       }
 
-      if (countryId) {
-        qb.andWhere('vendor.country_id = :countryId', {countryId});
+      const context = await this.getContext(req);
+      const qb = repo.createQueryBuilder('vendor');
+
+      const trueDynamicFilters: Record<string, string> = {};
+      for (const [key, value] of Object.entries(rawFilters)) {
+        const canonicalKey = this.dynamicFields.resolveCanonicalKey(context, key);
+        if (canonicalKey === 'vendor_name') {
+          qb.andWhere('vendor.vendorName ILIKE :vendor_name', { vendor_name: `%${value}%` });
+        } else {
+          trueDynamicFilters[key] = value;
+        }
       }
 
-      if (stateId) {
-        qb.andWhere('vendor.state_id = :stateId', {stateId});
-      }
-
-      if (cityId) {
-        qb.andWhere('vendor.city_id = :cityId', {cityId});
+      const matchedIds = await this.dynamicFields.findDynamicMatchedIds(req, context, trueDynamicFilters);
+      if (matchedIds !== null) {
+        if (!matchedIds.length) {
+          return { success: true, tenant: req.tenantConnection.options.database, count: 0, data: [] };
+        }
+        qb.andWhere('vendor.id IN (:...dynamicIds)', { dynamicIds: matchedIds });
       }
 
       const vendors = await qb.orderBy('vendor.id', 'DESC').take(take).getMany();
+      const dynamicRows = await this.dynamicFields.loadDynamicRows(
+        req,
+        context.moduleId,
+        vendors.map((vendor) => vendor.id),
+        context,
+      );
 
-      const data = vendors.map((vendor) => ({
-        id: vendor.id,
-        name: vendor.name,
-        email: vendor.email,
-        phone_number: vendor.phoneNumber,
-        country_id: vendor.countryId,
-        state_id: vendor.stateId,
-        city_id: vendor.cityId,
-        payment_methods: vendor.paymentMethods ?? [],
-        contacts: (vendor.contacts ?? []).map((contact) => ({
-          id: contact.id,
-          name: contact.name,
-          phone_number: contact.phoneNumber,
-          email: contact.email,
-          is_primary: contact.isPrimary,
-        })),
-      }));
+      const data = vendors.map((vendor) =>
+        this.buildVendorResponse(vendor, dynamicRows.get(vendor.id) || {}, context),
+      );
 
       return {
         success: true,
@@ -366,37 +364,20 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       };
     } catch (error) {
       console.error('Vendor search failed:', error);
-      const err = error instanceof Error ? error : new Error(String(error));
-      throw new InternalServerErrorException(`Failed to search vendors: ${err.message}`);
+      throw new InternalServerErrorException(`Failed to search vendors: ${(error as Error).message}`);
     }
   }
 
-  async findAll(req: any): Promise<any> {
-    const response = await super.findAll(req, ['contacts', 'orderDeadlines']);
-    return {
-      ...response,
-      data: response.data.map((vendor) => this.formatVendor(vendor)),
-    };
+  async delete(req: any, id: number): Promise<any> {
+    const context = await this.getContext(req);
+    const result = await super.delete(req, id);
+    await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
+    return result;
   }
 
-  override async paginate(
-    req: any,
-    page = 1,
-    relations: string[] = ['contacts', 'orderDeadlines'],
-    limit?: number,
-  ): Promise<any> {
-    const response = await super.paginate(req, page, relations, limit);
-    return {
-      ...response,
-      data: response.data.map((vendor) => this.formatVendor(vendor)),
-    };
-  }
-
-  async findOne(req: any, id: number): Promise<any> {
-    const response = await super.findOne(req, id, ['contacts', 'orderDeadlines']);
-    return {
-      ...response,
-      data: this.formatVendor(response.data),
-    };
+  private coerceId(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
   }
 }
