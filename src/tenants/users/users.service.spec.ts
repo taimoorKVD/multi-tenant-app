@@ -252,6 +252,99 @@ describe('UsersService dynamic fields', () => {
     expect(result.data[0].textarea_field).toBeUndefined();
   });
 
+  it('does not shuffle values when one field dataKeys is contaminated with another field id', async () => {
+    // Reproduces the bug where phone_number field carried job_position's
+    // identifiers in its dataKeys and stole its stored value.
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { id: 'fld_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            {
+              id: 'fld_phone',
+              fieldKey: 'phone_number',
+              label: 'Phone Number',
+              isSystemField: false,
+              // contaminated: contains job_position's id + keys
+              dataKeys: ['jobPosition', 'job_position', 'fld_job', 'phone_number', 'fld_phone'],
+            },
+            {
+              id: 'fld_job',
+              fieldKey: 'job_position',
+              label: 'Job Position',
+              isSystemField: false,
+              dataKeys: ['jobPosition', 'job_position', 'fld_job'],
+            },
+          ],
+        },
+      }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const userRepo = {
+      findAndCount: jest.fn().mockResolvedValue([
+        [
+          {
+            id: 4,
+            name: 'Ryder Hopkins',
+            email: 'lovy@mailinator.com',
+            plainPassword: 'Pa$$w0rd!',
+            password: 'hash',
+            role: { id: 1, name: 'Admin' },
+            isSystem: false,
+            createdAt: new Date('2026-07-03T17:38:34.478Z'),
+            updatedAt: new Date('2026-07-03T17:38:34.478Z'),
+          },
+        ],
+        1,
+      ]),
+    };
+
+    const dynamicRepo = {
+      find: jest.fn().mockResolvedValue([
+        {
+          moduleId: 10,
+          entityId: 4,
+          // job selected = 1 (stored under its own id), phone = 379
+          data: { fld_job: 1, fld_phone: 379 },
+        },
+      ]),
+      findOne: jest.fn(),
+      createQueryBuilder: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.paginate(req, 1, ['role'], 15);
+
+    expect(result.success).toBe(true);
+    // each field keeps its own value; no shuffle
+    expect(result.data[0].fld_phone).toBe(379);
+    expect(result.data[0].fld_job).toBe(1);
+  });
+
   it('rejects create when a required form-builder field is missing', async () => {
     const moduleRepo = {
       findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
