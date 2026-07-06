@@ -6,7 +6,7 @@ export class CreateItemDto {
   @IsOptional()
   @IsString()
   @MaxLength(150)
-  name?: string;
+  item_name?: string;
 
   @IsOptional()
   @IsInt()

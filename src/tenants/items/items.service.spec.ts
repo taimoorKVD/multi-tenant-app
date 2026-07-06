@@ -50,7 +50,14 @@ describe('ItemsService dynamic fields', () => {
         moduleId: 10,
         autosaveSchema: {
           fields: [
-            { id: 'fld_item_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            {
+              id: 'fld_item_name',
+              fieldKey: 'item_name',
+              name: 'item_name',
+              isSystemField: true,
+              systemMappingKey: 'item_name',
+              isRequired: true,
+            },
             { id: 'fld_item_no', fieldKey: 'item_no', isSystemField: false },
             { id: 'fld_item_cost', fieldKey: 'cost', isSystemField: false },
           ],
@@ -73,7 +80,7 @@ describe('ItemsService dynamic fields', () => {
       create: jest.fn().mockImplementation((payload) => ({ ...payload })),
       save: jest.fn().mockImplementation(async (payload) => ({
         id: 1,
-        name: payload.name,
+        itemName: payload.itemName,
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
       })),
@@ -105,13 +112,13 @@ describe('ItemsService dynamic fields', () => {
     const req = buildReq(repos);
 
     const result = await service.create(req, {
-      name: 'Beef Sirloin',
+      item_name: 'Beef Sirloin',
       item_no: 'ITM-1001',
       cost: '120.50',
     });
 
     expect(itemRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Beef Sirloin', createdBy: 99, updatedBy: 99 }),
+      expect.objectContaining({ itemName: 'Beef Sirloin', createdBy: 99, updatedBy: 99 }),
     );
     expect(dynamicRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -128,8 +135,7 @@ describe('ItemsService dynamic fields', () => {
     expect(result.data.fld_item_no).toBe('ITM-1001');
     expect(result.data.fld_item_cost).toBe('120.50');
     expect(result.data.id).toBe(1);
-    // human-readable field keys are intentionally omitted
-    expect(result.data.name).toBeUndefined();
+    expect(result.data.item_name).toBeUndefined();
     expect(result.data.item_no).toBeUndefined();
   });
 
@@ -140,7 +146,7 @@ describe('ItemsService dynamic fields', () => {
       create: jest.fn().mockImplementation((payload) => ({ ...payload })),
       save: jest.fn().mockImplementation(async (payload) => ({
         id: 2,
-        name: payload.name,
+        itemName: payload.itemName,
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
       })),
@@ -172,13 +178,13 @@ describe('ItemsService dynamic fields', () => {
       fld_item_cost: '9.99',
     });
 
-    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Chicken Breast' }));
+    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ itemName: 'Chicken Breast' }));
     expect(result.success).toBe(true);
     expect(result.data.fld_item_name).toBe('Chicken Breast');
     expect(result.data.fld_item_cost).toBe('9.99');
   });
 
-  it('create throws when name is missing', async () => {
+  it('create throws when item_name is missing', async () => {
     const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
     const itemRepo = { create: jest.fn(), save: jest.fn() };
@@ -211,7 +217,7 @@ describe('ItemsService dynamic fields', () => {
     const itemRepo = {
       findOne: jest.fn().mockResolvedValue({
         id: 1,
-        name: 'Beef Sirloin',
+        itemName: 'Beef Sirloin',
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-02'),
       }),
@@ -240,9 +246,9 @@ describe('ItemsService dynamic fields', () => {
 
     const req = buildReq(repos);
 
-    const result = await service.update(req, 1, { name: 'Beef Tenderloin', cost: '99.99' });
+    const result = await service.update(req, 1, { item_name: 'Beef Tenderloin', cost: '99.99' });
 
-    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Beef Tenderloin' }));
+    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ itemName: 'Beef Tenderloin' }));
     expect(dynamicRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ fld_item_no: 'ITM-1001', fld_item_cost: '99.99' }),
@@ -253,7 +259,7 @@ describe('ItemsService dynamic fields', () => {
     expect(result.data.fld_item_cost).toBe('99.99');
   });
 
-  it('search by system field name filters on the item table', async () => {
+  it('search by system field item_name filters on the item table', async () => {
     const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
 
     const qb: any = {
@@ -261,7 +267,7 @@ describe('ItemsService dynamic fields', () => {
       orderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([
-        { id: 1, name: 'Beef Sirloin', createdAt: new Date(), updatedAt: new Date() },
+        { id: 1, itemName: 'Beef Sirloin', createdAt: new Date(), updatedAt: new Date() },
       ]),
     };
 
@@ -286,9 +292,9 @@ describe('ItemsService dynamic fields', () => {
 
     const req = buildReq(repos);
 
-    const result = await service.search(req, 15, { name: 'Beef' });
+    const result = await service.search(req, 15, { item_name: 'Beef' });
 
-    expect(qb.andWhere).toHaveBeenCalledWith('item.name ILIKE :name', { name: '%Beef%' });
+    expect(qb.andWhere).toHaveBeenCalledWith('item.itemName ILIKE :item_name', { item_name: '%Beef%' });
     expect(dynamicRepo.createQueryBuilder).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
@@ -304,7 +310,7 @@ describe('ItemsService dynamic fields', () => {
       orderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([
-        { id: 1, name: 'Beef Sirloin', createdAt: new Date(), updatedAt: new Date() },
+        { id: 1, itemName: 'Beef Sirloin', createdAt: new Date(), updatedAt: new Date() },
       ]),
     };
 
@@ -336,7 +342,6 @@ describe('ItemsService dynamic fields', () => {
 
     const req = buildReq(repos);
 
-    // filter keyed by the stable field id
     const result = await service.search(req, 15, { fld_item_no: 'ITM-1001' });
 
     expect(dynamicRepo.createQueryBuilder).toHaveBeenCalledWith('dynamic');
@@ -351,7 +356,7 @@ describe('ItemsService dynamic fields', () => {
 
     const itemRepo = {
       findAndCount: jest.fn().mockResolvedValue([
-        [{ id: 1, name: 'Beef Sirloin', createdAt: new Date(), updatedAt: new Date() }],
+        [{ id: 1, itemName: 'Beef Sirloin', createdAt: new Date(), updatedAt: new Date() }],
         1,
       ]),
     };
