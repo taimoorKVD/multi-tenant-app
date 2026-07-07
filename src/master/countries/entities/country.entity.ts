@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import {City} from '../../cities/entities';
 import {State} from '../../states/entities';
 
 @Entity('countries')
@@ -21,6 +22,9 @@ export class Country {
 
   @OneToMany(() => State, (state) => state.country)
   states!: State[];
+
+  @OneToMany(() => City, (city) => city.country)
+  cities!: City[];
 
   @CreateDateColumn({name: 'created_at'})
   createdAt!: Date;

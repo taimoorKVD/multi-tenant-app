@@ -14,3 +14,4 @@ export * from './1701010011000-CreateActivityLogsTable';
 export * from './1701010015000-CreatePasswordResetTokensTable';
 export * from './1701010016000-CreateEmailVerificationTokensTable';
 export * from './1701010017000-CreateRefreshTokensTable';
+export * from './1701010018000-AddCountryIdToCitiesTable';
