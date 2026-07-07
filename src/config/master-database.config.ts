@@ -36,6 +36,7 @@ import {
     CreatePasswordResetTokensTable1701010015000,
     CreateEmailVerificationTokensTable1701010016000,
     CreateRefreshTokensTable1701010017000,
+    AddCountryIdToCitiesTable1701010018000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -93,6 +94,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
                 CreatePasswordResetTokensTable1701010015000,
                 CreateEmailVerificationTokensTable1701010016000,
                 CreateRefreshTokensTable1701010017000,
+                AddCountryIdToCitiesTable1701010018000,
         ],
     synchronize: false,
     // migrationsRun: true,

@@ -20,6 +20,7 @@ export class CitiesController {
   search(
     @Query('name') name?: string,
     @Query('state_id') stateId?: number,
+    @Query('country_id') countryId?: number,
     @Query('limit') limit?: number,
   ) {
     return this.citiesService.search(
@@ -27,6 +28,7 @@ export class CitiesController {
       {
         name,
         stateId: stateId ? Number(stateId) : undefined,
+        countryId: countryId ? Number(countryId) : undefined,
       },
     );
   }
@@ -35,6 +37,7 @@ export class CitiesController {
   @CitiesSwagger.FindAll()
   findAll(
     @Query('state_id') stateId?: number,
+    @Query('country_id') countryId?: number,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
@@ -44,7 +47,10 @@ export class CitiesController {
     return this.citiesService.findAll(
       Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
       Number.isFinite(parsedLimit) ? parsedLimit : undefined,
-      stateId ? Number(stateId) : undefined,
+      {
+        stateId: stateId ? Number(stateId) : undefined,
+        countryId: countryId ? Number(countryId) : undefined,
+      },
     );
   }
 
