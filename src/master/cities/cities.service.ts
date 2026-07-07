@@ -14,15 +14,16 @@ export class CitiesService {
     private readonly stateRepo: Repository<State>,
   ) {}
 
-  private async ensureStateExists(stateId: number) {
+  private async getStateOrFail(stateId: number) {
     const state = await this.stateRepo.findOne({where: {id: stateId}});
     if (!state) {
       throw new NotFoundException('State not found.');
     }
+    return state;
   }
 
   async create(dto: CreateCityDto) {
-    await this.ensureStateExists(dto.state_id);
+    const state = await this.getStateOrFail(dto.state_id);
 
     const name = dto.name.trim();
     const duplicate = await this.cityRepo.findOne({
@@ -36,13 +37,17 @@ export class CitiesService {
       throw new BadRequestException('City with this name already exists in the selected state.');
     }
 
-    const record = this.cityRepo.create({name, stateId: dto.state_id});
+    const record = this.cityRepo.create({
+      name,
+      stateId: dto.state_id,
+      countryId: state.countryId,
+    });
     const saved = await this.cityRepo.save(record);
 
     return {success: true, message: 'City created successfully', data: saved};
   }
 
-  async findAll(page = 1, limit?: number, stateId?: number) {
+  async findAll(page = 1, limit?: number, filters?: {stateId?: number; countryId?: number}) {
     const parsedLimit = Number(limit);
     const take =
       limit === undefined
@@ -52,13 +57,19 @@ export class CitiesService {
           : Math.min(Math.max(parsedLimit, 1), 100);
     const currentPage = Math.max(Number(page) || 1, 1);
 
-    const where = stateId ? ({stateId} as any) : undefined;
+    const where: Partial<Pick<City, 'stateId' | 'countryId'>> = {};
+    if (filters?.stateId) {
+      where.stateId = filters.stateId;
+    }
+    if (filters?.countryId) {
+      where.countryId = filters.countryId;
+    }
 
     const [data, total] = await this.cityRepo.findAndCount({
-      where,
+      where: Object.keys(where).length ? where : undefined,
       order: {id: 'DESC'},
       ...(take ? {take, skip: (currentPage - 1) * take} : {}),
-      relations: ['state', 'state.country'],
+      relations: ['state', 'country'],
     });
 
     return {
@@ -77,21 +88,23 @@ export class CitiesService {
     filters?: {
       name?: string;
       stateId?: number;
+      countryId?: number;
     },
   ) {
     const parsedLimit = Number(limit);
     const take = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 15;
     const name = filters?.name?.trim();
     const stateId = filters?.stateId;
+    const countryId = filters?.countryId;
 
-    if (!name && !stateId) {
+    if (!name && !stateId && !countryId) {
       return {success: true, count: 0, data: []};
     }
 
     const qb = this.cityRepo
       .createQueryBuilder('city')
       .leftJoinAndSelect('city.state', 'state')
-      .leftJoinAndSelect('state.country', 'country')
+      .leftJoinAndSelect('city.country', 'country')
       .orderBy('city.id', 'DESC')
       .take(take);
 
@@ -103,12 +116,19 @@ export class CitiesService {
       qb.andWhere('city.stateId = :stateId', {stateId});
     }
 
+    if (countryId) {
+      qb.andWhere('city.countryId = :countryId', {countryId});
+    }
+
     const data = await qb.getMany();
     return {success: true, count: data.length, data};
   }
 
   async findOne(id: number) {
-    const record = await this.cityRepo.findOne({where: {id}, relations: ['state', 'state.country']});
+    const record = await this.cityRepo.findOne({
+      where: {id},
+      relations: ['state', 'country'],
+    });
     if (!record) throw new NotFoundException('City not found.');
 
     return {success: true, data: record};
@@ -119,8 +139,11 @@ export class CitiesService {
     if (!record) throw new NotFoundException('City not found.');
 
     const stateId = dto.state_id ?? record.stateId;
+    let countryId = record.countryId;
+
     if (dto.state_id !== undefined) {
-      await this.ensureStateExists(dto.state_id);
+      const state = await this.getStateOrFail(dto.state_id);
+      countryId = state.countryId;
     }
 
     if (dto.name !== undefined || dto.state_id !== undefined) {
@@ -136,6 +159,7 @@ export class CitiesService {
 
     if (dto.state_id !== undefined) {
       record.stateId = dto.state_id;
+      record.countryId = countryId;
     }
 
     const saved = await this.cityRepo.save(record);

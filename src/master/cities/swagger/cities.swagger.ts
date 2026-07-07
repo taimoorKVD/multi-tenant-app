@@ -25,9 +25,10 @@ export const CitiesSwagger = {
       ApiOperation({
         summary: 'List cities',
         description:
-          'Returns cities sorted by name ASC. Filter by state_id is optional. Use limit for pagination, or limit=0 to return all records.',
+          'Returns cities sorted by name ASC. Filter by state_id and/or country_id. Use limit for pagination, or limit=0 to return all records.',
       }),
       ApiQuery({name: 'state_id', required: false, type: Number, example: 1}),
+      ApiQuery({name: 'country_id', required: false, type: Number, example: 1}),
       ApiQuery({name: 'page', required: false, type: Number, example: 1}),
       ApiQuery({name: 'limit', required: false, type: Number, example: 15}),
       ApiResponse({status: 200, description: 'Cities fetched successfully.'}),
@@ -41,6 +42,7 @@ export const CitiesSwagger = {
       }),
       ApiQuery({name: 'name', required: false, type: String, example: 'kar'}),
       ApiQuery({name: 'state_id', required: false, type: Number, example: 1}),
+      ApiQuery({name: 'country_id', required: false, type: Number, example: 1}),
       ApiQuery({
         name: 'limit',
         required: false,
