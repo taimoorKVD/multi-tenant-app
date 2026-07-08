@@ -153000,20 +153000,25 @@ export class CitySeeder implements ISeeder {
       {countryCode: 'ZW', stateName: 'Midlands', cityName: 'Zvishavane'},
     ];
 
-    const cities = rows
-      .map((row) => {
-        const state = statesByKey.get(`${row.countryCode}:${row.stateName}`);
-        if (!state) {
-          return null;
-        }
+    const cities: City[] = [];
+    const seen = new Set<string>();
 
-        return cityRepo.create({
+    for (const row of rows) {
+      const state = statesByKey.get(`${row.countryCode}:${row.stateName}`);
+      if (!state) continue;
+
+      const key = `${state.id}:${row.cityName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      cities.push(
+        cityRepo.create({
           name: row.cityName,
           stateId: state.id,
           countryId: state.countryId,
-        });
-      })
-      .filter((city): city is City => city !== null);
+        }),
+      );
+    }
 
     if (!cities.length) {
       console.log('⚠️  No valid city rows were resolved. Skipping seeding.');

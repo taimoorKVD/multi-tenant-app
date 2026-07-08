@@ -5335,9 +5335,15 @@ export class StateSeeder implements ISeeder {
     ];
 
     const states: State[] = [];
+    const seen = new Set<string>();
+
     for (const row of rows) {
       const country = byCode.get(row.code);
       if (!country) continue;
+
+      const key = `${row.code}:${row.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
       states.push(
         stateRepo.create({
@@ -5345,6 +5351,11 @@ export class StateSeeder implements ISeeder {
           countryId: country.id,
         }),
       );
+    }
+
+    if (!states.length) {
+      console.log('⚠️  No valid state rows were resolved. Skipping seeding.');
+      return;
     }
 
     await stateRepo.save(states);
