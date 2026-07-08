@@ -47,14 +47,54 @@ export class CitiesService {
     return {success: true, message: 'City created successfully', data: saved};
   }
 
-  async findAll(page = 1, limit?: number, filters?: {stateId?: number; countryId?: number}) {
+  // async findAll(page = 1, limit?: number, filters?: {stateId?: number; countryId?: number}) {
+  //   const parsedLimit = Number(limit);
+  //   const take =
+  //     limit === undefined
+  //       ? undefined
+  //       : parsedLimit <= 0
+  //         ? undefined
+  //         : Math.min(Math.max(parsedLimit, 1), 100);
+  //   const currentPage = Math.max(Number(page) || 1, 1);
+
+  //   const where: Partial<Pick<City, 'stateId' | 'countryId'>> = {};
+  //   if (filters?.stateId) {
+  //     where.stateId = filters.stateId;
+  //   }
+  //   if (filters?.countryId) {
+  //     where.countryId = filters.countryId;
+  //   }
+
+  //   const [data, total] = await this.cityRepo.findAndCount({
+  //     where: Object.keys(where).length ? where : undefined,
+  //     order: {id: 'DESC'},
+  //     ...(take ? {take, skip: (currentPage - 1) * take} : {}),
+  //     relations: ['state', 'country'],
+  //   });
+
+  //   return {
+  //     success: true,
+  //     data,
+  //     meta: {
+  //       total,
+  //       page: currentPage,
+  //       lastPage: take ? Math.ceil(total / take) || 1 : 1,
+  //     },
+  //   };
+  // }
+  async findAll(
+    page = 1,
+    limit?: number,
+    filters?: { stateId?: number; countryId?: number },
+  ) {
     const parsedLimit = Number(limit);
     const take =
       limit === undefined
         ? undefined
         : parsedLimit <= 0
           ? undefined
-          : Math.min(Math.max(parsedLimit, 1), 100);
+          : parsedLimit;
+
     const currentPage = Math.max(Number(page) || 1, 1);
 
     const where: Partial<Pick<City, 'stateId' | 'countryId'>> = {};
@@ -67,8 +107,8 @@ export class CitiesService {
 
     const [data, total] = await this.cityRepo.findAndCount({
       where: Object.keys(where).length ? where : undefined,
-      order: {id: 'DESC'},
-      ...(take ? {take, skip: (currentPage - 1) * take} : {}),
+      order: { id: 'DESC' },
+      ...(take ? { take, skip: (currentPage - 1) * take } : {}),
       relations: ['state', 'country'],
     });
 
@@ -78,7 +118,7 @@ export class CitiesService {
       meta: {
         total,
         page: currentPage,
-        lastPage: take ? Math.ceil(total / take) || 1 : 1,
+        lastPage: take ? Math.ceil(total / take) : 1,
       },
     };
   }
