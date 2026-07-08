@@ -23,7 +23,7 @@ export class TenantResetService {
     }
 
     await this.tenantService.create({
-      name: 'brain',
+      name: 'brian',
     } as any);
 
     await this.tenantService.create({
