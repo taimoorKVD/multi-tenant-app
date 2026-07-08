@@ -29,7 +29,7 @@ async function bootstrap() {
     }
 
     // Create default tenants
-    const defaultTenants = ['brain', 'kingdom-vision', 'taimoor'];
+    const defaultTenants = ['brian', 'kingdom-vision', 'taimoor'];
 
     for (const name of defaultTenants) {
       console.log(`Creating: ${name}`);
