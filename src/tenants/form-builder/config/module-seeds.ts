@@ -575,7 +575,7 @@ export const FORM_BUILDER_MODULE_SEEDS: readonly FormBuilderModuleSeed[] = [
   { slug: 'items', name: 'Items', defaultFields: itemsDefaultFields },
   { slug: 'vendors', name: 'Vendors', defaultFields: vendorDefaultFields },
   { slug: 'jobpositions', name: 'Job Positions' },
-  { slug: 'locations', name: 'Locations', defaultFields: locationDefaultFields },
+  { slug: 'locations', name: 'Locations' },
   { slug: 'countries', name: 'Countries' },
   { slug: 'states', name: 'States' },
   { slug: 'cities', name: 'Cities' },
