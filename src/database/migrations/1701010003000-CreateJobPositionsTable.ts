@@ -9,6 +9,7 @@ export class CreateJobPositionsTable1701010003000 implements MigrationInterface 
             (
                 "id"         SERIAL       NOT NULL,
                 "name"       VARCHAR(100) NOT NULL UNIQUE,
+                "description" TEXT,
                 "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
                 "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
                 CONSTRAINT "PK_job_positions_id" PRIMARY KEY ("id")
