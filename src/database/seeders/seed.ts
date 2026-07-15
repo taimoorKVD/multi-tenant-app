@@ -14,6 +14,7 @@ import {
   UserEmailTemplateSeeder,
   FormBuilderModulesSeeder,
   FormBuilderPermissionsSeeder,
+  DataCollectionPermissionsSeeder,
 } from '../seeders';
 
 (async () => {
@@ -30,6 +31,7 @@ import {
     new UserEmailTemplateSeeder(),
     new FormBuilderModulesSeeder(),
     new FormBuilderPermissionsSeeder(),
+    new DataCollectionPermissionsSeeder(),
   ]);
 
   const shouldReset = process.argv.includes('--reset') || process.argv.includes('reset');

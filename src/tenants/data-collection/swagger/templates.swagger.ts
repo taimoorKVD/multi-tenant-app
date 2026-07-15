@@ -1,0 +1,167 @@
+import { applyDecorators } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CreateTemplateDto, UpdateTemplateDto } from '../dto';
+
+export const TenantDataCollectionTemplatesSwagger = {
+  Tags: () => ApiTags('Data Collection - Templates'),
+  Auth: () => ApiBearerAuth('access-token'),
+
+  Create: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Create data collection template', description: 'Creates a new data collection template.' }),
+      ApiBody({
+        type: CreateTemplateDto,
+        examples: {
+          valid: {
+            summary: 'Create template',
+            value: {
+              name: 'Manager Report',
+              schema: {
+                formName: 'Manager Report',
+                assign: { users: [1], jobPosition: [2] },
+                report: { users: [3], jobPosition: [1] },
+                frequency: {
+                  type: 'recurring',
+                  startDate: '2026-07-17',
+                  endDate: null,
+                  jobPosition: [2],
+                  schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } },
+                },
+                sections: [
+                  {
+                    id: 'sec_001',
+                    type: 'responseForm',
+                    title: 'Response Form',
+                    sortOrder: 1,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          { id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    id: 'sec_002',
+                    type: 'dataEntry',
+                    title: 'Data Entry',
+                    sortOrder: 2,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          { id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%', optionSource: { type: 'dynamic', method: 'GET', endpoint: 'items', response: { dataPath: 'data', labelKey: 'name', valueKey: 'id' } } },
+                          { id: 'fld_003', label: 'Include Par', name: 'includePar', type: 'checkbox', width: '10%' },
+                          { id: 'fld_004', label: 'Par', name: 'par', type: 'number', width: '20%' },
+                          { id: 'fld_005', label: 'User Response', name: 'userResponse', type: 'select', required: true, width: '20%', options: [{ label: 'Current Quantity', value: 'current_quantity' }, { label: 'Current Value', value: 'current_value' }] },
+                          { id: 'fld_006', label: 'Action', name: 'action', type: 'select', required: true, width: '20%', options: [{ label: 'None', value: 'none' }, { label: 'Order', value: 'order' }, { label: 'Purchase Request', value: 'purchase_request' }, { label: 'Maintenance Request', value: 'maintenance_request' }] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 201, description: 'Template created successfully.' }),
+      ApiResponse({ status: 400, description: 'Validation failed.' }),
+    ),
+
+  FindAll: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'List data collection templates', description: 'Returns paginated templates with optional filters.' }),
+      ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
+      ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
+      ApiQuery({ name: 'status', required: false, type: String, example: 'active', description: 'Filter by template status (draft, active, archived).' }),
+      ApiQuery({ name: 'search', required: false, type: String, example: 'inspection', description: 'Search by name or description.' }),
+      ApiResponse({ status: 200, description: 'Templates fetched successfully.' }),
+    ),
+
+  FindOne: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Get template by ID', description: 'Fetches a single template with its schema and assignments.' }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({
+        status: 200,
+        description: 'Template fetched successfully.',
+        schema: {
+          example: {
+            success: true,
+            data: {
+              id: 1,
+              name: 'Manager Report',
+              status: 'active',
+              isActive: true,
+              schema: {
+                formName: 'Manager Report',
+                assign: { users: [1], jobPosition: [2] },
+                report: { users: [3], jobPosition: [1] },
+                frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
+                sections: [
+                  { id: 'sec_001', type: 'responseForm', title: 'Response Form', sortOrder: 1, rows: [{ id: 'row_001', fields: [{ id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' }] }] },
+                  { id: 'sec_002', type: 'dataEntry', title: 'Data Entry', sortOrder: 2, rows: [{ id: 'row_001', fields: [{ id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%' }] }] },
+                ],
+              },
+              createdBy: 1,
+              createdAt: '2026-07-15T10:00:00.000Z',
+            },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  Update: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Update template', description: 'Updates template fields by ID.' }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiBody({
+        type: UpdateTemplateDto,
+        examples: {
+          valid: {
+            summary: 'Update template',
+            value: {
+              name: 'Updated Manager Report',
+              schema: {
+                formName: 'Updated Manager Report',
+                assign: { users: [1, 5], jobPosition: [2] },
+                report: { users: [3], jobPosition: [1] },
+                frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
+                sections: [],
+              },
+            },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 200, description: 'Template updated successfully.' }),
+      ApiResponse({ status: 400, description: 'Validation failed.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  Delete: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Delete template', description: 'Soft-deletes a template by ID.' }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template deleted successfully.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  Activate: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Activate template', description: 'Sets the template status to ACTIVE and enables it.' }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template activated successfully.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  Archive: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Archive template', description: 'Sets the template status to ARCHIVED.' }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template archived successfully.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+};

@@ -11,6 +11,7 @@ import { ReportingGroupsModule } from './reporting-groups/reporting-groups.modul
 import { ReportingCategoriesModule } from './reporting-categories/reporting-categories.module';
 import { ItemsModule } from './items/items.module';
 import { FormBuilderModule } from './form-builder';
+import { DataCollectionModule } from './data-collection/data-collection.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { FormBuilderModule } from './form-builder';
     ReportingCategoriesModule,
     ItemsModule,
     FormBuilderModule,
+    DataCollectionModule,
   ],
 })
 export class TenantsModule {
