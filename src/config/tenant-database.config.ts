@@ -22,6 +22,9 @@ import {
   FormAuditLog,
   FormVersion,
 } from '../tenants/form-builder/entities';
+import {
+  DataCollectionTemplate,
+} from '../tenants/data-collection/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
   const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -90,6 +93,7 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       FormVersion,
       FormAuditLog,
       EntityDynamicData,
+      DataCollectionTemplate,
     ],
     synchronize: true,
     logging,

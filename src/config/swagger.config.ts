@@ -24,6 +24,7 @@ import { ReportingGroupsModule as TenantReportingGroupsModule } from '../tenants
 import { ReportingCategoriesModule as TenantReportingCategoriesModule } from '../tenants/reporting-categories/reporting-categories.module';
 import { ItemsModule as TenantItemsModule } from '../tenants/items/items.module';
 import { FormBuilderModule as TenantFormBuilderModule } from '../tenants/form-builder/form-builder.module';
+import { DataCollectionModule as TenantDataCollectionModule } from '../tenants/data-collection/data-collection.module';
 
 export function setupSwagger(app: INestApplication) {
 
@@ -84,6 +85,7 @@ export function setupSwagger(app: INestApplication) {
             TenantReportingCategoriesModule,
             TenantItemsModule,
             TenantFormBuilderModule,
+            TenantDataCollectionModule,
             MailModule,
             TenantMailAdminModule,
         ],
@@ -157,6 +159,7 @@ export function setupSwagger(app: INestApplication) {
                     'Form Builder Management - Versions',
                     'Email Management',
                     'Email Testing',
+                    'Data Collection - Templates',
                 ];
                 const idxA = order.indexOf(a);
                 const idxB = order.indexOf(b);
