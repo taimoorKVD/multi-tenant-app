@@ -149,4 +149,42 @@ export class TemplatesService {
     }
   }
 
+  async search(req: any, limit?: number, filters?: Record<string, any>) {
+    try {
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const parsedLimit = Number(limit);
+      const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
+
+      const rawFilters = Object.entries(filters || {}).reduce((acc, [key, value]) => {
+        const normalizedKey = String(key || '').trim();
+        if (!normalizedKey || normalizedKey === 'limit') return acc;
+        const normalizedValue =
+          typeof value === 'string' ? value.trim() : value === undefined || value === null ? '' : String(value);
+        if (!normalizedValue) return acc;
+        acc[normalizedKey] = normalizedValue;
+        return acc;
+      }, {} as Record<string, string>);
+
+      if (!Object.keys(rawFilters).length) {
+        return { success: true, count: 0, data: [] };
+      }
+
+      const qb = templateRepo.createQueryBuilder('template');
+
+      for (const [key, value] of Object.entries(rawFilters)) {
+        if (key === 'name') {
+          qb.andWhere('template.name ILIKE :name', { name: `%${value}%` });
+        } else if (key === 'status') {
+          qb.andWhere('template.status = :status', { status: value });
+        }
+      }
+
+      const data = await qb.orderBy('template.id', 'DESC').take(take).getMany();
+      return { success: true, count: data.length, data };
+    } catch (error) {
+      console.error('Template search failed:', error);
+      throw new InternalServerErrorException('Failed to search templates');
+    }
+  }
+
 }

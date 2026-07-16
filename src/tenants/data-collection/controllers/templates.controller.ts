@@ -35,6 +35,15 @@ export class TemplatesController {
     return this.templatesService.findAll(req, query);
   }
 
+  @Get('search')
+  @TenantAccess('view-dc-template')
+  @TenantDataCollectionTemplatesSwagger.Search()
+  search(@Req() req: any, @Query() query: Record<string, any>) {
+    const limit = query?.limit !== undefined ? Number(query.limit) : undefined;
+    const { limit: _limit, ...filters } = query || {};
+    return this.templatesService.search(req, Number.isFinite(limit) ? limit : undefined, filters);
+  }
+
   @Get(':id')
   @TenantAccess('view-dc-template')
   @TenantDataCollectionTemplatesSwagger.FindOne()
