@@ -23,8 +23,8 @@ export class TemplatesService {
       const template = templateRepo.create({
         name: dto.name,
         schema: dto.schema ?? null,
-        status: TemplateStatus.DRAFT,
-        isActive: true,
+        status: TemplateStatus.ACTIVE,
+        isActive: true, // false for A draft shouldn't appear in task generation. Only ACTIVE templates should.
         createdBy: actorId,
         updatedBy: actorId,
       });
