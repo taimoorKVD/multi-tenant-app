@@ -1,6 +1,7 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateTemplateDto, UpdateTemplateDto } from '../dto';
+import { TemplateStatus } from '../entities/enums';
 
 export const TenantDataCollectionTemplatesSwagger = {
   Tags: () => ApiTags('Data Collection - Templates'),
@@ -17,7 +18,6 @@ export const TenantDataCollectionTemplatesSwagger = {
             value: {
               name: 'Manager Report',
               schema: {
-                formName: 'Manager Report',
                 assign: { users: [1], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
                 frequency: {
@@ -72,11 +72,9 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List data collection templates', description: 'Returns paginated templates with optional filters.' }),
+      ApiOperation({ summary: 'List data collection templates', description: 'Returns paginated templates.' }),
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
-      ApiQuery({ name: 'status', required: false, type: String, example: 'active', description: 'Filter by template status (draft, active, archived).' }),
-      ApiQuery({ name: 'search', required: false, type: String, example: 'inspection', description: 'Search by name or description.' }),
       ApiResponse({ status: 200, description: 'Templates fetched successfully.' }),
     ),
 
@@ -96,7 +94,6 @@ export const TenantDataCollectionTemplatesSwagger = {
               status: 'active',
               isActive: true,
               schema: {
-                formName: 'Manager Report',
                 assign: { users: [1], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
                 frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
@@ -126,7 +123,6 @@ export const TenantDataCollectionTemplatesSwagger = {
             value: {
               name: 'Updated Manager Report',
               schema: {
-                formName: 'Updated Manager Report',
                 assign: { users: [1, 5], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
                 frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
@@ -163,5 +159,34 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template archived successfully.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  Search: () =>
+    applyDecorators(
+      ApiOperation({ summary: 'Search templates', description: 'Filters templates by name and/or status.' }),
+      ApiQuery({ name: 'name', required: false, type: String, example: 'manager', description: 'Filter by template name.' }),
+      ApiQuery({ name: 'status', required: false, enum: TemplateStatus, description: 'Filter by template status.' }),
+      ApiQuery({ name: 'limit', required: false, type: Number, example: 15, description: 'Maximum records to return (1-50). Default is 15.' }),
+      ApiResponse({
+        status: 200,
+        description: 'Matching templates fetched successfully.',
+        schema: {
+          example: {
+            success: true,
+            count: 1,
+            data: [
+              {
+                id: 1,
+                name: 'Manager Report',
+                status: 'active',
+                isActive: true,
+                schema: { assign: { users: [1], jobPosition: [2] }, sections: [] },
+                createdBy: 1,
+                createdAt: '2026-07-15T10:00:00.000Z',
+              },
+            ],
+          },
+        },
+      } as any),
     ),
 };

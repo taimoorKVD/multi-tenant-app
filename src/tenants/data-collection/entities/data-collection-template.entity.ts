@@ -4,10 +4,12 @@ import {
   DeleteDateColumn,
   Entity,
   Index,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { TemplateStatus } from './enums';
+import { TemplateVersion } from './template-version.entity';
 
 @Entity('dc_templates')
 @Index('idx_dc_templates_status_active', ['status', 'isActive'])
@@ -26,6 +28,9 @@ export class DataCollectionTemplate {
 
   @Column({ type: 'boolean', name: 'is_active', default: true })
   isActive!: boolean;
+
+  @OneToMany(() => TemplateVersion, (version) => version.template)
+  versions!: TemplateVersion[];
 
   @Column({ type: 'int', name: 'created_by', nullable: true })
   createdBy!: number | null;
