@@ -589,6 +589,12 @@ export class TenantsService {
       'delete-form',
       'publish-form',
       'submit-form',
+      'create-dc-template',
+      'view-dc-template',
+      'edit-dc-template',
+      'delete-dc-template',
+      'activate-dc-template',
+      'archive-dc-template',
     ];
 
     const permissions = await Promise.all(
