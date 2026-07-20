@@ -24,6 +24,7 @@ import {
 } from '../tenants/form-builder/entities';
 import {
   DataCollectionTemplate,
+  TemplateVersion,
 } from '../tenants/data-collection/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
@@ -94,6 +95,7 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       FormAuditLog,
       EntityDynamicData,
       DataCollectionTemplate,
+      TemplateVersion,
     ],
     synchronize: true,
     logging,

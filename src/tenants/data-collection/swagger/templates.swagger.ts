@@ -1,6 +1,7 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateTemplateDto, UpdateTemplateDto } from '../dto';
+import { TemplateStatus } from '../entities/enums';
 
 export const TenantDataCollectionTemplatesSwagger = {
   Tags: () => ApiTags('Data Collection - Templates'),
@@ -71,11 +72,9 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List data collection templates', description: 'Returns paginated templates with optional filters.' }),
+      ApiOperation({ summary: 'List data collection templates', description: 'Returns paginated templates.' }),
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
-      ApiQuery({ name: 'status', required: false, type: String, example: 'active', description: 'Filter by template status (draft, active, archived).' }),
-      ApiQuery({ name: 'search', required: false, type: String, example: 'inspection', description: 'Search by name or description.' }),
       ApiResponse({ status: 200, description: 'Templates fetched successfully.' }),
     ),
 
@@ -166,7 +165,7 @@ export const TenantDataCollectionTemplatesSwagger = {
     applyDecorators(
       ApiOperation({ summary: 'Search templates', description: 'Filters templates by name and/or status.' }),
       ApiQuery({ name: 'name', required: false, type: String, example: 'manager', description: 'Filter by template name.' }),
-      ApiQuery({ name: 'status', required: false, type: String, example: 'active', description: 'Filter by status (draft, active, archived).' }),
+      ApiQuery({ name: 'status', required: false, enum: TemplateStatus, description: 'Filter by template status.' }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15, description: 'Maximum records to return (1-50). Default is 15.' }),
       ApiResponse({
         status: 200,

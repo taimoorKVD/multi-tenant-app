@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
-import { TemplatesController } from './controllers';
-import { TemplatesService } from './services';
+import { TemplatesController, TemplateVersionsController } from './controllers';
+import { TemplatesService, TemplateVersionsService } from './services';
 import { DataCollectionPermissionsGuard } from './guards';
 
 @Module({
-  controllers: [TemplatesController],
-  providers: [TemplatesService, DataCollectionPermissionsGuard],
-  exports: [TemplatesService],
+  controllers: [TemplatesController, TemplateVersionsController],
+  providers: [TemplatesService, TemplateVersionsService, DataCollectionPermissionsGuard],
+  exports: [TemplatesService, TemplateVersionsService],
 })
 export class DataCollectionModule {}
