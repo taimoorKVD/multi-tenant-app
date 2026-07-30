@@ -10,39 +10,42 @@ export class QueueService implements OnModuleDestroy {
   private readonly queue: Queue | null;
 
   constructor() {
-    const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
-    if (isDevelopment) {
-      this.redisConnection = null;
-      this.queue = null;
-      return;
-    }
+    this.redisConnection = null;
+    this.queue = null;
+    return;
+    // const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
+    // if (isDevelopment) {
+    //   this.redisConnection = null;
+    //   this.queue = null;
+    //   return;
+    // }
 
-    const host = process.env.REDIS_HOST || '127.0.0.1';
-    const port = Number(process.env.REDIS_PORT || 6379);
-    const password = process.env.REDIS_PASSWORD || undefined;
-    const url = process.env.REDIS_URL;
+    // const host = process.env.REDIS_HOST || '127.0.0.1';
+    // const port = Number(process.env.REDIS_PORT || 6379);
+    // const password = process.env.REDIS_PASSWORD || undefined;
+    // const url = process.env.REDIS_URL;
 
-    this.redisConnection = url
-      ? new IORedis(url, { maxRetriesPerRequest: null })
-      : new IORedis({
-          host,
-          port,
-          password,
-          maxRetriesPerRequest: null,
-        });
+    // this.redisConnection = url
+    //   ? new IORedis(url, { maxRetriesPerRequest: null })
+    //   : new IORedis({
+    //       host,
+    //       port,
+    //       password,
+    //       maxRetriesPerRequest: null,
+    //     });
 
-    this.queue = new Queue(EMAIL_QUEUE_NAME, {
-      connection: this.redisConnection,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
-        removeOnComplete: 100,
-        removeOnFail: 100,
-      },
-    });
+    // this.queue = new Queue(EMAIL_QUEUE_NAME, {
+    //   connection: this.redisConnection,
+    //   defaultJobOptions: {
+    //     attempts: 3,
+    //     backoff: {
+    //       type: 'exponential',
+    //       delay: 5000,
+    //     },
+    //     removeOnComplete: 100,
+    //     removeOnFail: 100,
+    //   },
+    // });
   }
 
   getConnection(): IORedis {
