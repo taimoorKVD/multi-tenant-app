@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, OnModuleDestroy } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { EMAIL_JOB_NAME, EMAIL_QUEUE_NAME } from '../mail/constants/mail.constants';
@@ -6,64 +6,62 @@ import { EmailJobPayload } from '../mail/interfaces/mail-job.interface';
 
 @Injectable()
 export class QueueService implements OnModuleDestroy {
-  private readonly logger = new Logger(QueueService.name);
   private readonly redisConnection: IORedis | null;
   private readonly queue: Queue | null;
 
   constructor() {
-    const redisHost = process.env.REDIS_HOST?.trim();
-    const redisPort = Number(process.env.REDIS_PORT?.trim() || 6379);
-    const redisPassword = process.env.REDIS_PASSWORD?.trim() || undefined;
-    const redisUrl = process.env.REDIS_URL?.trim();
+    this.redisConnection = null;
+    this.queue = null;
+    return;
+    // const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
+    // if (isDevelopment) {
+    //   this.redisConnection = null;
+    //   this.queue = null;
+    //   return;
+    // }
 
-    if (!redisUrl && !redisHost) {
-      this.redisConnection = null;
-      this.queue = null;
-      this.logger.log('Redis not configured; queue features disabled');
-      return;
-    }
+    // const host = process.env.REDIS_HOST || '127.0.0.1';
+    // const port = Number(process.env.REDIS_PORT || 6379);
+    // const password = process.env.REDIS_PASSWORD || undefined;
+    // const url = process.env.REDIS_URL;
 
-    try {
-      this.redisConnection = redisUrl
-        ? new IORedis(redisUrl, { maxRetriesPerRequest: null, lazyConnect: true })
-        : new IORedis({
-            host: redisHost,
-            port: redisPort,
-            password: redisPassword,
-            maxRetriesPerRequest: null,
-            lazyConnect: true,
-          });
+    // this.redisConnection = url
+    //   ? new IORedis(url, { maxRetriesPerRequest: null })
+    //   : new IORedis({
+    //       host,
+    //       port,
+    //       password,
+    //       maxRetriesPerRequest: null,
+    //     });
 
-      this.queue = new Queue(EMAIL_QUEUE_NAME, {
-        connection: this.redisConnection,
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 5000,
-          },
-          removeOnComplete: 100,
-          removeOnFail: 100,
-        },
-      });
-    } catch (error) {
-      this.logger.error('Failed to initialize Redis/Queue', error);
-      this.redisConnection = null;
-      this.queue = null;
-    }
+    // this.queue = new Queue(EMAIL_QUEUE_NAME, {
+    //   connection: this.redisConnection,
+    //   defaultJobOptions: {
+    //     attempts: 3,
+    //     backoff: {
+    //       type: 'exponential',
+    //       delay: 5000,
+    //     },
+    //     removeOnComplete: 100,
+    //     removeOnFail: 100,
+    //   },
+    // });
   }
 
-  getConnection(): IORedis | null {
+  getConnection(): IORedis {
+    if (!this.redisConnection) {
+      throw new InternalServerErrorException('Redis connection is not available.');
+    }
+
     return this.redisConnection;
   }
 
-  async enqueueEmail(payload: EmailJobPayload): Promise<void> {
+  async enqueueEmail(payload: EmailJobPayload) {
     if (!this.queue) {
-      this.logger.warn('Email not queued: queue is disabled');
-      return;
+      throw new InternalServerErrorException('Email queue is not initialized.');
     }
 
-    await this.queue.add(EMAIL_JOB_NAME, payload, {
+    return this.queue.add(EMAIL_JOB_NAME, payload, {
       jobId: payload.idempotencyKey,
       priority: 1,
     });
