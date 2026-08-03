@@ -2,13 +2,13 @@ import 'dotenv/config';
 
 import {SeederRunner} from '../helpers/seeder-runner';
 import {
-  CitySeeder,
-  CountrySeeder,
+  // CitySeeder,
+  // CountrySeeder,
   JobPositionSeeder,
   LocationSeeder,
   PermissionSeeder,
   RoleSeeder,
-  StateSeeder,
+  // StateSeeder,
   UserSeeder,
   GlobalMailSettingSeeder,
   UserEmailTemplateSeeder,
@@ -24,9 +24,10 @@ import {
     new UserSeeder(),
     new JobPositionSeeder(),
     new LocationSeeder(),
-    new CountrySeeder(),
-    new StateSeeder(),
-    new CitySeeder(),
+    // Geo seeders disabled — data loaded from JSON. Uncomment to revert.
+    // new CountrySeeder(),
+    // new StateSeeder(),
+    // new CitySeeder(),
     new GlobalMailSettingSeeder(),
     new UserEmailTemplateSeeder(),
     new FormBuilderModulesSeeder(),

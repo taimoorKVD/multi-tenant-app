@@ -12,6 +12,7 @@ import {JwtService} from "@nestjs/jwt";
 import {CountriesModule} from './countries/countries.module';
 import {CitiesModule} from './cities/cities.module';
 import {StatesModule} from './states/states.module';
+import {GeoDataModule} from './data';
 import {MailAdminModule} from './mail/mail-admin.module';
 import { ActivityLogsModule } from './activity-logs';
 import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
@@ -20,6 +21,7 @@ import { SystemModule } from './system/system.module';
 @Module({
   imports: [
     MasterDatabaseModule,
+    GeoDataModule,
     MasterAuthModule,
     PermissionModule,
     RoleModule,
