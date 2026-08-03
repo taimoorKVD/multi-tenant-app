@@ -1,48 +1,45 @@
 import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
-import {GeoDataService} from '../data';
+import {InjectRepository} from '@nestjs/typeorm';
+import {ILike, Repository} from 'typeorm';
+import {State} from './entities';
 import {CreateStateDto, UpdateStateDto} from './dto';
+import {Country} from '../countries/entities';
 
 @Injectable()
 export class StatesService {
-  constructor(private readonly geoData: GeoDataService) {}
+  constructor(
+    @InjectRepository(State)
+    private readonly stateRepo: Repository<State>,
+    @InjectRepository(Country)
+    private readonly countryRepo: Repository<Country>,
+  ) {}
 
-  private ensureCountryExists(countryId: number) {
-    if (!this.geoData.getCountryById(countryId)) {
+  private async ensureCountryExists(countryId: number) {
+    const country = await this.countryRepo.findOne({where: {id: countryId}});
+    if (!country) {
       throw new NotFoundException('Country not found.');
     }
   }
 
-  private matchesIgnoreCase(value: string, query: string) {
-    return value.toLowerCase().includes(query.toLowerCase());
-  }
-
   async create(dto: CreateStateDto) {
-    this.ensureCountryExists(dto.country_id);
+    await this.ensureCountryExists(dto.country_id);
 
     const name = dto.name.trim();
-    const states = [...this.geoData.getStates()];
+    const duplicate = await this.stateRepo.findOne({
+      where: {
+        name: ILike(name),
+        countryId: dto.country_id,
+      },
+    });
 
-    if (
-      states.some(
-        (item) => item.countryId === dto.country_id && item.name.toLowerCase() === name.toLowerCase(),
-      )
-    ) {
+    if (duplicate) {
       throw new BadRequestException('State with this name already exists in the selected country.');
     }
 
-    const saved = {
-      id: this.geoData.nextId(states),
-      name,
-      countryId: dto.country_id,
-    };
-    states.push(saved);
-    this.geoData.saveStates(states);
+    const record = this.stateRepo.create({name, countryId: dto.country_id});
+    const saved = await this.stateRepo.save(record);
 
-    return {
-      success: true,
-      message: 'State created successfully',
-      data: this.geoData.withCountry(saved),
-    };
+    return {success: true, message: 'State created successfully', data: saved};
   }
 
   async findAll(page = 1, limit?: number, countryId?: number) {
@@ -55,16 +52,14 @@ export class StatesService {
           : Math.min(Math.max(parsedLimit, 1), 100);
     const currentPage = Math.max(Number(page) || 1, 1);
 
-    const filtered = this.geoData
-      .getStates()
-      .filter((item) => (countryId ? item.countryId === countryId : true))
-      .sort((a, b) => b.id - a.id);
+    const where = countryId ? ({countryId} as any) : undefined;
 
-    const total = filtered.length;
-    const pageItems = take
-      ? filtered.slice((currentPage - 1) * take, (currentPage - 1) * take + take)
-      : filtered;
-    const data = pageItems.map((item) => this.geoData.withCountry(item));
+    const [data, total] = await this.stateRepo.findAndCount({
+      where,
+      order: {id: 'DESC'},
+      ...(take ? {take, skip: (currentPage - 1) * take} : {}),
+      relations: ['country'],
+    });
 
     return {
       success: true,
@@ -93,49 +88,46 @@ export class StatesService {
       return {success: true, count: 0, data: []};
     }
 
-    const data = this.geoData
-      .getStates()
-      .filter((item) => {
-        if (name && !this.matchesIgnoreCase(item.name, name)) return false;
-        if (countryId && item.countryId !== countryId) return false;
-        return true;
-      })
-      .sort((a, b) => b.id - a.id)
-      .slice(0, take)
-      .map((item) => this.geoData.withCountry(item));
+    const qb = this.stateRepo
+      .createQueryBuilder('state')
+      .leftJoinAndSelect('state.country', 'country')
+      .orderBy('state.id', 'DESC')
+      .take(take);
 
+    if (name) {
+      qb.andWhere('state.name ILIKE :name', {name: `%${name}%`});
+    }
+
+    if (countryId) {
+      qb.andWhere('state.countryId = :countryId', {countryId});
+    }
+
+    const data = await qb.getMany();
     return {success: true, count: data.length, data};
   }
 
   async findOne(id: number) {
-    const record = this.geoData.getStateById(id);
+    const record = await this.stateRepo.findOne({where: {id}, relations: ['country']});
     if (!record) throw new NotFoundException('State not found.');
 
-    return {success: true, data: this.geoData.withCountry(record)};
+    return {success: true, data: record};
   }
 
   async update(id: number, dto: UpdateStateDto) {
-    const states = [...this.geoData.getStates()];
-    const index = states.findIndex((item) => item.id === id);
-    if (index < 0) throw new NotFoundException('State not found.');
+    const record = await this.stateRepo.findOne({where: {id}});
+    if (!record) throw new NotFoundException('State not found.');
 
-    const record = {...states[index]};
     const countryId = dto.country_id ?? record.countryId;
-
     if (dto.country_id !== undefined) {
-      this.ensureCountryExists(dto.country_id);
+      await this.ensureCountryExists(dto.country_id);
     }
 
     if (dto.name !== undefined || dto.country_id !== undefined) {
       const name = (dto.name ?? record.name).trim();
-      if (
-        states.some(
-          (item) =>
-            item.id !== id &&
-            item.countryId === countryId &&
-            item.name.toLowerCase() === name.toLowerCase(),
-        )
-      ) {
+      const duplicate = await this.stateRepo.findOne({
+        where: {name: ILike(name), countryId},
+      });
+      if (duplicate && duplicate.id !== id) {
         throw new BadRequestException('State with this name already exists in the selected country.');
       }
       record.name = name;
@@ -145,27 +137,15 @@ export class StatesService {
       record.countryId = dto.country_id;
     }
 
-    states[index] = record;
-    this.geoData.saveStates(states);
-
-    return {
-      success: true,
-      message: 'State updated successfully',
-      data: this.geoData.withCountry(record),
-    };
+    const saved = await this.stateRepo.save(record);
+    return {success: true, message: 'State updated successfully', data: saved};
   }
 
   async remove(id: number) {
-    const states = this.geoData.getStates();
-    if (!states.some((item) => item.id === id)) {
-      throw new NotFoundException('State not found.');
-    }
+    const record = await this.stateRepo.findOne({where: {id}});
+    if (!record) throw new NotFoundException('State not found.');
 
-    if (this.geoData.getCities().some((item) => item.stateId === id)) {
-      throw new BadRequestException('Cannot delete state that has cities.');
-    }
-
-    this.geoData.saveStates(states.filter((item) => item.id !== id));
+    await this.stateRepo.delete(id);
     return {success: true, message: 'State deleted successfully'};
   }
 }

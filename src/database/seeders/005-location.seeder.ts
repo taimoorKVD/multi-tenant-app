@@ -1,36 +1,13 @@
-import {existsSync, readFileSync} from 'fs';
-import {join} from 'path';
 import {ISeeder} from '../interfaces/seeder.interface';
 import {MasterDataSource, getTenantDataSource} from '../datasource';
 import {Tenant} from '../../master/tenants/entities';
+import {Country} from '../../master/countries/entities';
+import {State} from '../../master/states/entities';
+import {City} from '../../master/cities/entities';
 import {Location} from '../../tenants/locations/entities';
-
-type CountryRecord = {id: number; name: string; code: string | null};
-type StateRecord = {id: number; name: string; countryId: number};
-type CityRecord = {id: number; name: string; stateId: number; countryId: number};
 
 export class LocationSeeder implements ISeeder {
   name = 'LocationSeeder';
-
-  private resolveGeoPath(fileName: string) {
-    const candidates = [
-      join(process.cwd(), 'src', 'master', 'data', fileName),
-      join(process.cwd(), 'dist', 'src', 'master', 'data', fileName),
-      join(__dirname, '..', '..', 'master', 'data', fileName),
-    ];
-
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-
-    throw new Error(`Geo data file not found: ${fileName}`);
-  }
-
-  private readJson<T>(fileName: string): T[] {
-    return JSON.parse(readFileSync(this.resolveGeoPath(fileName), 'utf8')) as T[];
-  }
 
   async run() {
     const tenantRepo = MasterDataSource.getRepository(Tenant);
@@ -41,23 +18,23 @@ export class LocationSeeder implements ISeeder {
       return;
     }
 
-    const countries = this.readJson<CountryRecord>('countries.json');
-    const states = this.readJson<StateRecord>('states.json');
-    const cities = this.readJson<CityRecord>('cities.json');
+    const countryRepo = MasterDataSource.getRepository(Country);
+    const stateRepo = MasterDataSource.getRepository(State);
+    const cityRepo = MasterDataSource.getRepository(City);
 
-    const usCountry = countries.find((country) => country.code === 'US');
+    const usCountry = await countryRepo.findOne({where: {code: 'US'}});
     const nyState = usCountry
-      ? states.find((state) => state.countryId === usCountry.id && state.name === 'New York')
-      : undefined;
+      ? await stateRepo.findOne({where: {countryId: usCountry.id, name: 'New York'}})
+      : null;
     const njState = usCountry
-      ? states.find((state) => state.countryId === usCountry.id && state.name === 'New Jersey')
-      : undefined;
+      ? await stateRepo.findOne({where: {countryId: usCountry.id, name: 'New Jersey'}})
+      : null;
     const nycCity = nyState
-      ? cities.find((city) => city.stateId === nyState.id && city.name === 'New York City')
-      : undefined;
+      ? await cityRepo.findOne({where: {stateId: nyState.id, name: 'New York City'}})
+      : null;
     const jerseyCity = njState
-      ? cities.find((city) => city.stateId === njState.id && city.name === 'Jersey City')
-      : undefined;
+      ? await cityRepo.findOne({where: {stateId: njState.id, name: 'Jersey City'}})
+      : null;
 
     const defaultLocations: Partial<Location>[] = [
       {
