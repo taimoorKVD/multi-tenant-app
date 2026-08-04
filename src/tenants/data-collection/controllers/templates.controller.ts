@@ -66,6 +66,13 @@ export class TemplatesController {
     return this.templatesService.remove(req, id);
   }
 
+  @Post(':id/publish')
+  @TenantAccess('activate-dc-template')
+  @TenantDataCollectionTemplatesSwagger.Publish()
+  publish(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.templatesService.publish(req, id);
+  }
+
   @Post(':id/activate')
   @TenantAccess('activate-dc-template')
   @TenantDataCollectionTemplatesSwagger.Activate()

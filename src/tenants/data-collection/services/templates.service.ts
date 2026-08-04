@@ -1,11 +1,16 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
 import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
+import { AssignmentsService } from './assignments.service';
 
 @Injectable()
 export class TemplatesService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly assignmentsService: AssignmentsService) {}
 
   private getActorId(req: any, fallback?: number | null): number | null {
     const candidate = fallback ?? req.user?.id ?? req.user?.sub ?? req.user?.userId ?? null;
@@ -14,39 +19,107 @@ export class TemplatesService {
     return Number.isFinite(actorId) ? actorId : null;
   }
 
+  private async createVersion(
+    versionRepo: any,
+    templateId: number,
+    schema: Record<string, any>,
+    actorId: number | null,
+    isActive: boolean,
+  ) {
+    const latestVersion = await versionRepo.findOne({
+      where: { templateId },
+      order: { versionNumber: 'DESC' },
+    });
+    const nextVersionNumber = latestVersion ? latestVersion.versionNumber + 1 : 1;
+
+    if (isActive && latestVersion?.isActive) {
+      latestVersion.isActive = false;
+      latestVersion.updatedBy = actorId;
+      await versionRepo.save(latestVersion);
+    }
+
+    const version = versionRepo.create({
+      templateId,
+      versionNumber: nextVersionNumber,
+      schemaSnapshot: schema,
+      isActive,
+      createdBy: actorId,
+      updatedBy: actorId,
+    });
+    return versionRepo.save(version);
+  }
+
+  private async publishInternal(
+    req: any,
+    template: DataCollectionTemplate,
+    actorId: number | null,
+  ) {
+    if (!template.schema) {
+      throw new BadRequestException('Cannot publish a template without a schema');
+    }
+
+    const schema = template.schema as Record<string, any>;
+    if (!schema.assign || (!(schema.assign.users?.length) && !(schema.assign.jobPosition?.length))) {
+      throw new BadRequestException(
+        'Assign step requires at least one user or job position before publishing',
+      );
+    }
+    if (!schema.frequency?.startDate) {
+      throw new BadRequestException('Frequency step requires a startDate before publishing');
+    }
+
+    const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+
+    const version = await this.createVersion(versionRepo, template.id, schema, actorId, true);
+
+    template.status = TemplateStatus.ACTIVE;
+    template.isActive = true;
+    template.updatedBy = actorId;
+    const saved = await templateRepo.save(template);
+
+    await this.assignmentsService.cancelFutureForTemplate(req, template.id, version.id);
+    const assignments = await this.assignmentsService.materializeFromTemplate(
+      req,
+      saved,
+      version,
+      actorId,
+    );
+
+    return { template: saved, version, assignments };
+  }
+
   async create(req: any, dto: CreateTemplateDto) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
-      const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
-
       const actorId = this.getActorId(req, dto.createdBy);
+      const shouldPublish = dto.publish === true;
 
       const template = templateRepo.create({
         name: dto.name,
-        schema: dto.schema ?? null,
-        status: TemplateStatus.ACTIVE,
+        schema: (dto.schema as Record<string, any>) ?? null,
+        status: TemplateStatus.DRAFT,
         isActive: true,
         createdBy: actorId,
         updatedBy: actorId,
       });
 
-      const saved = await templateRepo.save(template);
+      let saved = await templateRepo.save(template);
 
-      if (dto.schema) {
-        const version = versionRepo.create({
-          templateId: saved.id,
-          versionNumber: 1,
-          schemaSnapshot: dto.schema,
-          isActive: true,
-          createdBy: actorId,
-          updatedBy: actorId,
-        });
-        await versionRepo.save(version);
+      if (shouldPublish) {
+        const published = await this.publishInternal(req, saved, actorId);
+        return {
+          success: true,
+          message: 'Template created and published successfully',
+          data: published.template,
+          version: published.version,
+          assignmentsCreated: published.assignments.length,
+        };
       }
 
-      return { success: true, message: 'Template created successfully', data: saved };
+      return { success: true, message: 'Template draft created successfully', data: saved };
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       console.error('Template creation failed:', error);
       throw new InternalServerErrorException('Failed to create template');
     }
@@ -89,45 +162,68 @@ export class TemplatesService {
   async update(req: any, id: number, dto: UpdateTemplateDto) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
-      const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
+      if (template.status === TemplateStatus.ARCHIVED && dto.publish) {
+        throw new BadRequestException('Archived templates cannot be published; restore or create a new draft');
+      }
+
       const actorId = this.getActorId(req, dto.updatedBy);
       if (dto.name !== undefined) template.name = dto.name;
-      if (dto.schema !== undefined) template.schema = dto.schema;
+      if (dto.schema !== undefined) template.schema = dto.schema as Record<string, any>;
       if (dto.isActive !== undefined) template.isActive = dto.isActive;
       template.updatedBy = actorId;
 
-      const saved = await templateRepo.save(template);
+      // Editing an active template moves it back to draft until re-published (unless publish flag set).
+      if (dto.schema !== undefined && template.status === TemplateStatus.ACTIVE && dto.publish !== true) {
+        template.status = TemplateStatus.DRAFT;
+      }
 
-      if (dto.schema) {
-        const latestVersion = await versionRepo.findOne({
-          where: { templateId: id },
-          order: { versionNumber: 'DESC' },
-        });
-        const nextVersionNumber = latestVersion ? latestVersion.versionNumber + 1 : 1;
+      let saved = await templateRepo.save(template);
 
-        if (latestVersion) {
-          latestVersion.isActive = false;
-          await versionRepo.save(latestVersion);
-        }
-
-        const version = versionRepo.create({
-          templateId: id,
-          versionNumber: nextVersionNumber,
-          schemaSnapshot: dto.schema,
-          isActive: true,
-          createdBy: actorId,
-          updatedBy: actorId,
-        });
-        await versionRepo.save(version);
+      if (dto.publish === true) {
+        const published = await this.publishInternal(req, saved, actorId);
+        return {
+          success: true,
+          message: 'Template updated and published successfully',
+          data: published.template,
+          version: published.version,
+          assignmentsCreated: published.assignments.length,
+        };
       }
 
       return { success: true, message: 'Template updated successfully', data: saved };
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to update template');
+    }
+  }
+
+  async publish(req: any, id: number) {
+    try {
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const template = await templateRepo.findOne({ where: { id } });
+      if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
+
+      if (template.status === TemplateStatus.ARCHIVED) {
+        throw new BadRequestException('Cannot publish an archived template');
+      }
+
+      const actorId = this.getActorId(req);
+      const published = await this.publishInternal(req, template, actorId);
+
+      return {
+        success: true,
+        message: 'Template published successfully',
+        data: published.template,
+        version: published.version,
+        assignmentsCreated: published.assignments.length,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      console.error('Template publish failed:', error);
+      throw new InternalServerErrorException('Failed to publish template');
     }
   }
 
@@ -150,6 +246,15 @@ export class TemplatesService {
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
+      // Prefer publish for full materialization; activate only re-enables an existing published template.
+      const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
+      const activeVersion = await versionRepo.findOne({
+        where: { templateId: id, isActive: true },
+      });
+      if (!activeVersion) {
+        throw new BadRequestException('No published version found. Use publish instead of activate.');
+      }
+
       template.status = TemplateStatus.ACTIVE;
       template.isActive = true;
       template.updatedBy = this.getActorId(req);
@@ -157,7 +262,7 @@ export class TemplatesService {
       const saved = await templateRepo.save(template);
       return { success: true, message: 'Template activated successfully', data: saved };
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to activate template');
     }
   }
@@ -172,6 +277,8 @@ export class TemplatesService {
       template.updatedBy = this.getActorId(req);
 
       const saved = await templateRepo.save(template);
+      await this.assignmentsService.cancelFutureForTemplate(req, id);
+
       return { success: true, message: 'Template archived successfully', data: saved };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -216,5 +323,4 @@ export class TemplatesService {
       throw new InternalServerErrorException('Failed to search templates');
     }
   }
-
 }

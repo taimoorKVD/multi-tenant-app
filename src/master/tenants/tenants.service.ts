@@ -595,6 +595,10 @@ export class TenantsService {
       'delete-dc-template',
       'activate-dc-template',
       'archive-dc-template',
+      'view-dc-assignment',
+      'complete-dc-assignment',
+      'view-dc-submission',
+      'review-dc-submission',
     ];
 
     const permissions = await Promise.all(
