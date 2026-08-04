@@ -25,6 +25,8 @@ import {
 import {
   DataCollectionTemplate,
   TemplateVersion,
+  DataCollectionAssignment,
+  DataCollectionSubmission,
 } from '../tenants/data-collection/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
@@ -96,6 +98,8 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       EntityDynamicData,
       DataCollectionTemplate,
       TemplateVersion,
+      DataCollectionAssignment,
+      DataCollectionSubmission,
     ],
     synchronize: true,
     logging,

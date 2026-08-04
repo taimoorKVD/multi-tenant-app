@@ -14,6 +14,10 @@ export class DataCollectionPermissionsSeeder implements ISeeder {
     'delete-dc-template',
     'activate-dc-template',
     'archive-dc-template',
+    'view-dc-assignment',
+    'complete-dc-assignment',
+    'view-dc-submission',
+    'review-dc-submission',
   ];
 
   async run() {

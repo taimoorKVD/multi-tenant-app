@@ -55,18 +55,49 @@ export const TenantDataCollectionTemplatesSwagger = {
                           { id: 'fld_003', label: 'Include Par', name: 'includePar', type: 'checkbox', width: '10%' },
                           { id: 'fld_004', label: 'Par', name: 'par', type: 'number', width: '20%' },
                           { id: 'fld_005', label: 'User Response', name: 'userResponse', type: 'select', required: true, width: '20%', options: [{ label: 'Current Quantity', value: 'current_quantity' }, { label: 'Current Value', value: 'current_value' }] },
-                          { id: 'fld_006', label: 'Action', name: 'action', type: 'select', required: true, width: '20%', options: [{ label: 'None', value: 'none' }, { label: 'Order', value: 'order' }, { label: 'Purchase Request', value: 'purchase_request' }, { label: 'Maintenance Request', value: 'maintenance_request' }] },
+                          { id: 'fld_006', label: 'Action', name: 'action', type: 'select', required: true, width: '20%', options: [{ label: 'None', value: 'none' }, { label: 'Order', value: 'order' }] },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    id: 'sec_003',
+                    type: 'checklist',
+                    title: 'Checklist Form',
+                    sortOrder: 3,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          { id: 'fld_007', label: 'Description', name: 'description', type: 'textarea', width: '50%' },
+                          { id: 'fld_008', label: 'Response', name: 'response', type: 'yesNo', required: true, width: '50%', options: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }] },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    id: 'sec_004',
+                    type: 'visual',
+                    title: 'Visual Form',
+                    sortOrder: 4,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          { id: 'fld_009', label: 'Images Upload', name: 'images', type: 'image', width: '40%' },
+                          { id: 'fld_010', label: 'Description', name: 'description', type: 'textarea', width: '60%' },
                         ],
                       },
                     ],
                   },
                 ],
               },
+              publish: false,
             },
           },
         },
       } as any),
-      ApiResponse({ status: 201, description: 'Template created successfully.' }),
+      ApiResponse({ status: 201, description: 'Template draft created successfully.' }),
       ApiResponse({ status: 400, description: 'Validation failed.' }),
     ),
 
@@ -145,9 +176,25 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
 
+  Publish: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Publish template',
+        description:
+          'Publishes the current schema as a new active version and materializes assignments from Assign & Report + Frequency.',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template published successfully.' }),
+      ApiResponse({ status: 400, description: 'Missing assign/frequency or invalid schema.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
   Activate: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Activate template', description: 'Sets the template status to ACTIVE and enables it.' }),
+      ApiOperation({
+        summary: 'Activate template',
+        description: 'Re-enables a previously published template. Use publish to create versions and assignments.',
+      }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template activated successfully.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
