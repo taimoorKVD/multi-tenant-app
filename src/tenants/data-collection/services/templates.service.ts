@@ -103,7 +103,6 @@ export class TemplatesService {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const actorId = this.getActorId(req, dto.createdBy);
-      const shouldPublish = dto.publish === true;
 
       const template = templateRepo.create({
         name: dto.name,
@@ -114,21 +113,18 @@ export class TemplatesService {
         updatedBy: actorId,
       });
 
-      let saved = await templateRepo.save(template);
+      const saved = await templateRepo.save(template);
 
-      if (shouldPublish) {
-        const published = await this.publishInternal(req, saved, actorId);
-        return {
-          success: true,
-          message: 'Template created and published successfully',
-          data: published.template,
-          version: published.version,
-          assignmentsCreated: published.assignments.length,
-          emailNotify: published.emailNotify,
-        };
-      }
-
-      return { success: true, message: 'Template draft created successfully', data: saved };
+      // Always publish on create (version + assignments + assignee emails).
+      const published = await this.publishInternal(req, saved, actorId);
+      return {
+        success: true,
+        message: 'Template created and published successfully',
+        data: published.template,
+        version: published.version,
+        assignmentsCreated: published.assignments.length,
+        emailNotify: published.emailNotify,
+      };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       console.error('Template creation failed:', error);

@@ -139,8 +139,10 @@ export class CreateTemplateDto {
   schema?: TemplateSchemaDto;
 
   @ApiPropertyOptional({
-    example: false,
-    description: 'When true, publish immediately (ACTIVE + version + assignments). Default: draft.',
+    example: true,
+    description:
+      'Ignored on create — templates are always published on create. Kept for API compatibility.',
+    deprecated: true,
   })
   @IsOptional()
   @IsBoolean()

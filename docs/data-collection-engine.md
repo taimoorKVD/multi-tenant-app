@@ -215,9 +215,9 @@ Typed DTOs live under `src/tenants/data-collection/dto/templates/schema/`.
 
 | Capability | Detail |
 |------------|--------|
-| Create draft | `POST .../templates` → status `draft` (matches incomplete wizard save) |
+| Create | `POST .../templates` **publishes by default** (pass `publish: false` for draft) |
 | Update draft | Schema updates in place while draft; no version until publish |
-| Publish | `POST .../templates/:id/publish` or `publish: true` on create/update |
+| Publish | `POST .../templates/:id/publish` or `publish: true` on update (create defaults to publish) |
 | On publish | Active version snapshot + assignment materialization from Assign + Frequency |
 | Activate | Re-enable a previously published template (requires an active version) |
 | Archive | Soft-close template; future pending assignments cancelled |
@@ -308,12 +308,10 @@ Editing an **active** template’s schema without `publish: true` moves it back 
 
 ## Recommended frontend save flow
 
-1. Step 1–3: create/update draft with partial or full `schema`
-2. Final **Save**: either
-   - `PUT /templates/:id` with `{ schema, publish: true }`, or
-   - `POST /templates/:id/publish`
+1. `POST /templates` with full wizard schema → **always published** (version + assignments + assignee emails)
+2. Updates can stay draft until `POST /templates/:id/publish` if needed
 3. Employees open **Today’s Work**; managers list **submissions**
-4. Report To users get email on submit; Assign users get due reminders from the cron
+4. Assign users get email on create/publish; Report To users get email on submit; due reminders run hourly
 
 ---
 
