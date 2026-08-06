@@ -1,148 +1,99 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform } from 'class-transformer';
-import {
-  Allow,
-  IsArray,
-  IsDateString,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-  ValidateIf,
-  ValidateNested,
-} from 'class-validator';
-import {
-  FrequencyType,
-  FrequencyUnit,
-  MonthlyRuleType,
-  WeekdayOrdinal,
-} from '../../../entities/enums';
-
-export class MonthlyRuleDto {
-  @ApiPropertyOptional({ enum: MonthlyRuleType, example: MonthlyRuleType.DAY_OF_MONTH })
-  @IsEnum(MonthlyRuleType)
-  type!: MonthlyRuleType;
-
-  @ApiPropertyOptional({
-    example: 1,
-    description: 'For dayOfMonth: 1-31, or -1 for last day of month.',
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(-1)
-  @Max(31)
-  day?: number;
-
-  @ApiPropertyOptional({ enum: WeekdayOrdinal, example: WeekdayOrdinal.FIRST })
-  @IsOptional()
-  @IsEnum(WeekdayOrdinal)
-  ordinal?: WeekdayOrdinal;
-
-  @ApiPropertyOptional({
-    example: 'monday',
-    description: 'Weekday (monday…sunday) or month name depending on UI mode.',
-  })
-  @IsOptional()
-  @IsString()
-  weekday?: string;
-
-  @ApiPropertyOptional({ example: 'january' })
-  @IsOptional()
-  @IsString()
-  month?: string;
-}
-
-/** Nested under `frequency.recurring` when type is `recurring`. */
-export class FrequencyRecurringDto {
-  @ApiPropertyOptional({ example: 1 })
-  @IsInt()
-  @Min(1)
-  interval!: number;
-
-  @ApiPropertyOptional({ enum: FrequencyUnit, example: FrequencyUnit.MONTH })
-  @IsEnum(FrequencyUnit)
-  unit!: FrequencyUnit;
-
-  @ApiPropertyOptional({ example: 12, description: 'Occurrence count (Repeat N times).' })
-  @IsInt()
-  @Min(1)
-  repeat!: number;
-
-  @ApiPropertyOptional({ type: MonthlyRuleDto, description: 'On day / On the rule for month/year.' })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => MonthlyRuleDto)
-  monthlyRule?: MonthlyRuleDto;
-}
+import { Transform } from 'class-transformer';
+import { Allow, IsOptional, IsString } from 'class-validator';
 
 /**
- * Frontend Frequency step payload:
+ * Frontend Frequency step payload (loose validation — stored as JSON, expanded by FrequencyService):
  * `{ type: "atOnce", date: "2026-08-21", jobPosition: null, recurring: null }`
- * or recurring with `recurring: { interval, unit, repeat, monthlyRule? }`.
+ * or `{ type: "recurring", date: "...", recurring: { ... } }`
  */
 export class FrequencyDto {
-  @ApiPropertyOptional({
-    enum: FrequencyType,
-    example: FrequencyType.AT_ONCE,
-    description: '`atOnce` (one-time) or `recurring`. Legacy `one_time` also accepted.',
-  })
-  @IsEnum(FrequencyType)
-  type!: FrequencyType;
+  @ApiPropertyOptional({ example: 'atOnce' })
+  @IsOptional()
+  @IsString()
+  type?: string;
 
-  @ApiPropertyOptional({
-    example: '2026-08-21',
-    description: 'Occurrence / start date from Frequency UI (`date`).',
-  })
-  @IsDateString()
-  date!: string;
+  @ApiPropertyOptional({ example: '2026-08-21' })
+  @IsOptional()
+  @Allow()
+  date?: string | null;
 
-  @ApiPropertyOptional({
-    example: null,
-    nullable: true,
-    description: 'Job position id(s) or null.',
-  })
+  @ApiPropertyOptional({ example: null, nullable: true })
   @IsOptional()
   @Allow()
   @Transform(({ value }) => {
     if (value === null || value === undefined || value === '') return null;
-    if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-    const n = Number(value);
-    return Number.isFinite(n) ? [n] : null;
+    if (Array.isArray(value)) return value;
+    return value;
   })
-  jobPosition?: number[] | number | null;
+  jobPosition?: unknown;
 
   @ApiPropertyOptional({
-    type: FrequencyRecurringDto,
     nullable: true,
-    description: 'Required when type is `recurring`; null for `atOnce`.',
+    description: 'Recurring config object from frontend, or null for atOnce.',
   })
   @IsOptional()
-  @ValidateIf((o: FrequencyDto) => o.type === FrequencyType.RECURRING && o.recurring != null)
-  @ValidateNested()
-  @Type(() => FrequencyRecurringDto)
-  recurring?: FrequencyRecurringDto | null;
+  @Allow()
+  recurring?: Record<string, any> | null;
 
-  /** @deprecated Prefer `date` — still accepted for older clients. */
-  @ApiPropertyOptional({ example: '2026-07-17', deprecated: true })
+  /** @deprecated Prefer `date` */
+  @ApiPropertyOptional({ deprecated: true })
   @IsOptional()
-  @IsDateString()
-  startDate?: string;
+  @Allow()
+  startDate?: string | null;
 
-  /** @deprecated Prefer `recurring` — still accepted for older clients. */
-  @ApiPropertyOptional({ type: FrequencyRecurringDto, deprecated: true })
+  /** @deprecated Prefer `recurring` */
+  @ApiPropertyOptional({ deprecated: true })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => FrequencyRecurringDto)
-  schedule?: FrequencyRecurringDto;
+  @Allow()
+  schedule?: Record<string, any> | null;
 
-  @ApiPropertyOptional({ example: null, nullable: true, deprecated: true })
+  @ApiPropertyOptional({ nullable: true, deprecated: true })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null && v !== undefined)
-  @IsDateString()
+  @Allow()
   endDate?: string | null;
 }
 
-/** @deprecated Alias kept for exports */
+/** Kept for exports / swagger compatibility — no strict validators. */
+export class MonthlyRuleDto {
+  @IsOptional()
+  @Allow()
+  type?: string;
+
+  @IsOptional()
+  @Allow()
+  day?: number;
+
+  @IsOptional()
+  @Allow()
+  ordinal?: string;
+
+  @IsOptional()
+  @Allow()
+  weekday?: string;
+
+  @IsOptional()
+  @Allow()
+  month?: string;
+}
+
+export class FrequencyRecurringDto {
+  @IsOptional()
+  @Allow()
+  interval?: number | string;
+
+  @IsOptional()
+  @Allow()
+  unit?: string;
+
+  @IsOptional()
+  @Allow()
+  repeat?: number | string;
+
+  @IsOptional()
+  @Allow()
+  monthlyRule?: MonthlyRuleDto | Record<string, any>;
+}
+
+/** @deprecated Alias */
 export class FrequencyScheduleDto extends FrequencyRecurringDto {}
