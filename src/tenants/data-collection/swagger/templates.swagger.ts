@@ -30,7 +30,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                   {
                     id: 'sec_001',
                     type: 'responseForm',
-                    title: 'Response Form',
+                    name: 'Response Form',
                     sortOrder: 1,
                     rows: [
                       {
@@ -44,7 +44,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                   {
                     id: 'sec_002',
                     type: 'dataEntry',
-                    title: 'Data Entry',
+                    name: 'Data Entry',
                     sortOrder: 2,
                     rows: [
                       {
@@ -62,7 +62,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                   {
                     id: 'sec_003',
                     type: 'checklist',
-                    title: 'Checklist Form',
+                    name: 'Checklist Form',
                     sortOrder: 3,
                     rows: [
                       {
@@ -77,7 +77,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                   {
                     id: 'sec_004',
                     type: 'visual',
-                    title: 'Visual Form',
+                    name: 'Visual Form',
                     sortOrder: 4,
                     rows: [
                       {
@@ -128,8 +128,8 @@ export const TenantDataCollectionTemplatesSwagger = {
                 report: { users: [3], jobPosition: [1] },
                 frequency: { type: 'atOnce', date: '2026-08-21', jobPosition: null, recurring: null },
                 sections: [
-                  { id: 'sec_001', type: 'responseForm', title: 'Response Form', sortOrder: 1, rows: [{ id: 'row_001', fields: [{ id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' }] }] },
-                  { id: 'sec_002', type: 'dataEntry', title: 'Data Entry', sortOrder: 2, rows: [{ id: 'row_001', fields: [{ id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%' }] }] },
+                  { id: 'sec_001', type: 'responseForm', name: 'Response Form', sortOrder: 1, rows: [{ id: 'row_001', fields: [{ id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' }] }] },
+                  { id: 'sec_002', type: 'dataEntry', name: 'Data Entry', sortOrder: 2, rows: [{ id: 'row_001', fields: [{ id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%' }] }] },
                 ],
               },
               createdBy: 1,

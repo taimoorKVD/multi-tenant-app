@@ -115,12 +115,21 @@ export class TemplateSectionDto {
 
   @ApiProperty({
     example: 'responseForm',
-    description: 'Section type string from frontend (e.g. responseForm, dataEntry, checklist, visual).',
+    description: 'Section type string from frontend (e.g. responseForm, dataEntry, checklist, visual, custom).',
   })
   @IsString()
   type!: string;
 
-  @ApiPropertyOptional({ example: 'Response Form' })
+  @ApiPropertyOptional({
+    example: 'Data Entry',
+    description: 'Section display name from frontend (`name`).',
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  /** @deprecated Prefer `name` — kept for older clients. */
+  @ApiPropertyOptional({ example: 'Response Form', deprecated: true })
   @IsOptional()
   @IsString()
   title?: string;
