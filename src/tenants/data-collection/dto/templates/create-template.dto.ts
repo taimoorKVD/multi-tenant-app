@@ -17,15 +17,10 @@ export class CreateTemplateDto {
       assign: { users: [1], jobPosition: [2] },
       report: { users: [3], jobPosition: [1] },
       frequency: {
-        type: 'recurring',
-        startDate: '2026-07-17',
-        endDate: null,
-        schedule: {
-          interval: 1,
-          unit: 'month',
-          repeat: 12,
-          monthlyRule: { type: 'dayOfMonth', day: 1 },
-        },
+        type: 'atOnce',
+        date: '2026-08-21',
+        jobPosition: null,
+        recurring: null,
       },
       sections: [
         {

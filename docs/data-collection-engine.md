@@ -44,14 +44,21 @@ Matches the Frequency card:
 
 | UI control | Schema field |
 |------------|--------------|
-| Frequency Type (`Recurring` / one-time) | `frequency.type` → `recurring` \| `one_time` |
-| Repeat every **N** | `frequency.schedule.interval` |
-| Unit (`Day` / `Week` / `Month` / `Year`) | `frequency.schedule.unit` |
-| Repeat **N** times | `frequency.schedule.repeat` |
-| **On day** (radio) + day number | `monthlyRule.type = dayOfMonth`, `day` |
-| Hint: Use `-1` for last day | `day: -1` |
-| **On the** (radio) + ordinal + weekday/month | `monthlyRule.type = nthWeekday`, `ordinal`, `weekday`, optional `month` |
-| Start / end of series | `frequency.startDate`, `frequency.endDate` |
+| Frequency Type (`atOnce` / `recurring`) | `frequency.type` |
+| Date | `frequency.date` (e.g. `"2026-08-21"`) |
+| Job position (optional) | `frequency.jobPosition` (`null` or id) |
+| Recurring config | `frequency.recurring` (`null` for atOnce; `{ interval, unit, repeat, monthlyRule? }` when recurring) |
+
+Example at-once payload from frontend:
+
+```json
+{
+  "jobPosition": null,
+  "date": "2026-08-21",
+  "type": "atOnce",
+  "recurring": null
+}
+```
 
 Wizard footer actions map to API behavior:
 
@@ -88,15 +95,10 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
   "assign": { "users": [1], "jobPosition": [2] },
   "report": { "users": [3], "jobPosition": [1] },
   "frequency": {
-    "type": "recurring",
-    "startDate": "2026-07-17",
-    "endDate": null,
-    "schedule": {
-      "interval": 1,
-      "unit": "month",
-      "repeat": 12,
-      "monthlyRule": { "type": "dayOfMonth", "day": 1 }
-    }
+    "type": "atOnce",
+    "date": "2026-08-21",
+    "jobPosition": null,
+    "recurring": null
   },
   "sections": [
     {
@@ -252,21 +254,19 @@ Table: `dc_submissions`.
 
 ### Emails (SMTP / MailService — same stack as password reset)
 
-| Event | Template `module` / `action` | Recipients (from UI) |
-|-------|------------------------------|----------------------|
-| Template published | `data-collection` / `assignment-assigned` | **Assign** users |
-| Submission completed | `data-collection` / `submission-notify` | **Report To** users / job positions |
-| Assignment due | `data-collection` / `assignment-due` | **Assign** users |
+| Event | Delivery | Recipients (from UI) |
+|-------|----------|----------------------|
+| Template published / created | Direct SMTP (`SMTP_*` / `EMAIL_FROM`) — same as Tenant Credentials | **Assign** users |
+| Submission completed | Same direct SMTP | **Report To** users / job positions |
+| Assignment due | Same direct SMTP (hourly cron) | **Assign** users |
 
-Publish response includes `emailNotify: { sent, failed, skipped }`.
+Publish/create response includes `emailNotify: { sent, failed, skipped }`.
 
-**Production:** if Redis is missing, emails send directly via SMTP. Seed master templates with `npm run seed:master` or emails fail with “template not found”.
+**Production:** uses env SMTP only (no DB mail-settings decrypt). Requires the same Vercel vars that make Tenant Credentials work: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
 
-- Hourly cron: `AssignmentReminderService` (marks overdue + sends due reminders)
+- Hourly cron: `AssignmentReminderService`
 - Manual run: `POST /api/data-collection/assignments/send-due-reminders`
 - Disable cron: `DC_ASSIGNMENT_REMINDERS_ENABLED=false`
-- Seed templates: `npm run seed:master` (seeder `014-data-collection-email-templates`)
-- Test helper: `npx ts-node -r tsconfig-paths/register scripts/test-dc-emails.ts`
 
 `create_task` post-submit action remains a stub until a Tasks module exists.
 

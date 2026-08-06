@@ -68,8 +68,8 @@ export class TemplatesService {
         'Assign step requires at least one user or job position before publishing',
       );
     }
-    if (!schema.frequency?.startDate) {
-      throw new BadRequestException('Frequency step requires a startDate before publishing');
+    if (!schema.frequency?.date && !schema.frequency?.startDate) {
+      throw new BadRequestException('Frequency step requires a date before publishing');
     }
 
     const versionRepo = req.tenantConnection.getRepository(TemplateVersion);

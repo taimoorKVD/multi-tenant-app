@@ -6,22 +6,31 @@ import {
   WeekdayOrdinal,
 } from '../entities/enums';
 
-export type FrequencyInput = {
-  type: FrequencyType | string;
-  startDate: string;
-  endDate?: string | null;
-  schedule?: {
-    interval: number;
-    unit: FrequencyUnit | string;
-    repeat: number;
-    monthlyRule?: {
-      type: MonthlyRuleType | string;
-      day?: number;
-      ordinal?: WeekdayOrdinal | string;
-      weekday?: string;
-      month?: string;
-    };
+export type FrequencyScheduleInput = {
+  interval: number;
+  unit: FrequencyUnit | string;
+  repeat: number;
+  monthlyRule?: {
+    type: MonthlyRuleType | string;
+    day?: number;
+    ordinal?: WeekdayOrdinal | string;
+    weekday?: string;
+    month?: string;
   };
+};
+
+export type FrequencyInput = {
+  type?: FrequencyType | string;
+  /** Frontend field */
+  date?: string;
+  /** Legacy field */
+  startDate?: string;
+  endDate?: string | null;
+  /** Frontend nested schedule */
+  recurring?: FrequencyScheduleInput | null;
+  /** Legacy nested schedule */
+  schedule?: FrequencyScheduleInput | null;
+  jobPosition?: number[] | number | null;
 };
 
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -52,23 +61,35 @@ const MONTH_INDEX: Record<string, number> = {
 @Injectable()
 export class FrequencyService {
   /**
-   * Expand frequency config into due dates (UTC midnight of each occurrence date).
-   * Matches Create Form Frequency step: one_time | recurring with On day / On the rules.
+   * Expand frequency into due dates.
+   * Supports frontend payload:
+   * `{ type: "atOnce", date: "2026-08-21", recurring: null }`
+   * and legacy `{ type: "one_time"|"recurring", startDate, schedule }`.
    */
   expandOccurrences(frequency: FrequencyInput | null | undefined, maxOccurrences = 100): Date[] {
-    if (!frequency?.startDate) return [];
+    if (!frequency) return [];
 
-    const start = this.parseDateOnly(frequency.startDate);
+    const startRaw = frequency.date || frequency.startDate;
+    if (!startRaw) return [];
+
+    const start = this.parseDateOnly(startRaw);
     if (!start) return [];
 
     const end = frequency.endDate ? this.parseDateOnly(frequency.endDate) : null;
-    const type = String(frequency.type || FrequencyType.ONE_TIME).toLowerCase();
+    const type = String(frequency.type || FrequencyType.AT_ONCE).toLowerCase();
 
-    if (type === FrequencyType.ONE_TIME || type === 'one-time') {
+    const isAtOnce =
+      type === FrequencyType.AT_ONCE.toLowerCase() ||
+      type === FrequencyType.ONE_TIME ||
+      type === 'one-time' ||
+      type === 'atonce' ||
+      type === 'at_once';
+
+    if (isAtOnce) {
       return end && start > end ? [] : [start];
     }
 
-    const schedule = frequency.schedule;
+    const schedule = frequency.recurring || frequency.schedule;
     if (!schedule?.interval || !schedule.unit || !schedule.repeat) {
       return [start];
     }
@@ -122,11 +143,7 @@ export class FrequencyService {
   private applyMonthlyRule(
     base: Date,
     unit: FrequencyUnit | string,
-    rule?: FrequencyInput['schedule'] extends infer S
-      ? S extends { monthlyRule?: infer R }
-        ? R
-        : undefined
-      : undefined,
+    rule?: FrequencyScheduleInput['monthlyRule'],
   ): Date {
     if (!rule?.type) return new Date(base.getTime());
 
@@ -163,7 +180,6 @@ export class FrequencyService {
     weekday?: string,
   ): Date {
     const weekdayKey = String(weekday || '').toLowerCase();
-    // UI may send a month name in the second dropdown for yearly "On the" — treat as 1st of that month.
     if (MONTH_INDEX[weekdayKey] !== undefined && !WEEKDAY_INDEX[weekdayKey]) {
       return new Date(Date.UTC(year, MONTH_INDEX[weekdayKey], 1, 0, 0, 0, 0));
     }

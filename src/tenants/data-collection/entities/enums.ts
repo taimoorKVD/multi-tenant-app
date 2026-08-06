@@ -18,8 +18,11 @@ export enum SubmissionStatus {
 }
 
 export enum FrequencyType {
-  ONE_TIME = 'one_time',
+  /** Frontend Frequency Type: At Once / one-time */
+  AT_ONCE = 'atOnce',
   RECURRING = 'recurring',
+  /** @deprecated Legacy alias — still accepted by FrequencyService */
+  ONE_TIME = 'one_time',
 }
 
 export enum FrequencyUnit {

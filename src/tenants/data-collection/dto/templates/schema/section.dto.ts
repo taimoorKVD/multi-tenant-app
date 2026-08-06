@@ -1,16 +1,14 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
-  IsEnum,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
-import { SectionType } from '../../../entities/enums';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class FieldOptionDto {
   @ApiProperty({ example: 'Current Quantity' })
@@ -90,9 +88,10 @@ export class TemplateFieldDto {
 }
 
 export class TemplateRowDto {
-  @ApiProperty({ example: 'row_001' })
+  @ApiPropertyOptional({ example: 'row_001' })
+  @IsOptional()
   @IsString()
-  id!: string;
+  id?: string;
 
   @ApiProperty({ type: [TemplateFieldDto] })
   @IsArray()
@@ -107,15 +106,19 @@ export class TemplateRowDto {
  * - dataEntry — numeric / inventory-style grid
  * - checklist — yes/no style
  * - visual — rich text / media upload
+ * Frontend may send other type strings; enum is not enforced.
  */
 export class TemplateSectionDto {
   @ApiProperty({ example: 'sec_001' })
   @IsString()
   id!: string;
 
-  @ApiProperty({ enum: SectionType, example: SectionType.RESPONSE_FORM })
-  @IsEnum(SectionType)
-  type!: SectionType;
+  @ApiProperty({
+    example: 'responseForm',
+    description: 'Section type string from frontend (e.g. responseForm, dataEntry, checklist, visual).',
+  })
+  @IsString()
+  type!: string;
 
   @ApiPropertyOptional({ example: 'Response Form' })
   @IsOptional()
