@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { In } from 'typeorm';
-import { MailService } from '../../../mail/mail.service';
+import * as nodemailer from 'nodemailer';
 import { User } from '../../users/entities';
 import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
 
@@ -10,19 +10,37 @@ export type DcMailRecipient = {
   name: string | null;
 };
 
+type SmtpConfig = {
+  host: string | null;
+  port: number;
+  secure: boolean;
+  username?: string;
+  password?: string;
+  fromEmail: string;
+  fromName?: string;
+  replyTo?: string;
+};
+
 /**
- * Sends real emails for Data Collection via MailService templates:
- * - data-collection / submission-notify
- * - data-collection / assignment-due
+ * Data Collection emails use the same direct SMTP pattern as Tenant Credentials
+ * (SMTP_HOST / SMTP_USER / SMTP_PASS / EMAIL_FROM) — no DB mail-settings decrypt.
  */
 @Injectable()
 export class WorkflowActionsService {
   private readonly logger = new Logger(WorkflowActionsService.name);
 
-  constructor(private readonly mailService: MailService) {}
+  private getEnvValue(...keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = process.env[key]?.trim();
+      if (value) return value;
+    }
+    return undefined;
+  }
 
   private getFrontendBaseUrl(): string {
-    return (process.env.FRONTEND_URL || 'http://localhost:4200').replace(/\/+$/, '');
+    const configured = this.getEnvValue('FRONTEND_URL');
+    if (configured) return configured.replace(/\/+$/, '');
+    return 'https://eusocial-admin.vercel.app';
   }
 
   private getLogoUrl(): string {
@@ -33,18 +51,101 @@ export class WorkflowActionsService {
     return `${this.getFrontendBaseUrl()}/tenant/login`;
   }
 
-  private async sendMailSafe(
-    req: any,
-    payload: Parameters<MailService['sendTemplateMail']>[1],
-  ): Promise<{ status: string; detail?: string }> {
+  /** Same SMTP resolution as TenantsService / AuthService (credentials & forgot-password). */
+  private resolveSmtpConfig(): SmtpConfig | null {
+    const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
+    const smtpUsername = this.getEnvValue('SMTP_USER', 'MAIL_USER');
+    const fromEmail =
+      explicitFrom || (smtpUsername && smtpUsername.includes('@') ? smtpUsername : null);
+
+    if (!fromEmail) return null;
+
+    const blockedDomains = ['yourdomain.com', 'example.com'];
+    const fromDomain = fromEmail.split('@')[1]?.toLowerCase() || '';
+    if (blockedDomains.includes(fromDomain)) return null;
+
+    return {
+      host: this.getEnvValue('SMTP_HOST', 'MAIL_HOST') || null,
+      port: Number(this.getEnvValue('SMTP_PORT', 'MAIL_PORT') || 587),
+      secure: this.getEnvValue('SMTP_SECURE', 'MAIL_SECURE') === 'true',
+      username: smtpUsername,
+      password: this.getEnvValue('SMTP_PASS', 'MAIL_PASS'),
+      fromEmail,
+      fromName: this.getEnvValue('MAIL_FROM_NAME'),
+      replyTo: this.getEnvValue('MAIL_REPLY_TO'),
+    };
+  }
+
+  private wrapHtml(title: string, intro: string, rowsHtml: string, ctaLabel: string): string {
+    const logoUrl = this.getLogoUrl();
+    const loginUrl = this.getTenantLoginUrl();
+    return `
+  <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
+            <tr>
+              <td style="padding:24px 28px;background:#101820;">
+                <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 28px 22px;color:#1f2d3d;">
+                <h2 style="margin:0 0 10px;font-size:22px;line-height:30px;color:#0b2948;">${title}</h2>
+                <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">${intro}</p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 18px;border:1px solid #e8edf3;border-radius:10px;">
+                  ${rowsHtml}
+                </table>
+                <a href="${loginUrl}" style="display:inline-block;padding:10px 20px;border-radius:8px;background:#ff9900;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">${ctaLabel}</a>
+                <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
+                  © 2026 EuSocial. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>`;
+  }
+
+  private async sendDirectSmtpMail(options: {
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<{ status: string; detail?: string }> {
     try {
-      const result = await this.mailService.sendTemplateMail(req, payload);
-      return { status: result.status, detail: `logId=${result.logId}` };
+      const smtp = this.resolveSmtpConfig();
+      if (!smtp?.host || !smtp.fromEmail) {
+        return {
+          status: 'failed',
+          detail:
+            'SMTP is not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASS and EMAIL_FROM (same as tenant credentials).',
+        };
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.secure,
+        auth: smtp.username
+          ? { user: smtp.username, pass: smtp.password || undefined }
+          : undefined,
+      });
+
+      const info = await transporter.sendMail({
+        from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
+        to: options.to,
+        replyTo: smtp.replyTo || undefined,
+        subject: options.subject,
+        html: options.html,
+      });
+
+      this.logger.log(`DC email sent to ${options.to} messageId=${info.messageId}`);
+      return { status: 'sent', detail: `messageId=${info.messageId}` };
     } catch (error) {
-      this.logger.error(
-        `DC email send failed (${payload.module}/${payload.action}): ${(error as Error).message}`,
-        error,
-      );
+      this.logger.error(`DC email send failed: ${(error as Error).message}`, error);
       return { status: 'failed', detail: (error as Error).message };
     }
   }
@@ -61,13 +162,16 @@ export class WorkflowActionsService {
     },
   ): Promise<{ actions: Array<{ type: string; status: string; detail?: string }> }> {
     const schema = context.schema || {};
-    const configured: Array<{ type: string; [key: string]: any }> = Array.isArray(schema.workflow?.actions)
+    const configured: Array<{ type: string; [key: string]: any }> = Array.isArray(
+      schema.workflow?.actions,
+    )
       ? schema.workflow.actions
       : [{ type: 'notify', targets: 'report' }];
 
     const results: Array<{ type: string; status: string; detail?: string }> = [];
     const submitter = await this.resolveUser(req, context.submittedBy);
     const submittedAt = new Date().toISOString();
+    const templateName = context.templateName || `Template #${context.templateId}`;
 
     for (const action of configured) {
       if (action.type === 'notify') {
@@ -75,30 +179,32 @@ export class WorkflowActionsService {
         const withEmail = recipients.filter((r) => !!r.email);
 
         if (!withEmail.length) {
-          results.push({ type: 'notify', status: 'skipped', detail: 'No report recipients with email' });
+          results.push({
+            type: 'notify',
+            status: 'skipped',
+            detail: 'No report recipients with email',
+          });
           continue;
         }
 
         let sent = 0;
         let failed = 0;
         for (const recipient of withEmail) {
-          const result = await this.sendMailSafe(req, {
-            module: 'data-collection',
-            action: 'submission-notify',
-            tenantId: req?.tenantId || null,
+          const result = await this.sendDirectSmtpMail({
             to: recipient.email!,
-            data: {
-              email: recipient.email,
-              recipient_name: recipient.name || recipient.email,
-              template_name: context.templateName || `Template #${context.templateId}`,
-              submitter_name: submitter?.name || submitter?.email || 'Unknown',
-              submitted_at: submittedAt,
-              assignment_id: String(context.assignmentId),
-              submission_id: String(context.submissionId),
-              tenant_login_url: this.getTenantLoginUrl(),
-              logo_url: this.getLogoUrl(),
-            },
-            idempotencyKey: `dc:submission:${context.submissionId}:notify:${recipient.id}`,
+            subject: `New submission: ${templateName}`,
+            html: this.wrapHtml(
+              'New Data Collection Submission',
+              `Hi ${recipient.name || recipient.email}, a form was submitted and you were listed as a report recipient.`,
+              `
+                <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${templateName}</td></tr>
+                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Submitted by:</strong> ${submitter?.name || submitter?.email || 'Unknown'}</td></tr>
+                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Submitted at:</strong> ${submittedAt}</td></tr>
+                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${context.assignmentId}</td></tr>
+                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Submission ID:</strong> ${context.submissionId}</td></tr>
+              `,
+              'Open Workspace',
+            ),
           });
           if (result.status === 'failed') failed += 1;
           else sent += 1;
@@ -140,30 +246,23 @@ export class WorkflowActionsService {
       return { status: 'skipped', detail: 'Assignee has no email' };
     }
 
-    const dueDay = context.dueAt.toISOString().slice(0, 10);
-    return this.sendMailSafe(req, {
-      module: 'data-collection',
-      action: 'assignment-due',
-      tenantId: req?.tenantId || null,
+    return this.sendDirectSmtpMail({
       to: context.recipient.email,
-      data: {
-        email: context.recipient.email,
-        recipient_name: context.recipient.name || context.recipient.email,
-        template_name: context.templateName,
-        due_at: context.dueAt.toISOString(),
-        assignment_status: context.status,
-        assignment_id: String(context.assignmentId),
-        tenant_login_url: this.getTenantLoginUrl(),
-        logo_url: this.getLogoUrl(),
-      },
-      idempotencyKey: `dc:assignment:${context.assignmentId}:due-reminder:${dueDay}`,
+      subject: `Reminder: ${context.templateName} is due ${context.dueAt.toISOString()}`,
+      html: this.wrapHtml(
+        'Assignment Due Reminder',
+        `Hi ${context.recipient.name || context.recipient.email}, you have a data collection assignment that is due.`,
+        `
+          <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${context.templateName}</td></tr>
+          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Due:</strong> ${context.dueAt.toISOString()}</td></tr>
+          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Status:</strong> ${context.status}</td></tr>
+          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${context.assignmentId}</td></tr>
+        `,
+        'Complete Assignment',
+      ),
     });
   }
 
-  /**
-   * Notify assignees when a template is published and assignments are created.
-   * One email per unique assignee (uses earliest due assignment for that user).
-   */
   async notifyAssigneesOnPublish(
     req: any,
     context: {
@@ -191,6 +290,7 @@ export class WorkflowActionsService {
 
     const recipients = await this.resolveUsersByIds(req, [...byUser.keys()]);
     const recipientById = new Map(recipients.map((r) => [r.id, r]));
+    const templateName = context.templateName || `Template #${context.templateId}`;
 
     let sent = 0;
     let failed = 0;
@@ -200,31 +300,25 @@ export class WorkflowActionsService {
       const recipient = recipientById.get(userId);
       if (!recipient?.email) {
         skipped += 1;
-        this.logger.warn(
-          `Publish notify skipped for user ${userId}: no email on users record`,
-        );
+        this.logger.warn(`Publish notify skipped for user ${userId}: no email on users record`);
         continue;
       }
 
-      const result = await this.sendMailSafe(req, {
-        module: 'data-collection',
-        action: 'assignment-assigned',
-        tenantId: req?.tenantId || null,
+      const assignmentCount = context.assignments.filter((a) => a.assigneeUserId === userId).length;
+      const result = await this.sendDirectSmtpMail({
         to: recipient.email,
-        data: {
-          email: recipient.email,
-          recipient_name: recipient.name || recipient.email,
-          template_name: context.templateName || `Template #${context.templateId}`,
-          due_at: assignment.dueAt.toISOString(),
-          assignment_status: assignment.status,
-          assignment_id: String(assignment.id),
-          assignment_count: String(
-            context.assignments.filter((a) => a.assigneeUserId === userId).length,
-          ),
-          tenant_login_url: this.getTenantLoginUrl(),
-          logo_url: this.getLogoUrl(),
-        },
-        idempotencyKey: `dc:template:${context.templateId}:assigned:${userId}:a${assignment.id}`,
+        subject: `New assignment: ${templateName}`,
+        html: this.wrapHtml(
+          'You Have a New Assignment',
+          `Hi ${recipient.name || recipient.email}, a data collection form was published and assigned to you.`,
+          `
+            <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${templateName}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>First due:</strong> ${assignment.dueAt.toISOString()}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Occurrences:</strong> ${assignmentCount}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${assignment.id}</td></tr>
+          `,
+          "Open Today's Work",
+        ),
       });
 
       if (result.status === 'failed') failed += 1;

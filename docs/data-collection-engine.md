@@ -252,21 +252,19 @@ Table: `dc_submissions`.
 
 ### Emails (SMTP / MailService — same stack as password reset)
 
-| Event | Template `module` / `action` | Recipients (from UI) |
-|-------|------------------------------|----------------------|
-| Template published | `data-collection` / `assignment-assigned` | **Assign** users |
-| Submission completed | `data-collection` / `submission-notify` | **Report To** users / job positions |
-| Assignment due | `data-collection` / `assignment-due` | **Assign** users |
+| Event | Delivery | Recipients (from UI) |
+|-------|----------|----------------------|
+| Template published / created | Direct SMTP (`SMTP_*` / `EMAIL_FROM`) — same as Tenant Credentials | **Assign** users |
+| Submission completed | Same direct SMTP | **Report To** users / job positions |
+| Assignment due | Same direct SMTP (hourly cron) | **Assign** users |
 
-Publish response includes `emailNotify: { sent, failed, skipped }`.
+Publish/create response includes `emailNotify: { sent, failed, skipped }`.
 
-**Production:** if Redis is missing, emails send directly via SMTP. Seed master templates with `npm run seed:master` or emails fail with “template not found”.
+**Production:** uses env SMTP only (no DB mail-settings decrypt). Requires the same Vercel vars that make Tenant Credentials work: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
 
-- Hourly cron: `AssignmentReminderService` (marks overdue + sends due reminders)
+- Hourly cron: `AssignmentReminderService`
 - Manual run: `POST /api/data-collection/assignments/send-due-reminders`
 - Disable cron: `DC_ASSIGNMENT_REMINDERS_ENABLED=false`
-- Seed templates: `npm run seed:master` (seeder `014-data-collection-email-templates`)
-- Test helper: `npx ts-node -r tsconfig-paths/register scripts/test-dc-emails.ts`
 
 `create_task` post-submit action remains a stub until a Tasks module exists.
 

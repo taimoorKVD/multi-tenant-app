@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { MailModule } from '../../mail/mail.module';
 import { MasterDatabaseModule } from '../../database';
 import { TenantsModule as MasterTenantsModule } from '../../master/tenants/tenants.module';
 import { Tenant } from '../../master/tenants/entities';
@@ -24,7 +23,6 @@ import { DataCollectionPermissionsGuard } from './guards';
 
 @Module({
   imports: [
-    MailModule,
     MasterDatabaseModule,
     MasterTenantsModule,
     ScheduleModule.forRoot(),
