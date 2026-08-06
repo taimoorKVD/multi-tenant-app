@@ -21,11 +21,10 @@ export const TenantDataCollectionTemplatesSwagger = {
                 assign: { users: [1], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
                 frequency: {
-                  type: 'recurring',
-                  startDate: '2026-07-17',
-                  endDate: null,
-                  jobPosition: [2],
-                  schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } },
+                  type: 'atOnce',
+                  date: '2026-08-21',
+                  jobPosition: null,
+                  recurring: null,
                 },
                 sections: [
                   {
@@ -127,7 +126,7 @@ export const TenantDataCollectionTemplatesSwagger = {
               schema: {
                 assign: { users: [1], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
-                frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
+                frequency: { type: 'atOnce', date: '2026-08-21', jobPosition: null, recurring: null },
                 sections: [
                   { id: 'sec_001', type: 'responseForm', title: 'Response Form', sortOrder: 1, rows: [{ id: 'row_001', fields: [{ id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' }] }] },
                   { id: 'sec_002', type: 'dataEntry', title: 'Data Entry', sortOrder: 2, rows: [{ id: 'row_001', fields: [{ id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%' }] }] },
@@ -156,7 +155,7 @@ export const TenantDataCollectionTemplatesSwagger = {
               schema: {
                 assign: { users: [1, 5], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
-                frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
+                frequency: { type: 'atOnce', date: '2026-08-21', jobPosition: null, recurring: null },
                 sections: [],
               },
             },

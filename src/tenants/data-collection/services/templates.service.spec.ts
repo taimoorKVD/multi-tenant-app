@@ -69,9 +69,10 @@ describe('TemplatesService', () => {
     assign: { users: [1], jobPosition: [2] },
     report: { users: [3], jobPosition: [1] },
     frequency: {
-      type: 'recurring',
-      startDate: '2026-07-17',
-      schedule: { interval: 1, unit: 'month', repeat: 1, monthlyRule: { type: 'dayOfMonth', day: 1 } },
+      type: 'atOnce',
+      date: '2026-08-21',
+      jobPosition: null,
+      recurring: null,
     },
     sections: [],
   };
@@ -247,7 +248,7 @@ describe('TemplatesService', () => {
       const req = createReq();
       req.templateRepo.findOne.mockResolvedValue({
         id: 1,
-        schema: { frequency: { type: 'one_time', startDate: '2026-01-01' }, sections: [] },
+        schema: { frequency: { type: 'atOnce', date: '2026-01-01', recurring: null }, sections: [] },
         status: TemplateStatus.DRAFT,
       });
 

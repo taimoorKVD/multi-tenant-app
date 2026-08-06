@@ -4,7 +4,18 @@ import { FrequencyType, FrequencyUnit, MonthlyRuleType, WeekdayOrdinal } from '.
 describe('FrequencyService', () => {
   const service = new FrequencyService();
 
-  it('expands one_time to a single date', () => {
+  it('expands frontend atOnce payload to a single date', () => {
+    const dates = service.expandOccurrences({
+      type: 'atOnce',
+      date: '2026-08-21',
+      jobPosition: null,
+      recurring: null,
+    });
+    expect(dates).toHaveLength(1);
+    expect(dates[0].toISOString().startsWith('2026-08-21')).toBe(true);
+  });
+
+  it('expands legacy one_time startDate', () => {
     const dates = service.expandOccurrences({
       type: FrequencyType.ONE_TIME,
       startDate: '2026-07-17',
@@ -13,11 +24,11 @@ describe('FrequencyService', () => {
     expect(dates[0].toISOString().startsWith('2026-07-17')).toBe(true);
   });
 
-  it('expands recurring monthly On day 1', () => {
+  it('expands recurring with nested recurring object', () => {
     const dates = service.expandOccurrences({
       type: FrequencyType.RECURRING,
-      startDate: '2026-01-15',
-      schedule: {
+      date: '2026-01-15',
+      recurring: {
         interval: 1,
         unit: FrequencyUnit.MONTH,
         repeat: 3,
@@ -31,8 +42,8 @@ describe('FrequencyService', () => {
   it('supports day=-1 as last day of month', () => {
     const dates = service.expandOccurrences({
       type: FrequencyType.RECURRING,
-      startDate: '2026-02-01',
-      schedule: {
+      date: '2026-02-01',
+      recurring: {
         interval: 1,
         unit: FrequencyUnit.MONTH,
         repeat: 1,
@@ -43,7 +54,7 @@ describe('FrequencyService', () => {
     expect(dates[0].getUTCDate()).toBe(28);
   });
 
-  it('supports nth weekday rule', () => {
+  it('supports nth weekday rule via legacy schedule', () => {
     const dates = service.expandOccurrences({
       type: FrequencyType.RECURRING,
       startDate: '2026-07-01',

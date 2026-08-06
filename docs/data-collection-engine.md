@@ -44,14 +44,21 @@ Matches the Frequency card:
 
 | UI control | Schema field |
 |------------|--------------|
-| Frequency Type (`Recurring` / one-time) | `frequency.type` → `recurring` \| `one_time` |
-| Repeat every **N** | `frequency.schedule.interval` |
-| Unit (`Day` / `Week` / `Month` / `Year`) | `frequency.schedule.unit` |
-| Repeat **N** times | `frequency.schedule.repeat` |
-| **On day** (radio) + day number | `monthlyRule.type = dayOfMonth`, `day` |
-| Hint: Use `-1` for last day | `day: -1` |
-| **On the** (radio) + ordinal + weekday/month | `monthlyRule.type = nthWeekday`, `ordinal`, `weekday`, optional `month` |
-| Start / end of series | `frequency.startDate`, `frequency.endDate` |
+| Frequency Type (`atOnce` / `recurring`) | `frequency.type` |
+| Date | `frequency.date` (e.g. `"2026-08-21"`) |
+| Job position (optional) | `frequency.jobPosition` (`null` or id) |
+| Recurring config | `frequency.recurring` (`null` for atOnce; `{ interval, unit, repeat, monthlyRule? }` when recurring) |
+
+Example at-once payload from frontend:
+
+```json
+{
+  "jobPosition": null,
+  "date": "2026-08-21",
+  "type": "atOnce",
+  "recurring": null
+}
+```
 
 Wizard footer actions map to API behavior:
 
@@ -88,15 +95,10 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
   "assign": { "users": [1], "jobPosition": [2] },
   "report": { "users": [3], "jobPosition": [1] },
   "frequency": {
-    "type": "recurring",
-    "startDate": "2026-07-17",
-    "endDate": null,
-    "schedule": {
-      "interval": 1,
-      "unit": "month",
-      "repeat": 12,
-      "monthlyRule": { "type": "dayOfMonth", "day": 1 }
-    }
+    "type": "atOnce",
+    "date": "2026-08-21",
+    "jobPosition": null,
+    "recurring": null
   },
   "sections": [
     {

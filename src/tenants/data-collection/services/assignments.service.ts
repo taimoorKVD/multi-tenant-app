@@ -59,7 +59,7 @@ export class AssignmentsService {
 
     const dueDates = this.frequencyService.expandOccurrences(frequency);
     if (!dueDates.length) {
-      throw new BadRequestException('Frequency produced no occurrence dates. Check startDate and schedule.');
+      throw new BadRequestException('Frequency produced no occurrence dates. Check date and recurring settings.');
     }
 
     const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
