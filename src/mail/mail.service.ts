@@ -499,7 +499,10 @@ export class MailService {
       smtp,
     };
 
-    if ((process.env.NODE_ENV || 'development').toLowerCase() === 'development') {
+    const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
+    // Production without Redis previously "queued" into a no-op — emails never left.
+    // Fall back to direct SMTP dispatch when the queue is unavailable.
+    if (isDevelopment || !this.queueService.isEnabled()) {
       await this.emailDispatchService.dispatch(payload, 1, 1);
       return {
         success: true,

@@ -7,10 +7,14 @@ import {
 import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
 import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
 import { AssignmentsService } from './assignments.service';
+import { WorkflowActionsService } from './workflow-actions.service';
 
 @Injectable()
 export class TemplatesService {
-  constructor(private readonly assignmentsService: AssignmentsService) {}
+  constructor(
+    private readonly assignmentsService: AssignmentsService,
+    private readonly workflowActions: WorkflowActionsService,
+  ) {}
 
   private getActorId(req: any, fallback?: number | null): number | null {
     const candidate = fallback ?? req.user?.id ?? req.user?.sub ?? req.user?.userId ?? null;
@@ -86,7 +90,13 @@ export class TemplatesService {
       actorId,
     );
 
-    return { template: saved, version, assignments };
+    const emailNotify = await this.workflowActions.notifyAssigneesOnPublish(req, {
+      templateId: saved.id,
+      templateName: saved.name,
+      assignments,
+    });
+
+    return { template: saved, version, assignments, emailNotify };
   }
 
   async create(req: any, dto: CreateTemplateDto) {
@@ -114,6 +124,7 @@ export class TemplatesService {
           data: published.template,
           version: published.version,
           assignmentsCreated: published.assignments.length,
+          emailNotify: published.emailNotify,
         };
       }
 
@@ -190,6 +201,7 @@ export class TemplatesService {
           data: published.template,
           version: published.version,
           assignmentsCreated: published.assignments.length,
+          emailNotify: published.emailNotify,
         };
       }
 
@@ -219,6 +231,7 @@ export class TemplatesService {
         data: published.template,
         version: published.version,
         assignmentsCreated: published.assignments.length,
+        emailNotify: published.emailNotify,
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;

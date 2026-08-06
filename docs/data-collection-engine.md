@@ -254,8 +254,13 @@ Table: `dc_submissions`.
 
 | Event | Template `module` / `action` | Recipients (from UI) |
 |-------|------------------------------|----------------------|
+| Template published | `data-collection` / `assignment-assigned` | **Assign** users |
 | Submission completed | `data-collection` / `submission-notify` | **Report To** users / job positions |
 | Assignment due | `data-collection` / `assignment-due` | **Assign** users |
+
+Publish response includes `emailNotify: { sent, failed, skipped }`.
+
+**Production:** if Redis is missing, emails send directly via SMTP. Seed master templates with `npm run seed:master` or emails fail with “template not found”.
 
 - Hourly cron: `AssignmentReminderService` (marks overdue + sends due reminders)
 - Manual run: `POST /api/data-collection/assignments/send-due-reminders`

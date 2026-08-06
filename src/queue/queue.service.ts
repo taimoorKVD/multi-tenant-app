@@ -57,6 +57,10 @@ export class QueueService implements OnModuleDestroy {
     return this.redisConnection;
   }
 
+  isEnabled(): boolean {
+    return Boolean(this.queue);
+  }
+
   async enqueueEmail(payload: EmailJobPayload): Promise<void> {
     if (!this.queue) {
       this.logger.warn('Email not queued: queue is disabled');

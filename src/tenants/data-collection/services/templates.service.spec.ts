@@ -15,7 +15,10 @@ describe('TemplatesService', () => {
       materializeFromTemplate: jest.fn().mockResolvedValue([{ id: 1 }]),
       cancelFutureForTemplate: jest.fn().mockResolvedValue(undefined),
     };
-    service = new TemplatesService(assignmentsService as any);
+    const workflowActions = {
+      notifyAssigneesOnPublish: jest.fn().mockResolvedValue({ sent: 0, failed: 0, skipped: 0 }),
+    };
+    service = new TemplatesService(assignmentsService as any, workflowActions as any);
   });
 
   function buildRepos() {
