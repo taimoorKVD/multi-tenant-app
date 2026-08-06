@@ -90,12 +90,13 @@ export class FrequencyService {
     }
 
     const schedule = frequency.recurring || frequency.schedule;
-    if (!schedule?.interval || !schedule.unit || !schedule.repeat) {
+    if (!schedule) {
       return [start];
     }
 
     const interval = Math.max(1, Number(schedule.interval) || 1);
-    const unit = String(schedule.unit).toLowerCase() as FrequencyUnit;
+    const unitRaw = String(schedule.unit || FrequencyUnit.MONTH).toLowerCase();
+    const unit = unitRaw as FrequencyUnit;
     const repeat = Math.min(Math.max(1, Number(schedule.repeat) || 1), maxOccurrences);
     const dates: Date[] = [];
 
