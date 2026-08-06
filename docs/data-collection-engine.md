@@ -104,7 +104,7 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
     {
       "id": "sec_001",
       "type": "responseForm",
-      "title": "Response Form",
+      "name": "Response Form",
       "sortOrder": 1,
       "rows": [
         {
@@ -125,7 +125,7 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
     {
       "id": "sec_002",
       "type": "dataEntry",
-      "title": "Data Entry",
+      "name": "Data Entry",
       "sortOrder": 2,
       "rows": [
         {
@@ -165,7 +165,7 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
     {
       "id": "sec_003",
       "type": "checklist",
-      "title": "Checklist Form",
+      "name": "Checklist Form",
       "sortOrder": 3,
       "rows": [
         {
@@ -191,7 +191,7 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
     {
       "id": "sec_004",
       "type": "visual",
-      "title": "Visual Form",
+      "name": "Visual Form",
       "sortOrder": 4,
       "rows": [
         {
