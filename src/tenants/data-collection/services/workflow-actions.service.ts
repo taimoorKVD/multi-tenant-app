@@ -51,6 +51,33 @@ export class WorkflowActionsService {
     return `${this.getFrontendBaseUrl()}/tenant/login`;
   }
 
+  /** Display as `06-Aug-2026 10:02` (local server time). */
+  private formatDateTime(value: Date | string): string {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${day}-${month}-${year} ${hours}:${minutes}`;
+  }
+
   /** Same SMTP resolution as TenantsService / AuthService (credentials & forgot-password). */
   private resolveSmtpConfig(): SmtpConfig | null {
     const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
@@ -248,13 +275,13 @@ export class WorkflowActionsService {
 
     return this.sendDirectSmtpMail({
       to: context.recipient.email,
-      subject: `Reminder: ${context.templateName} is due ${context.dueAt.toISOString()}`,
+      subject: `Reminder: ${context.templateName} is due ${this.formatDateTime(context.dueAt)}`,
       html: this.wrapHtml(
         'Assignment Due Reminder',
         `Hi ${context.recipient.name || context.recipient.email}, you have a data collection assignment that is due.`,
         `
           <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${context.templateName}</td></tr>
-          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Due:</strong> ${context.dueAt.toISOString()}</td></tr>
+          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Due:</strong> ${this.formatDateTime(context.dueAt)}</td></tr>
           <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Status:</strong> ${context.status}</td></tr>
           <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${context.assignmentId}</td></tr>
         `,
@@ -313,7 +340,7 @@ export class WorkflowActionsService {
           `Hi ${recipient.name || recipient.email}, a data collection form was published and assigned to you.`,
           `
             <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${templateName}</td></tr>
-            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>First due:</strong> ${assignment.dueAt.toISOString()}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>First due:</strong> ${this.formatDateTime(assignment.dueAt)}</td></tr>
             <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Occurrences:</strong> ${assignmentCount}</td></tr>
             <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${assignment.id}</td></tr>
           `,
