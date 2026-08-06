@@ -84,6 +84,24 @@ export class DataCollectionEmailTemplateSeeder implements ISeeder {
           loginUrl,
         ),
       },
+      {
+        module: 'data-collection',
+        action: 'assignment-assigned',
+        name: 'Data Collection :: Assignment Assigned',
+        subject: 'New assignment: {template_name}',
+        body: wrapHtml(
+          'You Have a New Assignment',
+          'Hi {recipient_name}, a data collection form was published and assigned to you.',
+          `
+            <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> {template_name}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>First due:</strong> {due_at}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Occurrences:</strong> {assignment_count}</td></tr>
+            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> {assignment_id}</td></tr>
+          `,
+          'Open Today\'s Work',
+          loginUrl,
+        ),
+      },
     ];
 
     for (const def of definitions) {

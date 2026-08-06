@@ -15,7 +15,10 @@ describe('TemplatesService', () => {
       materializeFromTemplate: jest.fn().mockResolvedValue([{ id: 1 }]),
       cancelFutureForTemplate: jest.fn().mockResolvedValue(undefined),
     };
-    service = new TemplatesService(assignmentsService as any);
+    const workflowActions = {
+      notifyAssigneesOnPublish: jest.fn().mockResolvedValue({ sent: 0, failed: 0, skipped: 0 }),
+    };
+    service = new TemplatesService(assignmentsService as any, workflowActions as any);
   });
 
   function buildRepos() {
@@ -74,21 +77,7 @@ describe('TemplatesService', () => {
   };
 
   describe('create', () => {
-    it('creates template as DRAFT without version by default', async () => {
-      const req = createReq();
-      req.templateRepo.save.mockResolvedValueOnce({ id: 1, name: 'Test', status: 'draft' });
-
-      const result = await service.create(req, { name: 'Test', schema: { sections: [] } as any });
-
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('Template draft created successfully');
-      expect(req.templateRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Test', status: TemplateStatus.DRAFT }),
-      );
-      expect(req.versionRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('publishes immediately when publish=true', async () => {
+    it('always publishes on create when schema is complete', async () => {
       const req = createReq();
       const draft = { id: 1, name: 'Test', schema: fullSchema, status: TemplateStatus.DRAFT };
       req.templateRepo.save
@@ -96,19 +85,42 @@ describe('TemplatesService', () => {
         .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
       req.versionRepo.findOne.mockResolvedValue(null);
 
-      const result = await service.create(req, { name: 'Test', schema: fullSchema as any, publish: true });
+      const result = await service.create(req, { name: 'Test', schema: fullSchema as any });
 
       expect(result.success).toBe(true);
       expect(result.message).toContain('published');
+      expect(result.data.status).toBe(TemplateStatus.ACTIVE);
       expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
       expect(req.versionRepo.save).toHaveBeenCalled();
     });
 
+    it('still publishes even when publish=false is sent', async () => {
+      const req = createReq();
+      const draft = { id: 1, name: 'Test', schema: fullSchema, status: TemplateStatus.DRAFT };
+      req.templateRepo.save
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.create(req, {
+        name: 'Test',
+        schema: fullSchema as any,
+        publish: false,
+      });
+
+      expect(result.message).toContain('published');
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+    });
+
     it('uses createdBy from dto as actor', async () => {
       const req = createReq({ id: 5 });
-      req.templateRepo.save.mockResolvedValueOnce({ id: 1 });
+      const draft = { id: 1, name: 'X', schema: fullSchema, status: TemplateStatus.DRAFT };
+      req.templateRepo.save
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
 
-      await service.create(req, { name: 'X', createdBy: 99 });
+      await service.create(req, { name: 'X', schema: fullSchema as any, createdBy: 99 });
 
       expect(req.templateRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ createdBy: 99 }),
@@ -313,7 +325,9 @@ describe('TemplatesService', () => {
       const req = createReq();
       req.templateRepo.save.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.create(req, { name: 'X' })).rejects.toThrow(InternalServerErrorException);
+      await expect(service.create(req, { name: 'X', schema: fullSchema as any })).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 });

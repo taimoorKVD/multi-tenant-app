@@ -38,19 +38,12 @@ export class WorkflowActionsService {
     payload: Parameters<MailService['sendTemplateMail']>[1],
   ): Promise<{ status: string; detail?: string }> {
     try {
-      const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
-      if (isDevelopment) {
-        const result = await this.mailService.sendTemplateMail(req, payload);
-        return { status: result.status, detail: `logId=${result.logId}` };
-      }
-
-      void this.mailService.sendTemplateMail(req, payload).catch((error) => {
-        this.logger.error(`Failed to queue DC email (${payload.module}/${payload.action})`, error);
-      });
-      return { status: 'queued' };
+      const result = await this.mailService.sendTemplateMail(req, payload);
+      return { status: result.status, detail: `logId=${result.logId}` };
     } catch (error) {
       this.logger.error(
         `DC email send failed (${payload.module}/${payload.action}): ${(error as Error).message}`,
+        error,
       );
       return { status: 'failed', detail: (error as Error).message };
     }
@@ -165,6 +158,80 @@ export class WorkflowActionsService {
       },
       idempotencyKey: `dc:assignment:${context.assignmentId}:due-reminder:${dueDay}`,
     });
+  }
+
+  /**
+   * Notify assignees when a template is published and assignments are created.
+   * One email per unique assignee (uses earliest due assignment for that user).
+   */
+  async notifyAssigneesOnPublish(
+    req: any,
+    context: {
+      templateId: number;
+      templateName: string;
+      assignments: Array<{ id: number; assigneeUserId: number | null; dueAt: Date; status: string }>;
+    },
+  ): Promise<{ sent: number; failed: number; skipped: number }> {
+    const byUser = new Map<number, { id: number; dueAt: Date; status: string }>();
+    for (const assignment of context.assignments) {
+      if (assignment.assigneeUserId == null) continue;
+      const existing = byUser.get(assignment.assigneeUserId);
+      if (!existing || assignment.dueAt < existing.dueAt) {
+        byUser.set(assignment.assigneeUserId, {
+          id: assignment.id,
+          dueAt: assignment.dueAt,
+          status: assignment.status,
+        });
+      }
+    }
+
+    if (!byUser.size) {
+      return { sent: 0, failed: 0, skipped: context.assignments.length };
+    }
+
+    const recipients = await this.resolveUsersByIds(req, [...byUser.keys()]);
+    const recipientById = new Map(recipients.map((r) => [r.id, r]));
+
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const [userId, assignment] of byUser.entries()) {
+      const recipient = recipientById.get(userId);
+      if (!recipient?.email) {
+        skipped += 1;
+        this.logger.warn(
+          `Publish notify skipped for user ${userId}: no email on users record`,
+        );
+        continue;
+      }
+
+      const result = await this.sendMailSafe(req, {
+        module: 'data-collection',
+        action: 'assignment-assigned',
+        tenantId: req?.tenantId || null,
+        to: recipient.email,
+        data: {
+          email: recipient.email,
+          recipient_name: recipient.name || recipient.email,
+          template_name: context.templateName || `Template #${context.templateId}`,
+          due_at: assignment.dueAt.toISOString(),
+          assignment_status: assignment.status,
+          assignment_id: String(assignment.id),
+          assignment_count: String(
+            context.assignments.filter((a) => a.assigneeUserId === userId).length,
+          ),
+          tenant_login_url: this.getTenantLoginUrl(),
+          logo_url: this.getLogoUrl(),
+        },
+        idempotencyKey: `dc:template:${context.templateId}:assigned:${userId}:a${assignment.id}`,
+      });
+
+      if (result.status === 'failed') failed += 1;
+      else sent += 1;
+    }
+
+    return { sent, failed, skipped };
   }
 
   async resolveReportRecipients(
