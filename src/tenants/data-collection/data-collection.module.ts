@@ -9,6 +9,7 @@ import {
   TemplateVersionsController,
   AssignmentsController,
   SubmissionsController,
+  DataCollectionCronController,
 } from './controllers';
 import {
   TemplatesService,
@@ -19,7 +20,7 @@ import {
   WorkflowActionsService,
   AssignmentReminderService,
 } from './services';
-import { DataCollectionPermissionsGuard } from './guards';
+import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { DataCollectionPermissionsGuard } from './guards';
     TemplateVersionsController,
     AssignmentsController,
     SubmissionsController,
+    DataCollectionCronController,
   ],
   providers: [
     TemplatesService,
@@ -43,6 +45,7 @@ import { DataCollectionPermissionsGuard } from './guards';
     WorkflowActionsService,
     AssignmentReminderService,
     DataCollectionPermissionsGuard,
+    CronSecretGuard,
   ],
   exports: [
     TemplatesService,

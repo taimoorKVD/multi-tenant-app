@@ -264,9 +264,30 @@ Publish/create response includes `emailNotify: { sent, failed, skipped }`.
 
 **Production:** uses env SMTP only (no DB mail-settings decrypt). Requires the same Vercel vars that make Tenant Credentials work: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
 
-- Hourly cron: `AssignmentReminderService`
-- Manual run: `POST /api/data-collection/assignments/send-due-reminders`
-- Disable cron: `DC_ASSIGNMENT_REMINDERS_ENABLED=false`
+- Hourly Nest `@Cron` (local / long-running Node only): `AssignmentReminderService`
+- **Production (Vercel):** GitHub Actions → `POST /api/cron/data-collection/due-reminders` with `x-cron-secret`
+- Manual (JWT + permission): `POST /api/data-collection/assignments/send-due-reminders`
+- Disable Nest cron only: `DC_ASSIGNMENT_REMINDERS_ENABLED=false` (GitHub Actions still works)
+
+### GitHub Actions due reminders (recommended on Vercel)
+
+Nest `@Cron` does not reliably run on serverless. Use the free Actions schedule instead.
+
+1. **Vercel / server env** — set `CRON_SECRET` to a long random string (same value as the GitHub secret).
+2. **GitHub → Settings → Secrets and variables → Actions**
+   - `CRON_SECRET` — same value as server env
+   - `API_BASE_URL` — deployed API origin, e.g. `https://your-app.vercel.app` (no trailing slash)
+3. Workflow: `.github/workflows/dc-due-reminders.yml`
+   - Runs every hour at `:05` UTC
+   - Also runnable manually: **Actions → DC Due Reminders → Run workflow**
+4. Endpoint (no JWT, no tenant header):
+
+```http
+POST /api/cron/data-collection/due-reminders
+x-cron-secret: <CRON_SECRET>
+```
+
+What it does each run: for every tenant, mark past-due open assignments as overdue, then email assignees for due-today / overdue open work (idempotent per assignment/day via `reminder_sent_on`).
 
 `create_task` post-submit action remains a stub until a Tasks module exists.
 
@@ -281,9 +302,10 @@ Seeded and granted to tenant Admin on provision / `013-data-collection-permissio
 
 ```
 src/tenants/data-collection/
-  controllers/   templates, versions, assignments, submissions
+  controllers/   templates, versions, assignments, submissions, cron
   services/      templates, versions, frequency, assignments, submissions,
                  workflow-actions, assignment-reminder
+  guards/        permissions, cron-secret
   dto/           typed schema (assign/report, frequency, sections) + assignment/submission DTOs
   entities/      template, version, assignment, submission + enums
   swagger/

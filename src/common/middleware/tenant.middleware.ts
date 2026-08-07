@@ -145,6 +145,7 @@ export class TenantMiddleware implements NestMiddleware {
         '/api/cities',
         '/api/collection',
         '/api/docs',
+        '/api/cron',
       ];
 
       if (
