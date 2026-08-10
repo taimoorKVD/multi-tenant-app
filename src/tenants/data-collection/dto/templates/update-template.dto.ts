@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Length, ValidateNested } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Length } from 'class-validator';
 import { TemplateSchemaDto } from './schema';
 
 export class UpdateTemplateDto {
@@ -17,12 +16,12 @@ export class UpdateTemplateDto {
 
   @ApiPropertyOptional({
     type: TemplateSchemaDto,
-    description: 'Complete template schema containing assign, report, frequency, and sections.',
+    description:
+      'Complete template schema (assign, report, frequency, sections). Stored as JSON — field props like `value` are preserved.',
   })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => TemplateSchemaDto)
-  schema?: TemplateSchemaDto;
+  @IsObject()
+  schema?: Record<string, any>;
 
   @ApiPropertyOptional({
     example: false,
