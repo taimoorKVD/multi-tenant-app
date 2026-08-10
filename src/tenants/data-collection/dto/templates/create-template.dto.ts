@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Length, ValidateNested } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Length } from 'class-validator';
 import { TemplateSchemaDto } from './schema';
 
 export class CreateTemplateDto {
@@ -12,7 +11,7 @@ export class CreateTemplateDto {
   @ApiPropertyOptional({
     type: TemplateSchemaDto,
     description:
-      'Complete template schema: assign, report, frequency, and sections (Form Details → Assign & Report → Frequency).',
+      'Complete template schema: assign, report, frequency, and sections (Form Details → Assign & Report → Frequency). Stored as JSON — field props like `value` are preserved.',
     example: {
       assign: { users: [1], jobPosition: [2] },
       report: { users: [3], jobPosition: [1] },
@@ -22,6 +21,7 @@ export class CreateTemplateDto {
         jobPosition: null,
         recurring: null,
       },
+      formName: 'Manager Report',
       sections: [
         {
           id: 'sec_001',
@@ -39,6 +39,7 @@ export class CreateTemplateDto {
                   type: 'textarea',
                   required: true,
                   width: '100%',
+                  value: 'test',
                 },
               ],
             },
@@ -53,74 +54,14 @@ export class CreateTemplateDto {
             {
               id: 'row_001',
               fields: [
-                { id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%' },
-                { id: 'fld_003', label: 'Include Par', name: 'includePar', type: 'checkbox', width: '10%' },
-                { id: 'fld_004', label: 'Par', name: 'par', type: 'number', width: '20%' },
                 {
-                  id: 'fld_005',
-                  label: 'User Response',
-                  name: 'userResponse',
+                  id: 'fld_002',
+                  label: 'Item',
+                  name: 'itemId',
                   type: 'select',
                   required: true,
-                  width: '20%',
-                  options: [
-                    { label: 'Current Quantity', value: 'current_quantity' },
-                    { label: 'Current Value', value: 'current_value' },
-                  ],
+                  width: '30%',
                 },
-                {
-                  id: 'fld_006',
-                  label: 'Action',
-                  name: 'action',
-                  type: 'select',
-                  required: true,
-                  width: '20%',
-                  options: [
-                    { label: 'None', value: 'none' },
-                    { label: 'Order', value: 'order' },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        {
-          id: 'sec_003',
-          type: 'checklist',
-          name: 'Checklist Form',
-          sortOrder: 3,
-          rows: [
-            {
-              id: 'row_001',
-              fields: [
-                { id: 'fld_007', label: 'Description', name: 'description', type: 'textarea', width: '50%' },
-                {
-                  id: 'fld_008',
-                  label: 'Response',
-                  name: 'response',
-                  type: 'yesNo',
-                  required: true,
-                  width: '50%',
-                  options: [
-                    { label: 'Yes', value: 'yes' },
-                    { label: 'No', value: 'no' },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        {
-          id: 'sec_004',
-          type: 'visual',
-          name: 'Visual Form',
-          sortOrder: 4,
-          rows: [
-            {
-              id: 'row_001',
-              fields: [
-                { id: 'fld_009', label: 'Images Upload', name: 'images', type: 'image', width: '40%' },
-                { id: 'fld_010', label: 'Description', name: 'description', type: 'textarea', width: '60%' },
               ],
             },
           ],
@@ -129,9 +70,8 @@ export class CreateTemplateDto {
     },
   })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => TemplateSchemaDto)
-  schema?: TemplateSchemaDto;
+  @IsObject()
+  schema?: Record<string, any>;
 
   @ApiPropertyOptional({
     example: true,
