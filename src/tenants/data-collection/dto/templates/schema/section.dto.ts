@@ -1,4 +1,5 @@
 import {
+  Allow,
   IsArray,
   IsBoolean,
   IsNumber,
@@ -44,9 +45,13 @@ export class FieldOptionSourceDto {
 
 /** Individual data point / field inside a section row. */
 export class TemplateFieldDto {
-  @ApiProperty({ example: 'fld_001' })
+  @ApiPropertyOptional({
+    example: 'fld_001',
+    description: 'Optional field id from the form builder. Frontend may omit it.',
+  })
+  @IsOptional()
   @IsString()
-  id!: string;
+  id?: string;
 
   @ApiProperty({ example: 'Description' })
   @IsString()
@@ -58,7 +63,7 @@ export class TemplateFieldDto {
 
   @ApiProperty({
     example: 'textarea',
-    description: 'text | textarea | number | select | checkbox | image | yesNo | etc.',
+    description: 'text | textarea | number | select | checkbox | image | yesNo | email | etc.',
   })
   @IsString()
   type!: string;
@@ -72,6 +77,15 @@ export class TemplateFieldDto {
   @IsOptional()
   @IsString()
   width?: string;
+
+  @ApiPropertyOptional({
+    example: 'Omais',
+    description:
+      'Default / current field value from the form builder (string, number, boolean, array, or object).',
+  })
+  @IsOptional()
+  @Allow()
+  value?: unknown;
 
   @ApiPropertyOptional({ type: [FieldOptionDto] })
   @IsOptional()
