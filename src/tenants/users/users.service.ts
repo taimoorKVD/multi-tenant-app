@@ -12,6 +12,7 @@ import { SendUserCredentialsDto } from './dto';
 import { MailService } from '../../mail/mail.service';
 import { User } from './entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+import { JobPosition } from '../job-positions/entities';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -32,6 +33,7 @@ export class UsersService extends TenantAbstractService<User> {
     'password',
     'plain_password',
     'role_id',
+    'job_position_id',
     'is_system',
     'created_at',
     'updated_at',
@@ -41,6 +43,8 @@ export class UsersService extends TenantAbstractService<User> {
 
   private readonly relationFieldAliases: Record<string, string> = {
     role: 'role_id',
+    jobPosition: 'job_position_id',
+    job_position: 'job_position_id',
   };
 
   private getFrontendBaseUrl(): string {
@@ -139,6 +143,7 @@ export class UsersService extends TenantAbstractService<User> {
       password: user.password,
       plain_password: user.plainPassword,
       role_id: user.role?.id,
+      job_position_id: user.jobPosition?.id,
       ...staticPayload,
       ...dynamicPayload,
     };
@@ -157,6 +162,7 @@ export class UsersService extends TenantAbstractService<User> {
         password: user.plainPassword ?? null,
         plain_password: user.plainPassword ?? null,
         role_id: user.role?.id ?? null,
+        job_position_id: user.jobPosition?.id ?? null,
       },
       dynamicData,
       {
@@ -164,6 +170,9 @@ export class UsersService extends TenantAbstractService<User> {
         is_system: user.isSystem,
         created_at: user.createdAt,
         updated_at: user.updatedAt,
+        job_position: user.jobPosition
+          ? { id: user.jobPosition.id, name: user.jobPosition.name }
+          : null,
       },
     );
   }
@@ -204,6 +213,33 @@ export class UsersService extends TenantAbstractService<User> {
       const newRole = await roleRepo.findOne({ where: { id: roleId } });
       if (!newRole) throw new BadRequestException(`Role with ID ${roleId} not found.`);
       user.role = newRole;
+    } else if (isCreate && !user.role) {
+      // New staff users default to Employee; only the provisioned bootstrap user is Admin.
+      const employeeRole = await roleRepo.findOne({ where: { name: 'Employee' } });
+      if (employeeRole) {
+        user.role = employeeRole;
+      } else {
+        throw new BadRequestException(
+          'Employee role is not configured for this tenant. Create an Employee role or pass role_id.',
+        );
+      }
+    }
+
+    if (isCreate || staticPayload.job_position_id !== undefined) {
+      const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
+      const jobPositionId = this.coerceRelationId(staticPayload.job_position_id);
+
+      if (jobPositionId === null) {
+        if (!isCreate || staticPayload.job_position_id !== undefined) {
+          user.jobPosition = null;
+        }
+      } else if (jobPositionId !== user.jobPosition?.id) {
+        const jobPosition = await jobPositionRepo.findOne({ where: { id: jobPositionId } });
+        if (!jobPosition) {
+          throw new BadRequestException(`Job position with ID ${jobPositionId} not found.`);
+        }
+        user.jobPosition = jobPosition;
+      }
     }
   }
 
@@ -334,7 +370,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const payload = await userRepo.findOne({
         where: { id: saved.id },
-        relations: ['role'],
+        relations: ['role', 'jobPosition'],
       });
 
       const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
@@ -411,7 +447,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const user = await userRepo.findOne({
         where: { id },
-        relations: ['role'],
+        relations: ['role', 'jobPosition'],
       });
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
@@ -457,7 +493,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const payload = await userRepo.findOne({
         where: { id: updated.id },
-        relations: ['role'],
+        relations: ['role', 'jobPosition'],
       });
 
       const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, updated.id, context);
@@ -557,6 +593,7 @@ export class UsersService extends TenantAbstractService<User> {
       const qb = userRepo
         .createQueryBuilder('user')
         .leftJoinAndSelect('user.role', 'role')
+        .leftJoinAndSelect('user.jobPosition', 'jobPosition')
         .where('user.isSystem = :isSystem', { isSystem: false });
 
       if (name) qb.andWhere('user.name ILIKE :name', { name: `%${name}%` });
@@ -581,6 +618,15 @@ export class UsersService extends TenantAbstractService<User> {
             const parsedRoleId = Number(value);
             if (Number.isFinite(parsedRoleId)) {
               qb.andWhere('role.id = :sysRoleId', { sysRoleId: parsedRoleId });
+            }
+            break;
+          }
+          case 'job_position_id': {
+            const parsedJobPositionId = Number(value);
+            if (Number.isFinite(parsedJobPositionId)) {
+              qb.andWhere('jobPosition.id = :sysJobPositionId', {
+                sysJobPositionId: parsedJobPositionId,
+              });
             }
             break;
           }

@@ -635,6 +635,40 @@ export class TenantsService {
       await roleRepo.save(adminRole);
     }
 
+    const employeePermissionNames = [
+      'view-dc-assignment',
+      'complete-dc-assignment',
+      'view-dc-template',
+      'submit-form',
+      'view-item',
+      'view-location',
+      'view-job-position',
+    ];
+    const employeePermissions = permissions.filter((p) =>
+      employeePermissionNames.includes(p.name),
+    );
+
+    let employeeRole = await roleRepo.findOne({
+      where: { name: 'Employee' },
+      relations: ['permissions'],
+    });
+    if (!employeeRole) {
+      employeeRole = roleRepo.create({ name: 'Employee', permissions: employeePermissions });
+      await roleRepo.save(employeeRole);
+      this.logger.log(`🔑 Employee role created with assignment permissions`);
+    } else {
+      const existingPermissionNames = new Set((employeeRole.permissions || []).map((p) => p.name));
+      const merged = [...(employeeRole.permissions || [])];
+      for (const permission of employeePermissions) {
+        if (!existingPermissionNames.has(permission.name)) {
+          merged.push(permission);
+          existingPermissionNames.add(permission.name);
+        }
+      }
+      employeeRole.permissions = merged;
+      await roleRepo.save(employeeRole);
+    }
+
     const adminEmail = `admin@${subdomain}.com`;
     const defaultPassword = 'Admin@123';
     const hashed = await argon2.hash(defaultPassword);

@@ -42,6 +42,8 @@ export const TenantAuthLoginDocs = () =>
                 example: {
                     success: true,
                     message: 'Login successful',
+                    user_type: 'tenant',
+                    account_type: 'tenant_admin',
                     tenant_slug: 'kingdomvision',
                     tenant: 'tenant_kingdomvision',
                     accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
@@ -49,6 +51,11 @@ export const TenantAuthLoginDocs = () =>
                         id: 1,
                         email: 'admin@kingdomvision.com',
                         name: 'Administrator',
+                        account_type: 'tenant_admin',
+                        job_position: {
+                            id: 2,
+                            name: 'Store Manager',
+                        },
                         role: {
                             id: 1,
                             name: 'Senior Manager',
@@ -109,6 +116,8 @@ export const TenantAuthGetUserDocs = () =>
                 example: {
                     success: true,
                     message: 'Session is active.',
+                    user_type: 'tenant',
+                    account_type: 'tenant_admin',
                     tenant_slug: 'kingdomvision',
                     tenant: 'tenant_kingdomvision',
                     user: {
@@ -116,6 +125,11 @@ export const TenantAuthGetUserDocs = () =>
                         name: 'Administrator',
                         email: 'admin@kingdomvision.com',
                         email_verified: true,
+                        account_type: 'tenant_admin',
+                        job_position: {
+                            id: 2,
+                            name: 'Store Manager',
+                        },
                         role: {
                             id: 1,
                             name: 'Senior Manager',
@@ -308,6 +322,8 @@ export const TenantAuthRefreshTokenDocs = () =>
                 example: {
                     success: true,
                     message: 'Token refreshed successfully.',
+                    user_type: 'tenant',
+                    account_type: 'tenant_admin',
                     tenant_slug: 'kingdomvision',
                     tenant: 'tenant_kingdomvision',
                     accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access',

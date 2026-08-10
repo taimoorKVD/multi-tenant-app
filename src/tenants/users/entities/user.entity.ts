@@ -55,9 +55,9 @@ export class User {
   @JoinColumn({ name: 'role_id' })
   role: Role;
 
-  // @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
-  // @JoinColumn({ name: 'job_position_id' })
-  // jobPosition: JobPosition | null;
+  @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'job_position_id' })
+  jobPosition: JobPosition | null;
 
   // @ManyToOne(() => Location, { nullable: true, onDelete: 'SET NULL' })
   // @JoinColumn({ name: 'location_id' })

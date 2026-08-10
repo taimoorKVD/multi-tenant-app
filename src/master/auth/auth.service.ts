@@ -77,6 +77,7 @@ export class MasterAuthService {
 
     return {
       sub: user.id,
+      userType: 'master',
       email: user.email,
       role: user.role?.name,
       permissions,
@@ -90,6 +91,7 @@ export class MasterAuthService {
 
     return {
       sub: user.id,
+      userType: 'master',
       email: user.email,
       role: user.role?.name,
       permissions,
@@ -521,6 +523,7 @@ export class MasterAuthService {
       return {
         success: true,
         message: 'User successfully authenticated',
+        user_type: 'master',
         ...tokens,
         user: {
           id: user.id,

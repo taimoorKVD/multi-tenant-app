@@ -29,7 +29,7 @@ export class UsersController {
     return this.usersService.paginate(
       req,
       Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
-      ['role'],
+      ['role', 'jobPosition'],
       Number.isFinite(parsedLimit) ? parsedLimit : undefined,
     );
   }
@@ -93,7 +93,7 @@ export class UsersController {
   @Get(':id')
   @TenantUsersSwagger.FindOne()
   findOne(@Req() req, @Param('id') id: number) {
-    return this.usersService.findOne(req, id, ['role']);
+    return this.usersService.findOne(req, id, ['role', 'jobPosition']);
   }
 
   @TenantAccess('edit-user')

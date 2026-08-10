@@ -11,6 +11,7 @@ import { DataSource, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
 import { User } from '../users/entities';
+import { JobPosition } from '../job-positions/entities';
 import {
   ForgotPasswordDto,
   RefreshTokenDto,
@@ -23,6 +24,7 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from './entities';
+import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
 
 @Injectable()
 export class TenantAuthService {
@@ -45,6 +47,111 @@ export class TenantAuthService {
   ]);
 
   constructor(private readonly jwtService: JwtService) {}
+
+  private serializeJobPosition(jobPosition: JobPosition | null | undefined) {
+    if (!jobPosition?.id) return null;
+    return {
+      id: jobPosition.id,
+      name: jobPosition.name,
+    };
+  }
+
+  /**
+   * Distinguishes tenant workspace admins/managers from employee users on the same /tenant/login.
+   * - tenant_admin: Admin/Manager role name, or management permissions
+   * - tenant_user: everyone else (Today's Work / assignments)
+   */
+  private resolveAccountType(
+    user: User,
+    permissionNames: string[],
+  ): 'tenant_admin' | 'tenant_user' {
+    const roleName = String(user.role?.name || '')
+      .trim()
+      .toLowerCase();
+
+    if (
+      roleName === 'admin' ||
+      roleName.includes('admin') ||
+      roleName.includes('manager') ||
+      roleName.includes('owner')
+    ) {
+      return 'tenant_admin';
+    }
+
+    const adminPermissionHints = [
+      'create-user',
+      'edit-user',
+      'create-role',
+      'create-dc-template',
+      'edit-dc-template',
+      'activate-dc-template',
+      'archive-dc-template',
+      'review-dc-submission',
+    ];
+
+    if (adminPermissionHints.some((name) => permissionNames.includes(name))) {
+      return 'tenant_admin';
+    }
+
+    return 'tenant_user';
+  }
+
+  private coerceRelationId(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'object' && value !== null && 'id' in (value as Record<string, unknown>)) {
+      const id = Number((value as Record<string, unknown>).id);
+      return Number.isFinite(id) ? id : null;
+    }
+    const id = Number(value);
+    return Number.isFinite(id) ? id : null;
+  }
+
+  /**
+   * Prefer FK relation; fall back to legacy users-form dynamic field values.
+   */
+  private async resolveJobPositionSummary(
+    tenantConnection: DataSource,
+    user: User,
+  ): Promise<{ id: number; name: string } | null> {
+    const fromRelation = this.serializeJobPosition(user.jobPosition);
+    if (fromRelation) return fromRelation;
+
+    try {
+      const moduleRepo = tenantConnection.getRepository(DynamicModule);
+      const usersModule = await moduleRepo.findOne({ where: { slug: 'users' } });
+      if (!usersModule?.id) return null;
+
+      const dynamicRepo = tenantConnection.getRepository(EntityDynamicData);
+      const row = await dynamicRepo.findOne({
+        where: { moduleId: usersModule.id, entityId: user.id },
+      });
+      if (!row?.data || typeof row.data !== 'object') return null;
+
+      const data = row.data as Record<string, unknown>;
+      const candidates: unknown[] = [
+        data.job_position_id,
+        data.jobPosition,
+        data.job_position,
+        ...Object.entries(data)
+          .filter(([key]) => /job.?position/i.test(key))
+          .map(([, value]) => value),
+      ];
+
+      let jobPositionId: number | null = null;
+      for (const candidate of candidates) {
+        jobPositionId = this.coerceRelationId(candidate);
+        if (jobPositionId !== null) break;
+      }
+      if (jobPositionId === null) return null;
+
+      const jobPosition = await tenantConnection.getRepository(JobPosition).findOne({
+        where: { id: jobPositionId },
+      });
+      return this.serializeJobPosition(jobPosition);
+    } catch {
+      return null;
+    }
+  }
 
   private getFrontendBaseUrl(): string {
     const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
@@ -252,10 +359,13 @@ export class TenantAuthService {
   ) {
     const payload = {
       sub: user.id,
+      userType: 'tenant',
+      accountType: this.resolveAccountType(user, permissionNames),
       tenantId: req.tenantId || null,
       tenantDb: req.tenantConnection?.options?.database,
       email: user.email,
       role: user.role?.name,
+      jobPositionId: user.jobPosition?.id ?? null,
       permissions: permissionNames,
       emailVerified,
     };
@@ -500,7 +610,7 @@ export class TenantAuthService {
       const userRepo = tenantConnection.getRepository(User);
       const user = await userRepo.findOne({
         where: { email: dto.email },
-        relations: ['role', 'role.permissions'],
+        relations: ['role', 'role.permissions', 'jobPosition'],
       });
 
       if (!user) {
@@ -519,6 +629,8 @@ export class TenantAuthService {
       const resolvedPermissions = user.role?.permissions ?? [];
       const permissionNames = resolvedPermissions.map((permission) => permission.name);
       const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+      const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
+      const accountType = this.resolveAccountType(user, permissionNames);
       const tokens = await this.issueAuthTokens(
         tenantConnection,
         req,
@@ -530,6 +642,8 @@ export class TenantAuthService {
       return {
         success: true,
         message: 'Login successful',
+        user_type: 'tenant',
+        account_type: accountType,
         tenant_slug: req.tenantId || null,
         tenant: tenantConnection.options.database,
         ...tokens,
@@ -538,6 +652,8 @@ export class TenantAuthService {
           email: user.email,
           name: user.name,
           email_verified: emailVerified,
+          account_type: accountType,
+          job_position: jobPosition,
           role: {
             ...user.role,
             permissions: resolvedPermissions,
@@ -742,7 +858,7 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: payload.sub },
-      relations: ['role', 'role.permissions'],
+      relations: ['role', 'role.permissions', 'jobPosition'],
     });
 
     if (!user) {
@@ -751,6 +867,7 @@ export class TenantAuthService {
 
     const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
     const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+    const accountType = this.resolveAccountType(user, permissionNames);
     const tokens = await this.issueAuthTokens(
       tenantConnection,
       req,
@@ -762,6 +879,8 @@ export class TenantAuthService {
     return {
       success: true,
       message: 'Token refreshed successfully.',
+      user_type: 'tenant',
+      account_type: accountType,
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
       ...tokens,
@@ -776,7 +895,7 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: userId },
-      relations: ['role', 'role.permissions'],
+      relations: ['role', 'role.permissions', 'jobPosition'],
     });
 
     if (!user) {
@@ -784,10 +903,15 @@ export class TenantAuthService {
     }
 
     const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+    const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
+    const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const accountType = this.resolveAccountType(user, permissionNames);
 
     return {
       success: true,
       message: 'Session is active.',
+      user_type: 'tenant',
+      account_type: accountType,
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
       user: {
@@ -795,6 +919,8 @@ export class TenantAuthService {
         name: user.name,
         email: user.email,
         email_verified: emailVerified,
+        account_type: accountType,
+        job_position: jobPosition,
         role: user.role
           ? {
               id: user.role.id,

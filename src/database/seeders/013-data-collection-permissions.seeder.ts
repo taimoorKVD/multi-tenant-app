@@ -80,13 +80,61 @@ export class DataCollectionPermissionsSeeder implements ISeeder {
           await roleRepo.save(adminRole);
         }
 
-        if (!inserted && !granted) {
+        const employeePermissionNames = [
+          'view-dc-assignment',
+          'complete-dc-assignment',
+          'view-dc-template',
+          'submit-form',
+          'view-item',
+          'view-location',
+          'view-job-position',
+        ];
+
+        const employeePermissions: Permission[] = [];
+        for (const permissionName of employeePermissionNames) {
+          let permission = await permissionRepo.findOne({ where: { name: permissionName } });
+          if (!permission) {
+            permission = await permissionRepo.save(permissionRepo.create({ name: permissionName }));
+            inserted += 1;
+          }
+          employeePermissions.push(permission);
+        }
+
+        let employeeRole = await roleRepo.findOne({
+          where: { name: 'Employee' },
+          relations: ['permissions'],
+        });
+
+        let employeeGranted = 0;
+        if (!employeeRole) {
+          employeeRole = roleRepo.create({
+            name: 'Employee',
+            permissions: employeePermissions,
+          });
+          await roleRepo.save(employeeRole);
+          employeeGranted = employeePermissions.length;
+          console.log(`✅ Tenant "${tenant.subdomain}": Employee role created.`);
+        } else {
+          const employeeExisting = new Set((employeeRole.permissions || []).map((p) => p.name));
+          for (const permission of employeePermissions) {
+            if (!employeeExisting.has(permission.name)) {
+              employeeRole.permissions = [...(employeeRole.permissions || []), permission];
+              employeeExisting.add(permission.name);
+              employeeGranted += 1;
+            }
+          }
+          if (employeeGranted > 0) {
+            await roleRepo.save(employeeRole);
+          }
+        }
+
+        if (!inserted && !granted && !employeeGranted) {
           console.log(`⚠️  Tenant "${tenant.subdomain}": data-collection permissions already assigned.`);
           continue;
         }
 
         console.log(
-          `✅ Tenant "${tenant.subdomain}": data-collection permissions ensured (created=${inserted}, assigned=${granted}).`,
+          `✅ Tenant "${tenant.subdomain}": data-collection permissions ensured (created=${inserted}, adminAssigned=${granted}, employeeAssigned=${employeeGranted}).`,
         );
       } catch (error) {
         console.error(

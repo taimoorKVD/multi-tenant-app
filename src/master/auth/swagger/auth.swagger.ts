@@ -41,6 +41,7 @@ export const MasterAuthLoginDocs = () =>
                 example: {
                     success: true,
                     message: 'Login successful.',
+                    user_type: 'master',
                     data: {
                         access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                         user: {
