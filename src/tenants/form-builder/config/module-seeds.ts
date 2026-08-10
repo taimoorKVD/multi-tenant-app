@@ -120,6 +120,8 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'jobPosition',
     type: 'dropdown',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'job_position_id',
     placeholder: 'Select job position',
     optionSource: {
       type: 'dynamic',

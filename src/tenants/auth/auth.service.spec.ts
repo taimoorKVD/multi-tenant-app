@@ -92,7 +92,10 @@ describe('TenantAuthService', () => {
 
     expect(result.success).toBe(true);
     expect(result.accessToken).toBe('tenant-jwt');
+    expect(result.user_type).toBe('tenant');
+    expect(result.account_type).toBe('tenant_admin');
     expect(result.tenant_slug).toBe('test');
+    expect(result.user.account_type).toBe('tenant_admin');
     expect(result.user.role.permissions).toEqual([{ name: 'view-user' }, { name: 'edit-user' }]);
     expect(result.user.email_verified).toBe(true);
   });
@@ -150,9 +153,12 @@ describe('TenantAuthService', () => {
     const result = await service.getProfile(req, 10);
 
     expect(result.success).toBe(true);
+    expect(result.user_type).toBe('tenant');
+    expect(result.account_type).toBe('tenant_admin');
     expect(result.tenant_slug).toBe('kingdomvision');
     expect(result.tenant).toBe('tenant_kingdomvision');
     expect(result.user.email).toBe('admin@test.com');
+    expect(result.user.account_type).toBe('tenant_admin');
     expect(result.user.email_verified).toBe(true);
     expect(result.user.role).toEqual({
       id: 1,

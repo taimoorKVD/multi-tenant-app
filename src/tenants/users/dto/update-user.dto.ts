@@ -26,4 +26,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsNumber({}, { message: 'Role ID must be numeric.' })
   role_id?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'Job position ID must be numeric.' })
+  job_position_id?: number;
 }

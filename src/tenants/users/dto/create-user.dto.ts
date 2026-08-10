@@ -34,4 +34,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsNumber({}, { message: 'Role ID must be numeric if provided.' })
   role_id?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'Job position ID must be numeric if provided.' })
+  job_position_id?: number;
 }

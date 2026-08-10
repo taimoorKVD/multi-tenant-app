@@ -29,6 +29,7 @@ export const TenantUsersSwagger = {
             password: { type: 'string', example: 'StrongPass123!' },
             password_confirm: { type: 'string', example: 'StrongPass123!' },
             role_id: { type: 'number', example: 1 },
+            job_position_id: { type: 'number', example: 2 },
           },
         },
         examples: {
@@ -40,6 +41,7 @@ export const TenantUsersSwagger = {
               password: 'StrongPass123!',
               password_confirm: 'StrongPass123!',
               role_id: 1,
+              job_position_id: 2,
             },
           },
         },
@@ -201,6 +203,7 @@ export const TenantUsersSwagger = {
             password: { type: 'string', example: 'StrongPass123!' },
             password_confirm: { type: 'string', example: 'StrongPass123!' },
             role_id: { type: 'number', example: 1 },
+            job_position_id: { type: 'number', example: 2 },
           },
         },
         examples: {
@@ -209,6 +212,7 @@ export const TenantUsersSwagger = {
             value: {
               name: 'Madeline Smith',
               role_id: 1,
+              job_position_id: 2,
             },
           },
           updateWithPasswordResetContext: {
@@ -217,6 +221,7 @@ export const TenantUsersSwagger = {
               name: 'Madeline Smith',
               email: 'madelinesmith@company.com',
               role_id: 1,
+              job_position_id: 2,
             },
           },
         },

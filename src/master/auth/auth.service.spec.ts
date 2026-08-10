@@ -68,6 +68,7 @@ describe('MasterAuthService', () => {
     const result = await service.login({ email: 'admin@system.com', password: 'Secret123' } as any);
 
     expect(result.success).toBe(true);
+    expect(result.user_type).toBe('master');
     expect(result.access_token).toBe('jwt-token');
     expect(result.user.email).toBe('admin@system.com');
     expect(result.user.email_verified).toBe(true);
