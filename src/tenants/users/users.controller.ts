@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, Post, Put, Query, Req} from '@nest
 import {UsersService} from './users.service';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
 import {CreateUserDto, SendUserCredentialsDto, UpdateUserDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantUsersSwagger} from './swagger';
 
@@ -101,6 +103,13 @@ export class UsersController {
   @TenantUsersSwagger.Update()
   update(@Req() req, @Param('id') id: number, @Body() body: any) {
     return this.usersService.update(req, id, body);
+  }
+
+  @TenantAccess('delete-user')
+  @Delete('bulk')
+  @BulkDeleteSwagger('users')
+  bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
+    return this.usersService.bulkDelete(req, dto.ids);
   }
 
   @TenantAccess('delete-user')

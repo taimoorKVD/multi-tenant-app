@@ -1,5 +1,5 @@
 import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException,} from '@nestjs/common';
-import {DeepPartial, Repository} from 'typeorm';
+import {DeepPartial, In, Repository} from 'typeorm';
 
 interface PaginatedMeta {
   total: number;
@@ -148,5 +148,41 @@ export abstract class MasterAbstractService<T extends Record<string, any>> {
       );
     }
 
+  }
+
+  async bulkDelete(ids: number[]): Promise<ApiResponse<{ deletedIds: number[]; count: number }>> {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const records = await this.repository.findBy({ id: In(uniqueIds) } as any);
+      const foundIds = records.map((record: any) => record.id as number);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Records not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      await this.repository.delete(foundIds);
+
+      return {
+        success: true,
+        message: `${foundIds.length} record(s) deleted successfully`,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error: any) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'An unexpected error occurred while bulk deleting records. Please try again later.',
+      );
+    }
   }
 }

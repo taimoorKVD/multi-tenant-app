@@ -397,4 +397,13 @@ export class LocationsService extends TenantAbstractService<Location> {
     await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
     return result;
   }
+
+  async bulkDelete(req: any, ids: number[]): Promise<any> {
+    const context = await this.getContext(req);
+    const result = await super.bulkDelete(req, ids);
+    for (const id of result.data.deletedIds as number[]) {
+      await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
+    }
+    return result;
+  }
 }

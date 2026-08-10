@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { In, Repository } from 'typeorm';
 import { encryptMailSecret } from '../../mail/utils/mail-crypto.util';
 import { TenantEmailTemplate, TenantMailSetting } from './entities';
 import {
@@ -198,6 +198,29 @@ export class TenantMailAdminService {
     return { success: true, message: 'Tenant email template deleted successfully.' };
   }
 
+  async bulkDeleteTemplates(req: any, ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const templateRepo = this.getTemplateRepo(req);
+    const records = await templateRepo.findBy({ id: In(uniqueIds) });
+    const foundIds = records.map((record) => record.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Tenant email templates not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await templateRepo.delete(foundIds);
+    return {
+      success: true,
+      message: `${foundIds.length} tenant email template(s) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
+  }
+
   async listTenantSmtp(req: any) {
     const mailSettingRepo = this.getMailSettingRepo(req);
     const data = await mailSettingRepo.find({ order: { id: 'DESC' } });
@@ -272,5 +295,28 @@ export class TenantMailAdminService {
 
     await mailSettingRepo.delete(id);
     return { success: true, message: 'Tenant SMTP setting deleted successfully.' };
+  }
+
+  async bulkDeleteTenantSmtp(req: any, ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const mailSettingRepo = this.getMailSettingRepo(req);
+    const records = await mailSettingRepo.findBy({ id: In(uniqueIds) });
+    const foundIds = records.map((record) => record.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Tenant SMTP settings not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await mailSettingRepo.delete(foundIds);
+    return {
+      success: true,
+      message: `${foundIds.length} tenant SMTP setting(s) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
   }
 }

@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { MasterAccess } from '../../common/decorators';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 import { MailAdminService } from './mail-admin.service';
 import {
   CreateEmailTemplateDto,
@@ -112,6 +114,13 @@ export class MailAdminController {
     return this.mailAdminService.updateTemplate(id, dto);
   }
 
+  @Delete('templates/bulk')
+  @MasterAccess('delete-tenant')
+  @BulkDeleteSwagger('email templates')
+  bulkDeleteTemplates(@Body() dto: BulkDeleteDto) {
+    return this.mailAdminService.bulkDeleteTemplates(dto.ids);
+  }
+
   @Delete('templates/:id')
   @MasterAccess('delete-tenant')
   @ApiOperation({ summary: 'Delete master email template' })
@@ -179,6 +188,13 @@ export class MailAdminController {
     @Body() dto: UpdateGlobalMailSettingDto,
   ) {
     return this.mailAdminService.updateGlobalMailSetting(id, dto);
+  }
+
+  @Delete('smtp/global/bulk')
+  @MasterAccess('delete-tenant')
+  @BulkDeleteSwagger('global SMTP settings')
+  bulkDeleteGlobalSmtp(@Body() dto: BulkDeleteDto) {
+    return this.mailAdminService.bulkDeleteGlobalMailSettings(dto.ids);
   }
 
   @Delete('smtp/global/:id')

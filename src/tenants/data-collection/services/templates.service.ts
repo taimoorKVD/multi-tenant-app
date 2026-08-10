@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { In } from 'typeorm';
 import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
 import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
 import { AssignmentsService } from './assignments.service';
@@ -246,6 +247,35 @@ export class TemplatesService {
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to delete template');
+    }
+  }
+
+  async bulkRemove(req: any, ids: number[]) {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const templates = await templateRepo.findBy({ id: In(uniqueIds) });
+      const foundIds = templates.map((template) => template.id);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Templates not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      await templateRepo.softRemove(templates);
+
+      return {
+        success: true,
+        message: `${foundIds.length} template(s) deleted successfully`,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new InternalServerErrorException('Failed to bulk delete templates');
     }
   }
 

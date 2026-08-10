@@ -11,6 +11,8 @@ import {
   Req,
 } from '@nestjs/common';
 import { TenantAccess } from '../../../common/decorators/tenant-access.decorator';
+import { BulkDeleteDto } from '../../../common/dto';
+import { BulkDeleteSwagger } from '../../../common/swagger';
 import { TemplatesService } from '../services';
 import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
 import { TenantDataCollectionTemplatesSwagger } from '../swagger/templates.swagger';
@@ -57,6 +59,13 @@ export class TemplatesController {
   @TenantDataCollectionTemplatesSwagger.Update()
   update(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTemplateDto) {
     return this.templatesService.update(req, id, dto);
+  }
+
+  @Delete('bulk')
+  @TenantAccess('delete-dc-template')
+  @BulkDeleteSwagger('data collection templates')
+  bulkRemove(@Req() req: any, @Body() dto: BulkDeleteDto) {
+    return this.templatesService.bulkRemove(req, dto.ids);
   }
 
   @Delete(':id')

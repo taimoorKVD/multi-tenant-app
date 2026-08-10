@@ -15,6 +15,8 @@ import {
 import {UsersService} from './users.service';
 import {MasterAccess} from '../../common/decorators';
 import {CreateUserDto, UpdateUserDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {MasterAuthGuard} from '../auth/guards';
 import {MasterAuthService} from '../auth/auth.service';
 import {Request} from 'express';
@@ -100,6 +102,14 @@ export class UsersController {
   @UsersSwagger.Update()
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
+  }
+
+  // Bulk delete users (Admin)
+  @Delete('bulk')
+  @MasterAccess('delete-user')
+  @BulkDeleteSwagger('users')
+  async bulkDelete(@Body() dto: BulkDeleteDto) {
+    return this.usersService.bulkDelete(dto.ids);
   }
 
   // Delete user by ID (Admin)

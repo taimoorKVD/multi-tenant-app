@@ -4,6 +4,8 @@ import { MasterAccess } from '../../common/decorators';
 import { ApiTags } from '@nestjs/swagger';
 import { PermissionSwagger } from './swagger';
 import { CreatePermissionDto, UpdatePermissionDto } from './dto/index';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 import { ApiResponse } from '../../common/abstract';
 import { Permission } from './entities';
 
@@ -49,6 +51,13 @@ export class PermissionController {
     @Body() dto: UpdatePermissionDto,
   ): Promise<ApiResponse<Permission>> {
     return this.permissionService.update(id, dto as any);
+  }
+
+  @Delete('bulk')
+  @MasterAccess('delete-permission')
+  @BulkDeleteSwagger('permissions')
+  async bulkDelete(@Body() dto: BulkDeleteDto) {
+    return this.permissionService.bulkDelete(dto.ids);
   }
 
   @Delete(':id')

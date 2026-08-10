@@ -889,6 +889,26 @@ export class TenantsService {
     }
   }
 
+  async bulkRemove(ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const deleted: Array<{ id: number; name: string; dbName: string }> = [];
+
+    for (const id of uniqueIds) {
+      const result = await this.remove(id);
+      deleted.push(result.deleted);
+    }
+
+    return {
+      success: true,
+      message: `${deleted.length} tenant(s) deleted successfully`,
+      data: { deletedIds: deleted.map((item) => item.id), count: deleted.length, deleted },
+    };
+  }
+
   async update(id: number, updates: Partial<Tenant>) {
     try {
 

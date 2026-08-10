@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req } from '@nestjs/common';
 import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
 import { CreateReportingCategoryDto, UpdateReportingCategoryDto } from './dto';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 import { ReportingCategoriesService } from './reporting-categories.service';
 import { TenantReportingCategoriesSwagger } from './swagger';
 
@@ -63,6 +65,13 @@ export class ReportingCategoriesController {
   @TenantReportingCategoriesSwagger.Update()
   update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReportingCategoryDto) {
     return this.reportingCategoriesService.update(req, id, dto);
+  }
+
+  @TenantAccess('delete-reporting-category')
+  @Delete('bulk')
+  @BulkDeleteSwagger('reporting categories')
+  bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
+    return this.reportingCategoriesService.bulkDelete(req, dto.ids);
   }
 
   @TenantAccess('delete-reporting-category')
