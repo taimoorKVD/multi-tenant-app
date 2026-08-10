@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query} 
 import {ApiTags} from '@nestjs/swagger';
 import {CitiesService} from './cities.service';
 import {CreateCityDto, UpdateCityDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {CitiesSwagger} from './swagger';
 
 @ApiTags('City Management')
@@ -64,6 +66,12 @@ export class CitiesController {
   @CitiesSwagger.Update()
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCityDto) {
     return this.citiesService.update(id, dto);
+  }
+
+  @Delete('bulk')
+  @BulkDeleteSwagger('cities')
+  bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.citiesService.bulkRemove(dto.ids);
   }
 
   @Delete(':id')

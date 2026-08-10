@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Product } from './entities';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 
 @Injectable()
 export class ProductsService {
@@ -167,6 +167,39 @@ export class ProductsService {
     } catch (error) {
       console.error(`❌ Failed to delete product [${id}]:`, error);
       throw new InternalServerErrorException('Failed to delete product');
+    }
+  }
+
+  async bulkRemove(req: any, ids: number[]) {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const repo = this.getRepo(req);
+      const products = await repo.findBy({ id: In(uniqueIds) });
+      const foundIds = products.map((product) => product.id);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Products not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      await repo.delete(foundIds);
+
+      return {
+        success: true,
+        message: `${foundIds.length} product(s) deleted successfully`,
+        tenant: req.tenantConnection.options.database,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('❌ Failed to bulk delete products:', error);
+      throw new InternalServerErrorException('Failed to bulk delete products');
     }
   }
 }

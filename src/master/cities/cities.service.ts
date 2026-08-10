@@ -1,6 +1,6 @@
 import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
-import {ILike, Repository} from 'typeorm';
+import {ILike, In, Repository} from 'typeorm';
 import {City} from './entities';
 import {CreateCityDto, UpdateCityDto} from './dto';
 import {State} from '../states/entities';
@@ -212,5 +212,27 @@ export class CitiesService {
 
     await this.cityRepo.delete(id);
     return {success: true, message: 'City deleted successfully'};
+  }
+
+  async bulkRemove(ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const records = await this.cityRepo.findBy({ id: In(uniqueIds) });
+    const foundIds = records.map((record) => record.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Cities not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await this.cityRepo.delete(foundIds);
+    return {
+      success: true,
+      message: `${foundIds.length} city(ies) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
   }
 }

@@ -1,6 +1,6 @@
 import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
-import {DeepPartial, Repository} from 'typeorm';
+import {DeepPartial, In, Repository} from 'typeorm';
 import {ApiResponse, MasterAbstractService} from '../../common/abstract';
 import {Role} from './entities';
 import {Permission} from '../permission/entities';
@@ -52,6 +52,48 @@ export class RoleService extends MasterAbstractService<Role> {
       };
     } catch (error: any) {
       throw new BadRequestException(error.message || 'Failed to delete role.');
+    }
+  }
+
+  async bulkDelete(ids: number[]): Promise<ApiResponse<{ deletedIds: number[]; count: number }>> {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const roles = await this.roleRepo.find({
+        where: { id: In(uniqueIds) },
+        relations: ['users'],
+      });
+      const foundIds = roles.map((role) => role.id);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Roles not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      const assigned = roles.filter((role) => (role.users ?? []).length > 0);
+      if (assigned.length) {
+        throw new BadRequestException(
+          `Role(s) cannot be deleted because they are assigned to users: ${assigned
+            .map((role) => `${role.name} (id=${role.id})`)
+            .join(', ')}`,
+        );
+      }
+
+      await this.roleRepo.delete(foundIds);
+
+      return {
+        success: true,
+        message: `${foundIds.length} role(s) deleted successfully`,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(error.message || 'Failed to bulk delete roles.');
     }
   }
 

@@ -17,6 +17,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 import {
   CreateTenantEmailTemplateDto,
   CreateTenantMailSettingDto,
@@ -118,6 +120,13 @@ export class TenantMailAdminController {
     return this.tenantMailAdminService.updateTemplate(req, id, dto);
   }
 
+  @Delete('templates/bulk')
+  @TenantAccess()
+  @BulkDeleteSwagger('email templates')
+  bulkDeleteTemplates(@Req() req: any, @Body() dto: BulkDeleteDto) {
+    return this.tenantMailAdminService.bulkDeleteTemplates(req, dto.ids);
+  }
+
   @Delete('templates/:id')
   @TenantAccess()
   @ApiOperation({ summary: 'Delete tenant email template' })
@@ -148,6 +157,13 @@ export class TenantMailAdminController {
     @Body() dto: UpdateTenantMailSettingDto,
   ) {
     return this.tenantMailAdminService.updateTenantSmtp(req, id, dto);
+  }
+
+  @Delete('smtp/bulk')
+  @TenantAccess()
+  @BulkDeleteSwagger('tenant SMTP settings')
+  bulkDeleteTenantSmtp(@Req() req: any, @Body() dto: BulkDeleteDto) {
+    return this.tenantMailAdminService.bulkDeleteTenantSmtp(req, dto.ids);
   }
 
   @Delete('smtp/:id')

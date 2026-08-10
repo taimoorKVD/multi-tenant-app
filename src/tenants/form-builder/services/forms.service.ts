@@ -515,6 +515,41 @@ export class FormsService {
     return { success: true, message: 'Form deleted successfully', deletedId: id };
   }
 
+  async bulkRemove(req: any, ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const repo = req.tenantConnection.getRepository(Form);
+    const entities = await repo.findBy({ id: In(uniqueIds) });
+    const foundIds = entities.map((entity) => entity.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Forms not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await repo.softDelete({ id: In(foundIds) });
+
+    const actorId = this.getActorId(req);
+    for (const entity of entities) {
+      await this.auditLogService.log(req, {
+        entityType: 'form',
+        entityId: entity.id,
+        action: 'soft_delete',
+        oldValue: entity as any,
+        createdBy: actorId,
+      });
+    }
+
+    return {
+      success: true,
+      message: `${foundIds.length} form(s) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
+  }
+
   async saveSchema(req: any, id: number, dto: SaveSchemaDto) {
     const repo = req.tenantConnection.getRepository(Form);
     const entity = await repo.findOne({ where: { id }, relations: ['module'] });

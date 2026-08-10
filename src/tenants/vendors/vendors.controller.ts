@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req } from '@nestjs/common';
 import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
 import { VendorsService } from './vendors.service';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 import { TenantVendorsSwagger } from './swagger';
 
 @TenantVendorsSwagger.Tags()
@@ -52,6 +54,13 @@ export class VendorsController {
   @TenantVendorsSwagger.Update()
   update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() body: any) {
     return this.vendorsService.update(req, id, body);
+  }
+
+  @TenantAccess('delete-vendor')
+  @Delete('bulk')
+  @BulkDeleteSwagger('vendors')
+  bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
+    return this.vendorsService.bulkDelete(req, dto.ids);
   }
 
   @TenantAccess('delete-vendor')

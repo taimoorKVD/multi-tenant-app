@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, Not, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
 import { SendUserCredentialsDto } from './dto';
@@ -746,6 +746,50 @@ export class UsersService extends TenantAbstractService<User> {
         throw error;
       }
       throw new InternalServerErrorException('Failed to delete user');
+    }
+  }
+
+  async bulkDelete(req: any, ids: number[]): Promise<any> {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const repo = this.getRepo(req);
+      const users = await repo.findBy({ id: In(uniqueIds) });
+      const foundIds = users.map((user) => user.id);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Users not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      const systemUsers = users.filter((user) => user.isSystem);
+      if (systemUsers.length) {
+        throw new BadRequestException(
+          `System users cannot be deleted: ${systemUsers.map((user) => user.id).join(', ')}`,
+        );
+      }
+
+      await repo.remove(users);
+
+      const context = await this.getUsersSchemaContext(req);
+      for (const id of foundIds) {
+        await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
+      }
+
+      return {
+        success: true,
+        message: `${foundIds.length} user(s) deleted successfully`,
+        tenant: req.tenantConnection.options.database,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to bulk delete users');
     }
   }
 }

@@ -1,6 +1,6 @@
 import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
 import {InjectRepository} from '@nestjs/typeorm';
-import {ILike, Repository} from 'typeorm';
+import {ILike, In, Repository} from 'typeorm';
 import {Country} from './entities';
 import {CreateCountryDto, UpdateCountryDto} from './dto';
 
@@ -137,5 +137,27 @@ export class CountriesService {
 
     await this.countryRepo.delete(id);
     return {success: true, message: 'Country deleted successfully'};
+  }
+
+  async bulkRemove(ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const records = await this.countryRepo.findBy({ id: In(uniqueIds) });
+    const foundIds = records.map((record) => record.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Countries not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await this.countryRepo.delete(foundIds);
+    return {
+      success: true,
+      message: `${foundIds.length} country(ies) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
   }
 }

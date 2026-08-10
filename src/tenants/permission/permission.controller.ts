@@ -15,6 +15,8 @@ import {ApiTags} from '@nestjs/swagger';
 import {TenantPermissionSwagger} from './swagger';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
 import { CreatePermissionDto, UpdatePermissionDto } from './dto/index';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 
 @ApiTags('Permission Management')
 @TenantPermissionSwagger.Auth()
@@ -85,6 +87,13 @@ export class PermissionController {
     @Body() dto: UpdatePermissionDto,
   ) {
     return this.permissionService.update(req, +id, dto as any);
+  }
+
+  @Delete('bulk')
+  @TenantAccess('delete-permission')
+  @BulkDeleteSwagger('permissions')
+  async bulkDelete(@Req() req, @Body() dto: BulkDeleteDto) {
+    return this.permissionService.bulkDelete(req, dto.ids);
   }
 
   @Delete(':id')

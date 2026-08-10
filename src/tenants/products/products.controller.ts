@@ -1,6 +1,8 @@
 import {Body, Controller, Delete, Get, Param, Post, Put, Query, Req} from '@nestjs/common';
 import {ProductsService} from './products.service';
 import {Product} from './entities';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 
 @Controller(['products', 'tenant/:tenantId/products'])
 export class ProductsController {
@@ -42,6 +44,12 @@ export class ProductsController {
     @Body() body: Partial<Product>,
   ) {
     return this.productsService.update(req, id, body);
+  }
+
+  @Delete('bulk')
+  @BulkDeleteSwagger('products')
+  bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
+    return this.productsService.bulkRemove(req, dto.ids);
   }
 
   @Delete(':id')

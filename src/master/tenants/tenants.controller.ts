@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query} fr
 import {TenantsService} from './tenants.service';
 import {Tenant} from './entities';
 import {CreateTenantDto, SendTenantCredentialsDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {MasterAccess} from '../../common/decorators';
 import {ApiTags} from "@nestjs/swagger";
 import {TenantSwagger} from "./swagger";
@@ -61,6 +63,13 @@ export class TenantsController {
   @TenantSwagger.FindOne()
   async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.tenantsService.findOne(id);
+  }
+
+  @Delete('bulk')
+  @MasterAccess('delete-tenant')
+  @BulkDeleteSwagger('tenants')
+  async bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.tenantsService.bulkRemove(dto.ids);
   }
 
   @Delete(':id')

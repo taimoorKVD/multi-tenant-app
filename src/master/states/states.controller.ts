@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query} 
 import {ApiTags} from '@nestjs/swagger';
 import {StatesService} from './states.service';
 import {CreateStateDto, UpdateStateDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {StatesSwagger} from './swagger';
 
 @ApiTags('State Management')
@@ -58,6 +60,12 @@ export class StatesController {
   @StatesSwagger.Update()
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateStateDto) {
     return this.statesService.update(id, dto);
+  }
+
+  @Delete('bulk')
+  @BulkDeleteSwagger('states')
+  bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.statesService.bulkRemove(dto.ids);
   }
 
   @Delete(':id')
