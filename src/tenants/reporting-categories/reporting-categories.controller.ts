@@ -1,6 +1,10 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req } from '@nestjs/common';
 import { TenantAccess } from '../../common/decorators/tenant-access.decorator';
-import { CreateReportingCategoryDto, UpdateReportingCategoryDto } from './dto';
+import {
+  AssignReportingCategoryItemsDto,
+  CreateReportingCategoryDto,
+  UpdateReportingCategoryDto,
+} from './dto';
 import { BulkDeleteDto } from '../../common/dto';
 import { BulkDeleteSwagger } from '../../common/swagger';
 import { ReportingCategoriesService } from './reporting-categories.service';
@@ -58,6 +62,28 @@ export class ReportingCategoriesController {
   @TenantReportingCategoriesSwagger.FindOne()
   findOne(@Req() req, @Param('id', ParseIntPipe) id: number) {
     return this.reportingCategoriesService.findOne(req, id);
+  }
+
+  @TenantAccess('edit-reporting-category')
+  @Post(':id/items')
+  @TenantReportingCategoriesSwagger.AssignItems()
+  assignItems(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AssignReportingCategoryItemsDto,
+  ) {
+    return this.reportingCategoriesService.assignItems(req, id, dto);
+  }
+
+  @TenantAccess('edit-reporting-category')
+  @Delete(':id/items')
+  @TenantReportingCategoriesSwagger.RemoveItems()
+  removeItems(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AssignReportingCategoryItemsDto,
+  ) {
+    return this.reportingCategoriesService.removeItems(req, id, dto);
   }
 
   @TenantAccess('edit-reporting-category')

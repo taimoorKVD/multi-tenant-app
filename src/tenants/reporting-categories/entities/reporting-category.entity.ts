@@ -1,5 +1,15 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToMany,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { ReportingGroup } from '../../reporting-groups/entities';
+import { Item } from '../../items/entities';
 
 @Entity('reporting_categories')
 export class ReportingCategory {
@@ -27,6 +37,9 @@ export class ReportingCategory {
 
   @Column({ name: 'updated_by', type: 'int', nullable: true })
   updatedBy!: number | null;
+
+  @ManyToMany(() => Item, (item) => item.reportingCategories)
+  items!: Item[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

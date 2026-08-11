@@ -30,7 +30,11 @@ export const TenantReportingGroupsSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List reporting groups', description: 'Returns tenant reporting groups with pagination.' }),
+      ApiOperation({
+        summary: 'List reporting groups',
+        description:
+          'Returns tenant reporting groups with nested categories and assigned items (Group → Category → Items).',
+      }),
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
       ApiResponse({ status: 200, description: 'Reporting groups fetched successfully.' }),

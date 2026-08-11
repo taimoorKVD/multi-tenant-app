@@ -42,14 +42,20 @@ export class ReportingGroupsService extends TenantAbstractService<ReportingGroup
   }
 
   async paginate(req: any, page = 1, relations: string[] = [], limit?: number) {
-    return super.paginate(req, page, relations, limit);
+    const resolvedRelations = relations.length
+      ? relations
+      : ['reportingCategories', 'reportingCategories.items'];
+    return super.paginate(req, page, resolvedRelations, limit);
   }
 
   async search(req: any, limit = 15, filters?: { name?: string; description?: string; isActive?: boolean }) {
     const repo = this.getRepo(req);
     const parsedLimit = Number(limit);
     const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
-    const qb = repo.createQueryBuilder('group');
+    const qb = repo
+      .createQueryBuilder('group')
+      .leftJoinAndSelect('group.reportingCategories', 'category')
+      .leftJoinAndSelect('category.items', 'items');
 
     if (filters?.name) qb.andWhere('group.name ILIKE :name', { name: `%${filters.name.trim()}%` });
     if (filters?.description) qb.andWhere('group.description ILIKE :description', { description: `%${filters.description.trim()}%` });
@@ -66,7 +72,7 @@ export class ReportingGroupsService extends TenantAbstractService<ReportingGroup
   }
 
   async findOne(req: any, id: number) {
-    return super.findOne(req, id, ['reportingCategories']);
+    return super.findOne(req, id, ['reportingCategories', 'reportingCategories.items']);
   }
 
   async update(req: any, id: number, dto: UpdateReportingGroupDto) {
