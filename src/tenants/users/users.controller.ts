@@ -1,7 +1,7 @@
 import {Body, Controller, Delete, Get, Param, Post, Put, Query, Req} from '@nestjs/common';
 import {UsersService} from './users.service';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
-import {CreateUserDto, SendUserCredentialsDto, UpdateUserDto} from './dto';
+import {CreateUserDto, SendUserCredentialsDto, UpdateTenantProfileDto, UpdateUserDto} from './dto';
 import {BulkDeleteDto} from '../../common/dto';
 import {BulkDeleteSwagger} from '../../common/swagger';
 import {ApiTags} from '@nestjs/swagger';
@@ -12,6 +12,20 @@ import {TenantUsersSwagger} from './swagger';
 @Controller(['users', 'tenant/:tenantId/users'])
 export class UsersController {
   constructor(private readonly usersService: UsersService) {
+  }
+
+  @TenantAccess()
+  @Get('profile')
+  @TenantUsersSwagger.GetProfile()
+  getProfile(@Req() req) {
+    return this.usersService.getOwnProfile(req);
+  }
+
+  @TenantAccess()
+  @Put('profile')
+  @TenantUsersSwagger.UpdateProfile()
+  updateProfile(@Req() req, @Body() dto: UpdateTenantProfileDto) {
+    return this.usersService.updateOwnProfile(req, dto);
   }
 
   @TenantAccess('create-user')

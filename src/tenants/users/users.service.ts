@@ -34,6 +34,7 @@ export class UsersService extends TenantAbstractService<User> {
     'plain_password',
     'role_id',
     'job_position_id',
+    'phone_number',
     'is_system',
     'created_at',
     'updated_at',
@@ -45,6 +46,8 @@ export class UsersService extends TenantAbstractService<User> {
     role: 'role_id',
     jobPosition: 'job_position_id',
     job_position: 'job_position_id',
+    phone: 'phone_number',
+    phoneNumber: 'phone_number',
   };
 
   private getFrontendBaseUrl(): string {
@@ -163,6 +166,7 @@ export class UsersService extends TenantAbstractService<User> {
         plain_password: user.plainPassword ?? null,
         role_id: user.role?.id ?? null,
         job_position_id: user.jobPosition?.id ?? null,
+        phone_number: user.phoneNumber ?? null,
       },
       dynamicData,
       {
@@ -206,6 +210,14 @@ export class UsersService extends TenantAbstractService<User> {
     if (this.dynamicFields.hasPresentValue(staticPayload.password)) {
       user.password = staticPayload.password;
       user.plainPassword = staticPayload.plain_password || staticPayload.password;
+    }
+
+    if (isCreate || staticPayload.phone_number !== undefined) {
+      if (staticPayload.phone_number === null || staticPayload.phone_number === '') {
+        user.phoneNumber = null;
+      } else if (shouldApplyScalar(staticPayload.phone_number)) {
+        user.phoneNumber = String(staticPayload.phone_number).trim();
+      }
     }
 
     const roleId = this.coerceRelationId(staticPayload.role_id);
@@ -790,6 +802,132 @@ export class UsersService extends TenantAbstractService<User> {
         throw error;
       }
       throw new InternalServerErrorException('Failed to bulk delete users');
+    }
+  }
+
+  private splitDisplayName(fullName: string | null | undefined): {
+    first_name: string;
+    last_name: string;
+  } {
+    const trimmed = String(fullName || '').trim();
+    if (!trimmed) return { first_name: '', last_name: '' };
+    const parts = trimmed.split(/\s+/);
+    return {
+      first_name: parts[0] || '',
+      last_name: parts.slice(1).join(' '),
+    };
+  }
+
+  private buildProfilePayload(user: User) {
+    const { first_name, last_name } = this.splitDisplayName(user.name);
+    return {
+      id: user.id,
+      name: user.name,
+      first_name,
+      last_name,
+      email: user.email,
+      phone: user.phoneNumber,
+      phone_number: user.phoneNumber,
+      role: user.role
+        ? {
+            id: user.role.id,
+            name: user.role.name,
+          }
+        : null,
+      account_type: user.role?.name || null,
+      job_position: user.jobPosition
+        ? { id: user.jobPosition.id, name: user.jobPosition.name }
+        : null,
+      is_system: user.isSystem,
+      created_at: user.createdAt,
+      updated_at: user.updatedAt,
+    };
+  }
+
+  async getOwnProfile(req: any) {
+    try {
+      const userId = this.getActorId(req);
+      if (!userId) {
+        throw new BadRequestException('Authenticated user is required');
+      }
+
+      const repo = this.getRepo(req);
+      const user = await repo.findOne({
+        where: { id: userId },
+        relations: ['role', 'jobPosition'],
+      });
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      return {
+        success: true,
+        message: 'Profile fetched successfully',
+        tenant: req.tenantConnection?.options?.database,
+        tenant_slug: req.tenantId || null,
+        data: this.buildProfilePayload(user),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to fetch profile');
+    }
+  }
+
+  async updateOwnProfile(req: any, dto: Record<string, any>) {
+    try {
+      const userId = this.getActorId(req);
+      if (!userId) {
+        throw new BadRequestException('Authenticated user is required');
+      }
+
+      const repo = this.getRepo(req);
+      const user = await repo.findOne({
+        where: { id: userId },
+        relations: ['role', 'jobPosition'],
+      });
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      const firstName =
+        dto.first_name !== undefined ? String(dto.first_name || '').trim() : undefined;
+      const lastName =
+        dto.last_name !== undefined ? String(dto.last_name || '').trim() : undefined;
+
+      if (dto.name !== undefined) {
+        user.name = String(dto.name || '').trim() || null;
+      } else if (firstName !== undefined || lastName !== undefined) {
+        const current = this.splitDisplayName(user.name);
+        const nextFirst = firstName !== undefined ? firstName : current.first_name;
+        const nextLast = lastName !== undefined ? lastName : current.last_name;
+        user.name = [nextFirst, nextLast].filter(Boolean).join(' ') || null;
+      }
+
+      const phoneValue = dto.phone !== undefined ? dto.phone : dto.phoneNumber ?? dto.phone_number;
+      if (phoneValue !== undefined) {
+        user.phoneNumber =
+          phoneValue === null || String(phoneValue).trim() === ''
+            ? null
+            : String(phoneValue).trim();
+      }
+
+      // Email and role are read-only on profile screen.
+      const saved = await repo.save(user);
+      const refreshed = await repo.findOne({
+        where: { id: saved.id },
+        relations: ['role', 'jobPosition'],
+      });
+
+      return {
+        success: true,
+        message: 'Profile updated successfully',
+        tenant: req.tenantConnection?.options?.database,
+        tenant_slug: req.tenantId || null,
+        data: this.buildProfilePayload(refreshed as User),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to update profile');
     }
   }
 }

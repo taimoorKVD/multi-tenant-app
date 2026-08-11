@@ -12,6 +12,7 @@ import { ReportingCategoriesModule } from './reporting-categories/reporting-cate
 import { ItemsModule } from './items/items.module';
 import { FormBuilderModule } from './form-builder';
 import { DataCollectionModule } from './data-collection/data-collection.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DataCollectionModule } from './data-collection/data-collection.module';
     ItemsModule,
     FormBuilderModule,
     DataCollectionModule,
+    DashboardModule,
   ],
 })
 export class TenantsModule {
