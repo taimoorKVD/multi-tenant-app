@@ -35,8 +35,8 @@ export class User {
   // @Column() //Same email should be allowed in different tenants
   email: string | null;
 
-  // @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
-  // phoneNumber: string | null;
+  @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
+  phoneNumber: string | null;
 
   // @Column({ type: 'varchar', nullable: true, length: 255 })
   // address: string | null;

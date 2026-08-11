@@ -93,6 +93,8 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     name: 'phoneNumber',
     type: 'text',
     isEditable: true,
+    isSystemField: true,
+    systemMappingKey: 'phone_number',
     placeholder: 'Enter phone number',
   },
   {

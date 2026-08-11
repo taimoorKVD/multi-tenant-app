@@ -7,10 +7,97 @@ import {
   ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
-import { SendUserCredentialsDto } from '../dto';
+import { SendUserCredentialsDto, UpdateTenantProfileDto } from '../dto';
 
 export const TenantUsersSwagger = {
   Auth: () => ApiBearerAuth('access-token'),
+
+  GetProfile: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Get current tenant profile',
+        description:
+          'Returns the authenticated user profile for the Profile screen (first/last name, email, phone, role). Works for both tenant admin and tenant employee sessions. Use Authorize with the tenant access token.',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Profile fetched successfully.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Profile fetched successfully',
+            tenant: 'tenant_brian',
+            tenant_slug: 'brian',
+            data: {
+              id: 1,
+              name: 'brian',
+              first_name: 'brian',
+              last_name: '',
+              email: 'admin@brian.com',
+              phone: null,
+              phone_number: null,
+              role: { id: 1, name: 'Admin' },
+              account_type: 'Admin',
+              job_position: null,
+              is_system: true,
+              created_at: '2026-08-06T09:15:42.017Z',
+              updated_at: '2026-08-11T09:00:00.000Z',
+            },
+          },
+        },
+      }),
+      ApiResponse({ status: 401, description: 'Unauthorized — missing/invalid token.' }),
+      ApiResponse({ status: 404, description: 'User not found.' }),
+    ),
+
+  UpdateProfile: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Update current tenant profile',
+        description:
+          'Updates first_name / last_name (or name) and phone for the logged-in user. Email and role are read-only and ignored if sent.',
+      }),
+      ApiBody({
+        type: UpdateTenantProfileDto,
+        examples: {
+          valid: {
+            summary: 'Update name and phone',
+            value: {
+              first_name: 'brian',
+              last_name: 'Smith',
+              phone: '+1 555 0100',
+            },
+          },
+        },
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Profile updated successfully.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Profile updated successfully',
+            tenant: 'tenant_brian',
+            tenant_slug: 'brian',
+            data: {
+              id: 1,
+              name: 'brian Smith',
+              first_name: 'brian',
+              last_name: 'Smith',
+              email: 'admin@brian.com',
+              phone: '+1 555 0100',
+              phone_number: '+1 555 0100',
+              role: { id: 1, name: 'Admin' },
+              account_type: 'Admin',
+              job_position: null,
+            },
+          },
+        },
+      }),
+      ApiResponse({ status: 400, description: 'Validation failed.' }),
+      ApiResponse({ status: 401, description: 'Unauthorized.' }),
+      ApiResponse({ status: 404, description: 'User not found.' }),
+    ),
 
   Create: () =>
     applyDecorators(
