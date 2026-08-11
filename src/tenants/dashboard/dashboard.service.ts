@@ -106,7 +106,7 @@ export class DashboardService {
 
       const reportingGroups = await reportingGroupRepo.find({
         where: { isActive: true } as any,
-        relations: ['reportingCategories'],
+        relations: ['reportingCategories', 'reportingCategories.items'],
         order: { id: 'ASC' },
       });
 
@@ -114,6 +114,11 @@ export class DashboardService {
         const categories = (group.reportingCategories || []).map((c) => ({
           id: c.id,
           name: c.name,
+          itemCount: (c.items || []).length,
+          items: (c.items || []).map((item) => ({
+            id: item.id,
+            itemName: item.itemName,
+          })),
         }));
         return {
           id: group.id,
@@ -121,8 +126,7 @@ export class DashboardService {
           description: group.description,
           categories,
           categoryNames: categories.map((c) => c.name),
-          // Item↔category relation is not live yet — keep 0 until stock/reporting links exist.
-          itemCount: 0,
+          itemCount: categories.reduce((sum, c) => sum + c.itemCount, 0),
         };
       });
 

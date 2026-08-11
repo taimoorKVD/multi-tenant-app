@@ -1,7 +1,13 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-// import { JoinColumn, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
-// import { Vendor } from '../../vendors/entities';
-// import { ReportingCategory } from '../../reporting-categories/entities';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinTable,
+  ManyToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { ReportingCategory } from '../../reporting-categories/entities';
 
 @Entity('items')
 export class Item {
@@ -42,13 +48,13 @@ export class Item {
   @Column({ name: 'updated_by', type: 'int', nullable: true })
   updatedBy!: number | null;
 
-  // @ManyToMany(() => ReportingCategory, { cascade: false })
-  // @JoinTable({
-  //   name: 'item_reporting_categories',
-  //   joinColumn: { name: 'item_id', referencedColumnName: 'id' },
-  //   inverseJoinColumn: { name: 'reporting_category_id', referencedColumnName: 'id' },
-  // })
-  // reportingCategories!: ReportingCategory[];
+  @ManyToMany(() => ReportingCategory, (category) => category.items, { cascade: false })
+  @JoinTable({
+    name: 'item_reporting_categories',
+    joinColumn: { name: 'item_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'reporting_category_id', referencedColumnName: 'id' },
+  })
+  reportingCategories!: ReportingCategory[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
