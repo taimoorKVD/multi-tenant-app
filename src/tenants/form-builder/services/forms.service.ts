@@ -42,6 +42,40 @@ export class FormsService {
     FORM_BUILDER_MODULE_SEEDS.map((seed) => [seed.slug, seed]),
   );
 
+  /** System identity fields that must stay editable on create/edit forms. */
+  private readonly editableIdentityFieldKeys = new Set([
+    'name',
+    'email',
+    'password',
+    'item_name',
+    'vendor_name',
+  ]);
+
+  private isIdentityField(field: any): boolean {
+    const fieldKey = String(field?.fieldKey || field?.name || field?.key || '').trim();
+    const mappingKey = String(field?.systemMappingKey || '').trim();
+    return (
+      this.editableIdentityFieldKeys.has(fieldKey) ||
+      this.editableIdentityFieldKeys.has(mappingKey)
+    );
+  }
+
+  private repairIdentityFieldsReadonly(fields: any[]): { fields: any[]; changed: boolean } {
+    let changed = false;
+    const next = (fields || []).map((field) => {
+      if (!field || typeof field !== 'object' || Array.isArray(field)) return field;
+      if (!this.isIdentityField(field)) return field;
+      if (field.isReadonly === false && field.isEditable !== false) return field;
+      changed = true;
+      return {
+        ...field,
+        isReadonly: false,
+        isEditable: true,
+      };
+    });
+    return { fields: next, changed };
+  }
+
   private async ensureCoreModules(req: any): Promise<void> {
     const repo = req.tenantConnection.getRepository(DynamicModule);
     const existing = await repo.find({
@@ -85,9 +119,11 @@ export class FormsService {
   private async ensureFormFieldIds(req: any, form: Form, slug: string): Promise<Form> {
     const formRepo = req.tenantConnection.getRepository(Form);
     const rawFields = form.autosaveSchema?.fields || [];
-    const { fields, changed } = this.dynamicFieldsService.backfillMissingFieldIds(rawFields, slug);
+    const { fields: withIds, changed: idsChanged } =
+      this.dynamicFieldsService.backfillMissingFieldIds(rawFields, slug);
+    const { fields, changed: readonlyChanged } = this.repairIdentityFieldsReadonly(withIds);
 
-    if (!changed) return form;
+    if (!idsChanged && !readonlyChanged) return form;
 
     form.autosaveSchema = { ...(form.autosaveSchema || {}), fields };
     return formRepo.save(form);
@@ -214,6 +250,9 @@ export class FormsService {
 
   private normalizeSchemaSnapshot(form: Form & { module?: DynamicModule | null }, schema?: Record<string, any> | null): Record<string, any> {
     const draft = this.sanitizeSchemaSnapshot(schema);
+    const { fields } = this.repairIdentityFieldsReadonly(
+      Array.isArray(draft.fields) ? draft.fields : [],
+    );
     return {
       ...draft,
       form: {
@@ -224,7 +263,7 @@ export class FormsService {
         name: form.name,
         status: form.status,
       },
-      fields: draft.fields,
+      fields,
     };
   }
 
@@ -352,16 +391,34 @@ export class FormsService {
       });
 
       if (activeVersion?.schemaSnapshot) {
+        const rawFields = Array.isArray(activeVersion.schemaSnapshot.fields)
+          ? activeVersion.schemaSnapshot.fields
+          : [];
+        const { fields, changed } = this.repairIdentityFieldsReadonly(rawFields);
+        if (changed) {
+          activeVersion.schemaSnapshot = {
+            ...activeVersion.schemaSnapshot,
+            fields,
+          };
+          await versionRepo.save(activeVersion);
+        }
+
         return {
           success: true,
-          data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, activeVersion.schemaSnapshot),
+          data: this.normalizeSchemaSnapshot(
+            form as Form & { module?: DynamicModule | null },
+            activeVersion.schemaSnapshot,
+          ),
         };
       }
 
       if (form.autosaveSchema) {
         return {
           success: true,
-          data: this.normalizeSchemaSnapshot(form as Form & { module?: DynamicModule | null }, form.autosaveSchema),
+          data: this.normalizeSchemaSnapshot(
+            form as Form & { module?: DynamicModule | null },
+            form.autosaveSchema,
+          ),
         };
       }
 
