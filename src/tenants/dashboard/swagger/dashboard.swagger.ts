@@ -1,10 +1,11 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-const dashboardExample = {
+const adminDashboardExample = {
   success: true,
   tenant: 'tenant_brian',
   tenant_slug: 'brian',
+  account_type: 'tenant_admin',
   data: {
     overview: {
       totalUsers: 48,
@@ -40,18 +41,103 @@ const dashboardExample = {
         action: 'update',
       },
     ],
-    reportingGroups: [
+    reportingGroups: [],
+    user: { id: 1, name: 'Admin User', role: 'Admin' },
+  },
+};
+
+const employeeDashboardExample = {
+  success: true,
+  tenant: 'tenant_brian',
+  tenant_slug: 'brian',
+  account_type: 'tenant_user',
+  data: {
+    welcome: {
+      message: "Welcome Back, Omais! Here's what's on your plate today.",
+      firstName: 'Omais',
+      fullName: 'Omais Ahmed',
+      role: 'Employee',
+    },
+    stats: {
+      myAssignments: { value: 8, label: 'Total assigned' },
+      inProgress: { value: 3, label: 'Currently in progress' },
+      completed: { value: 12, label: 'This month' },
+      overdue: { value: 1, label: 'Needs attention' },
+    },
+    todaysAssignments: [
       {
-        id: 1,
-        name: 'Product Specific Items',
-        description: null,
-        categories: [
-          { id: 1, name: 'Produce' },
-          { id: 2, name: 'Meat' },
-          { id: 3, name: 'Dairy' },
-        ],
-        categoryNames: ['Produce', 'Meat', 'Dairy'],
-        itemCount: 0,
+        id: 41,
+        title: 'Store Daily Checklist',
+        category: 'Store Operations',
+        dueAt: '2026-08-12T18:00:00.000Z',
+        dueLabel: 'Due Today',
+        priority: 'high',
+        status: 'pending',
+        templateId: 7,
+      },
+      {
+        id: 42,
+        title: 'Inventory Report',
+        category: 'Inventory Management',
+        dueAt: '2026-08-12T20:00:00.000Z',
+        dueLabel: 'Due Today',
+        priority: 'medium',
+        status: 'in_progress',
+        templateId: 8,
+      },
+      {
+        id: 43,
+        title: 'Weekly Sales Report',
+        category: 'Sales & Marketing',
+        dueAt: '2026-08-13T18:00:00.000Z',
+        dueLabel: 'Due Tomorrow',
+        priority: 'medium',
+        status: 'pending',
+        templateId: 9,
+      },
+      {
+        id: 44,
+        title: 'Equipment Inspection',
+        category: 'Maintenance',
+        dueAt: '2026-08-14T18:00:00.000Z',
+        dueLabel: 'Due in 2 days',
+        priority: 'low',
+        status: 'pending',
+        templateId: 10,
+      },
+    ],
+    recentActivity: [
+      {
+        id: 'submitted-12',
+        type: 'submitted',
+        description: 'You submitted Store Daily Checklist',
+        createdAt: '2026-08-12T12:20:00.000Z',
+        relativeTime: '10 minutes ago',
+        assignmentId: 40,
+      },
+      {
+        id: 'started-42',
+        type: 'started',
+        description: 'You started Inventory Report',
+        createdAt: '2026-08-12T12:05:00.000Z',
+        relativeTime: '25 minutes ago',
+        assignmentId: 42,
+      },
+      {
+        id: 'assigned-45',
+        type: 'assigned',
+        description: 'New assignment Store Weekly Audit',
+        createdAt: '2026-08-12T11:30:00.000Z',
+        relativeTime: '1 hour ago',
+        assignmentId: 45,
+      },
+      {
+        id: 'draft-11',
+        type: 'draft_saved',
+        description: 'You saved draft for Equipment Inspection',
+        createdAt: '2026-08-12T10:30:00.000Z',
+        relativeTime: '2 hours ago',
+        assignmentId: 44,
       },
     ],
   },
@@ -64,9 +150,9 @@ export const TenantDashboardSwagger = {
   Get: () =>
     applyDecorators(
       ApiOperation({
-        summary: 'Get tenant dashboard',
+        summary: 'Get tenant dashboard (admin or employee)',
         description:
-          'Loads the tenant home dashboard: overview KPIs, inventory placeholders, recent activity, and reporting groups. Requires a tenant JWT (`Authorize` with access token).',
+          'Returns the home dashboard for the authenticated tenant user. `account_type: tenant_admin` gets the ops overview (users/items/vendors/forms). `account_type: tenant_user` (Employee) gets Welcome, assignment stats, today\'s assignments, and recent activity. Requires a tenant JWT.',
       }),
       ApiParam({
         name: 'tenantId',
@@ -76,8 +162,14 @@ export const TenantDashboardSwagger = {
       }),
       ApiResponse({
         status: 200,
-        description: 'Dashboard loaded successfully.',
-        schema: { example: dashboardExample },
+        description: 'Dashboard loaded successfully. Shape depends on account_type.',
+        schema: {
+          example: employeeDashboardExample,
+          oneOf: [
+            { example: employeeDashboardExample },
+            { example: adminDashboardExample },
+          ],
+        },
       }),
       ApiResponse({
         status: 401,

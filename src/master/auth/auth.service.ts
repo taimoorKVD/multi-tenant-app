@@ -567,19 +567,83 @@ export class MasterAuthService {
     };
   }
 
-  async updateProfile(id: number, dto: UpdateUserDto) {
+  private splitDisplayName(fullName: string | null | undefined): {
+    first_name: string;
+    last_name: string;
+  } {
+    const trimmed = String(fullName || '').trim();
+    if (!trimmed) return { first_name: '', last_name: '' };
+    const parts = trimmed.split(/\s+/);
+    return {
+      first_name: parts[0] || '',
+      last_name: parts.slice(1).join(' '),
+    };
+  }
+
+  private buildProfilePayload(user: User) {
+    const { first_name, last_name } = this.splitDisplayName(user.name);
+    return {
+      id: user.id,
+      name: user.name,
+      first_name,
+      last_name,
+      email: user.email,
+      role: user.role
+        ? {
+            id: user.role.id,
+            name: user.role.name,
+          }
+        : null,
+      user_type: 'master',
+      account_type: 'super_admin',
+      created_at: user.createdAt,
+      updated_at: user.updatedAt,
+    };
+  }
+
+  async getOwnProfile(userId: number) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['role'],
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      success: true,
+      message: 'Profile fetched successfully',
+      user_type: 'master',
+      data: this.buildProfilePayload(user),
+    };
+  }
+
+  async updateProfile(id: number, dto: UpdateUserDto & Record<string, any>) {
     try {
       const user = await this.userRepo.findOne({ where: { id } });
       if (!user) {
         throw new NotFoundException('User not found');
       }
 
-      if (dto.name) {
-        const trimmed = dto.name.trim();
+      const firstName =
+        dto.first_name !== undefined ? String(dto.first_name || '').trim() : undefined;
+      const lastName =
+        dto.last_name !== undefined ? String(dto.last_name || '').trim() : undefined;
+
+      if (dto.name !== undefined) {
+        const trimmed = String(dto.name || '').trim();
         if (!trimmed) {
           throw new BadRequestException('Name cannot be empty');
         }
         user.name = trimmed;
+      } else if (firstName !== undefined || lastName !== undefined) {
+        const current = this.splitDisplayName(user.name);
+        const nextFirst = firstName !== undefined ? firstName : current.first_name;
+        const nextLast = lastName !== undefined ? lastName : current.last_name;
+        const nextName = [nextFirst, nextLast].filter(Boolean).join(' ');
+        if (!nextName) {
+          throw new BadRequestException('Name cannot be empty');
+        }
+        user.name = nextName;
       }
 
       if (dto.password) {
@@ -605,10 +669,16 @@ export class MasterAuthService {
 
       delete (saved as any).password;
 
+      const refreshed = await this.userRepo.findOne({
+        where: { id: saved.id },
+        relations: ['role'],
+      });
+
       return {
         success: true,
         message: 'Profile updated successfully',
-        data: saved,
+        user_type: 'master',
+        data: this.buildProfilePayload(refreshed as User),
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {

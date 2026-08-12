@@ -106,6 +106,56 @@ describe('MasterAuthService', () => {
     await expect(service.getProfile(999)).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('returns Super Admin profile payload for GET /master/users/profile', async () => {
+    const user = {
+      id: 1,
+      name: 'Super Admin',
+      email: 'superadmin@system.com',
+      role: { id: 1, name: 'Super Admin' },
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    mockUserRepo.findOne.mockResolvedValue(user);
+
+    const result = await service.getOwnProfile(1);
+
+    expect(result.success).toBe(true);
+    expect(result.user_type).toBe('master');
+    expect(result.data.first_name).toBe('Super');
+    expect(result.data.last_name).toBe('Admin');
+    expect(result.data.account_type).toBe('super_admin');
+  });
+
+  it('updates Super Admin name on profile', async () => {
+    const user = {
+      id: 1,
+      name: 'Super Admin',
+      email: 'superadmin@system.com',
+      password: 'hashed',
+    };
+    const saved = { ...user, name: 'Jane Doe' };
+
+    mockUserRepo.findOne
+      .mockResolvedValueOnce(user)
+      .mockResolvedValueOnce({
+        ...saved,
+        role: { id: 1, name: 'Super Admin' },
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+      });
+    mockUserRepo.save.mockResolvedValue(saved);
+
+    const result = await service.updateProfile(1, {
+      first_name: 'Jane',
+      last_name: 'Doe',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.name).toBe('Jane Doe');
+    expect(mockUserRepo.save).toHaveBeenCalled();
+  });
+
   it('forgotPassword returns success for unknown email (non-enumeration)', async () => {
     mockUserRepo.findOne.mockResolvedValue(null);
 
