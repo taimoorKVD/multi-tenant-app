@@ -12,3 +12,5 @@ export * from './011-form-builder-modules.seeder';
 export * from './012-form-builder-permissions.seeder';
 export * from './013-data-collection-permissions.seeder';
 export * from './014-data-collection-email-templates.seeder';
+export * from './015-billing-permissions.seeder';
+export * from './016-billing-plans.seeder';

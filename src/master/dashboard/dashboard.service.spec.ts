@@ -30,6 +30,10 @@ describe('Master DashboardService', () => {
   const mockMailSettingRepo = {
     findOne: jest.fn(),
   };
+  const mockBillingService = {
+    getDashboardBilling: jest.fn(),
+    latestSubscriptionByTenantIds: jest.fn(),
+  };
 
   let service: DashboardService;
 
@@ -41,6 +45,16 @@ describe('Master DashboardService', () => {
     mockTenantRepo.query.mockResolvedValue([{ '?column?': 1 }]);
     mockEmailLogRepo.count.mockResolvedValue(0);
     mockMailSettingRepo.findOne.mockResolvedValue({ id: 1, isActive: true, host: 'smtp.example.com' });
+    mockBillingService.getDashboardBilling.mockResolvedValue({
+      subscriptionStats: {
+        activeSubscriptions: 0,
+        mrr: { amount: 0, currency: 'EUR' },
+      },
+      invoiceStats: { totalRevenue: { amount: 0, currency: 'EUR' } },
+      planCounts: [],
+      tenantStatus: { active: 12, trial: 0, suspended: 0 },
+    });
+    mockBillingService.latestSubscriptionByTenantIds.mockResolvedValue(new Map());
 
     service = new DashboardService(
       mockTenantRepo as any,
@@ -48,6 +62,7 @@ describe('Master DashboardService', () => {
       mockActivityLogRepo as any,
       mockEmailLogRepo as any,
       mockMailSettingRepo as any,
+      mockBillingService as any,
     );
 
     jest.spyOn(service as any, 'countTenantUsers').mockResolvedValue(24);
@@ -79,12 +94,12 @@ describe('Master DashboardService', () => {
     expect(result.data.kpis.totalTenants.available).toBe(true);
     expect(result.data.kpis.activeTenants.value).toBe(12);
     expect(result.data.kpis.totalUsers.value).toBe(4);
-    expect(result.data.kpis.mrr.available).toBe(false);
-    expect(result.data.kpis.activeSubscriptions.available).toBe(false);
-    expect(result.data.kpis.platformRevenue.available).toBe(false);
+    expect(result.data.kpis.mrr.available).toBe(true);
+    expect(result.data.kpis.activeSubscriptions.available).toBe(true);
+    expect(result.data.kpis.platformRevenue.available).toBe(true);
     expect(result.data.tenantsOverview.period).toBe('this_month');
     expect(result.data.tenantsOverview.summary.newTenants).toBe(2);
-    expect(result.data.planDistribution.available).toBe(false);
+    expect(result.data.planDistribution.available).toBe(true);
     expect(result.data.recentTenants[0]).toMatchObject({
       name: 'Acme Corporation',
       subdomain: 'acme',

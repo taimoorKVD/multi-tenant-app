@@ -6,6 +6,7 @@ export const PERMISSIONS_KEY = 'permissions';
 
 /**
  * Unified decorator to handle tenant authentication and permission checks.
+ * Plan module access is enforced globally by PlanModulesGuard.
  * @example @TenantAccess('view-user', 'edit-user')
  */
 export function TenantAccess(...permissions: string[]) {

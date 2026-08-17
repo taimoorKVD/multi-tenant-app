@@ -17,6 +17,7 @@ import { ActivityLogsModule } from './activity-logs';
 import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
 import { SystemModule } from './system/system.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ActivityLogsModule,
     SystemModule,
     DashboardModule,
+    BillingModule,
   ],
   providers: [
     TenantsService,

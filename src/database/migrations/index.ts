@@ -15,3 +15,6 @@ export * from './1701010015000-CreatePasswordResetTokensTable';
 export * from './1701010016000-CreateEmailVerificationTokensTable';
 export * from './1701010017000-CreateRefreshTokensTable';
 export * from './1701010018000-AddCountryIdToCitiesTable';
+export * from './1701010020000-CreateBillingTables';
+export * from './1701010021000-AddModulesToPlansTable';
+export * from './1701010022000-AddTenantProfileFields';

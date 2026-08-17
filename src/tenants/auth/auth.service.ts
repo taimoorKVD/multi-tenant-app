@@ -25,6 +25,8 @@ import {
   RefreshToken,
 } from './entities';
 import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
+import { BillingService } from '../../master/billing/billing.service';
+import { ALL_PLAN_MODULE_KEYS, serializePlanModules } from '../../master/billing/plan-modules';
 
 @Injectable()
 export class TenantAuthService {
@@ -46,7 +48,38 @@ export class TenantAuthService {
     'protonmail.com',
   ]);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly billingService: BillingService,
+  ) {}
+
+  private async resolveEntitlements(req: any) {
+    const slug = String(req?.tenantId || '').trim();
+    if (!slug) {
+      return {
+        allowedModules: [...ALL_PLAN_MODULE_KEYS],
+        modules: serializePlanModules(ALL_PLAN_MODULE_KEYS),
+        plan: null,
+        status: null,
+      };
+    }
+    try {
+      const entitlement = await this.billingService.getTenantEntitlements(slug);
+      return {
+        allowedModules: entitlement.allowedModules,
+        modules: serializePlanModules(entitlement.allowedModules),
+        plan: entitlement.plan,
+        status: entitlement.status,
+      };
+    } catch {
+      return {
+        allowedModules: [...ALL_PLAN_MODULE_KEYS],
+        modules: serializePlanModules(ALL_PLAN_MODULE_KEYS),
+        plan: null,
+        status: null,
+      };
+    }
+  }
 
   private serializeJobPosition(jobPosition: JobPosition | null | undefined) {
     if (!jobPosition?.id) return null;
@@ -638,6 +671,7 @@ export class TenantAuthService {
         permissionNames,
         emailVerified,
       );
+      const entitlements = await this.resolveEntitlements(req);
 
       return {
         success: true,
@@ -646,6 +680,9 @@ export class TenantAuthService {
         account_type: accountType,
         tenant_slug: req.tenantId || null,
         tenant: tenantConnection.options.database,
+        plan: entitlements.plan,
+        allowedModules: entitlements.allowedModules,
+        modules: entitlements.modules,
         ...tokens,
         user: {
           id: user.id,
@@ -877,6 +914,7 @@ export class TenantAuthService {
       permissionNames,
       emailVerified,
     );
+    const entitlements = await this.resolveEntitlements(req);
 
     return {
       success: true,
@@ -885,6 +923,9 @@ export class TenantAuthService {
       account_type: accountType,
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: entitlements.modules,
       ...tokens,
     };
   }
@@ -908,6 +949,7 @@ export class TenantAuthService {
     const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
     const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
     const accountType = this.resolveAccountType(user, permissionNames);
+    const entitlements = await this.resolveEntitlements(req);
 
     return {
       success: true,
@@ -916,6 +958,9 @@ export class TenantAuthService {
       account_type: accountType,
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: entitlements.modules,
       user: {
         id: user.id,
         name: user.name,

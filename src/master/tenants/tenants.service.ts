@@ -15,8 +15,11 @@ import {User} from '../../tenants/users/entities';
 import * as argon2 from 'argon2';
 import * as nodemailer from 'nodemailer';
 import {Role} from '../../tenants/role/entities';
-import {CreateTenantDto} from './dto';
+import {CreateTenantDto, UpdateTenantDto} from './dto';
 import {IAdminSetup, ITenantResponse} from './interfaces';
+import {Country} from '../countries/entities';
+import {State} from '../states/entities';
+import {TENANT_INDUSTRIES} from './tenant-industries';
 import {Permission} from '../../tenants/permission/entities';
 import {ApiResponse} from '../../common/abstract';
 import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../../tenants/form-builder/config/module-seeds';
@@ -26,6 +29,7 @@ import {
   FormStatus,
 } from '../../tenants/form-builder/entities';
 import { UnauthorizedException } from '@nestjs/common';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class TenantsService {
@@ -185,9 +189,112 @@ export class TenantsService {
       @InjectRepository(Tenant)
       private tenantRepo: Repository<Tenant>,
       private dataSource: DataSource,
+      private readonly billingService: BillingService,
   ) {}
 
-  async paginate(page = 1, limit?: number): Promise<ApiResponse<Partial<Tenant>>> {
+  private domainToSubdomain(domain: string): string {
+    const host = String(domain || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0]
+      .replace(/^www\./, '');
+    const firstLabel = host.split('.')[0] || host;
+    return toSubdomainSlug(firstLabel);
+  }
+
+  private phoneDisplay(tenant: Tenant): string | null {
+    const code = tenant.phoneCountryCode?.trim();
+    const number = tenant.phoneNumber?.trim();
+    if (!code && !number) return null;
+    return [code, number].filter(Boolean).join(' ');
+  }
+
+  private serializeTenant(
+    tenant: Tenant,
+    extras?: {
+      plan?: string | null;
+      planId?: number | null;
+      subscriptionStatus?: string | null;
+      billingCycle?: string | null;
+      trialEndsAt?: Date | null;
+      users?: number | null;
+    },
+  ) {
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      dbName: tenant.dbName,
+      subdomain: tenant.subdomain,
+      customDomain: tenant.customDomain ?? null,
+      subdomainUrl: `https://${tenant.subdomain}.eusocial.com`,
+      customDomainUrl: tenant.customDomain ? `https://${tenant.customDomain}` : null,
+      email: tenant.email ?? null,
+      phoneCountryCode: tenant.phoneCountryCode ?? null,
+      phoneNumber: tenant.phoneNumber ?? null,
+      phone: this.phoneDisplay(tenant),
+      industry: tenant.industry ?? null,
+      description: tenant.description ?? null,
+      countryId: tenant.countryId ?? null,
+      country: tenant.country
+        ? { id: tenant.country.id, name: tenant.country.name, code: tenant.country.code }
+        : null,
+      stateId: tenant.stateId ?? null,
+      state: tenant.state ? { id: tenant.state.id, name: tenant.state.name } : null,
+      city: tenant.city ?? null,
+      address: tenant.address ?? null,
+      postalCode: tenant.postalCode ?? null,
+      status: tenant.status || 'active',
+      plan: extras?.plan ?? null,
+      planId: extras?.planId ?? null,
+      subscriptionStatus: extras?.subscriptionStatus ?? null,
+      billingCycle: extras?.billingCycle ?? null,
+      trialEndsAt: extras?.trialEndsAt ?? null,
+      users: extras?.users ?? null,
+      createdAt: tenant.createdAt,
+    };
+  }
+
+  private async withBilling(tenants: Tenant[]) {
+    const subscriptions = await this.billingService.latestSubscriptionByTenantIds(
+      tenants.map((tenant) => tenant.id),
+    );
+    return tenants.map((tenant) => {
+      const subscription = subscriptions.get(tenant.id);
+      return this.serializeTenant(tenant, {
+        plan: subscription?.plan?.name ?? null,
+        planId: subscription?.planId ?? null,
+        subscriptionStatus: subscription?.status ?? null,
+        billingCycle: subscription?.billingCycle ?? null,
+        trialEndsAt: subscription?.trialEndsAt ?? null,
+        users: null,
+      });
+    });
+  }
+
+  private async assertLocation(countryId?: number, stateId?: number) {
+    if (countryId) {
+      const country = await this.dataSource.getRepository(Country).findOne({ where: { id: countryId } });
+      if (!country) throw new BadRequestException('Country not found');
+    }
+    if (stateId) {
+      const state = await this.dataSource.getRepository(State).findOne({ where: { id: stateId } });
+      if (!state) throw new BadRequestException('State not found');
+      if (countryId && state.countryId !== countryId) {
+        throw new BadRequestException('State does not belong to the selected country');
+      }
+    }
+  }
+
+  listIndustries() {
+    return {
+      success: true,
+      data: TENANT_INDUSTRIES.map((name) => ({ name })),
+      count: TENANT_INDUSTRIES.length,
+    };
+  }
+
+  async paginate(page = 1, limit?: number): Promise<ApiResponse<any>> {
     try {
       const parsedLimit = limit !== undefined ? Number(limit) : undefined;
       const take =
@@ -197,9 +304,11 @@ export class TenantsService {
       const skip = take ? (page - 1) * take : 0;
 
       const [data, total] = await this.tenantRepo.findAndCount({
+        relations: ['country', 'state'],
         order: { id: 'DESC' },
         ...(take ? {take, skip} : {}),
       });
+      const withBilling = await this.withBilling(data);
 
       return {
         success: true,
@@ -207,7 +316,7 @@ export class TenantsService {
           data.length > 0
             ? `${data.length} tenant${data.length > 1 ? 's' : ''} retrieved successfully`
             : 'No tenants found',
-        data,
+        data: withBilling,
         meta: { total, page, lastPage: take ? Math.ceil(total / take) : 1 },
       };
     } catch (error) {
@@ -285,7 +394,7 @@ export class TenantsService {
   async findOne(
       identifier: number | string,
       relations: string[] = [],
-  ): Promise<ApiResponse<Partial<Tenant>>> {
+  ): Promise<ApiResponse<any>> {
     try {
       let where: any = {};
 
@@ -305,18 +414,17 @@ export class TenantsService {
 
       const record = await this.tenantRepo.findOne({
         where,
-        relations,
+        relations: Array.from(new Set(['country', 'state', ...relations])),
       });
 
       if (!record) throw new UnauthorizedException(`Tenant not found for "${identifier}"`);
 
-      const clone = {...record};
-      delete (clone as any).password;
+      const [serialized] = await this.withBilling([record]);
 
       return {
         success: true,
         message: 'Tenant fetched successfully',
-        data: clone,
+        data: serialized,
       };
     } catch (error) {
       const err = this.toError(error);
@@ -410,68 +518,97 @@ export class TenantsService {
   }
 
   async create(dto: CreateTenantDto): Promise<ITenantResponse> {
-    const {name, customDomain} = dto;
-    const tenantName = name?.trim();
+    const tenantName = dto.name?.trim();
     if (!tenantName) throw new BadRequestException('Tenant name is required');
+    if (!dto.admin) throw new BadRequestException('Admin user details are required');
 
     let dbName = '';
     let tenantRecord: Tenant | null = null;
-    let tenantConnection: DataSource | null = null;
 
     try {
-      const { subdomain } = await this.ensureUniqueTenant(tenantName);
-      dbName = toDbNameSlug(tenantName, 'tenant_');
+      await this.assertLocation(dto.countryId, dto.stateId);
+      const subdomain = await this.ensureUniqueTenant(tenantName, dto.domain);
+      dbName = toDbNameSlug(subdomain, 'tenant_');
 
       tenantRecord = this.tenantRepo.create({
         name: tenantName,
         dbName,
         subdomain,
-        customDomain: customDomain || null,
+        customDomain: null,
+        email: dto.email.trim().toLowerCase(),
+        phoneCountryCode: dto.phoneCountryCode?.trim() || null,
+        phoneNumber: dto.phoneNumber?.trim() || null,
+        industry: dto.industry?.trim() || null,
+        description: dto.description?.trim() || null,
+        countryId: dto.countryId || null,
+        stateId: dto.stateId || null,
+        city: dto.city?.trim() || null,
+        address: dto.address?.trim() || null,
+        postalCode: dto.postalCode?.trim() || null,
+        status: dto.trialDays && dto.trialDays > 0 ? 'trial' : 'active',
       });
       await this.tenantRepo.save(tenantRecord);
       this.logger.log(`🟢 Tenant metadata saved: ${tenantName} -> ${dbName}`);
 
       await this.createDatabase(dbName);
 
-      tenantConnection = await getTenantDataSource(dbName);
+      const tenantConnection = await getTenantDataSource(dbName);
       await tenantConnection.synchronize();
 
-      const adminSetup = await this.bootstrapAdmin(tenantConnection, subdomain);
+      const adminSetup = await this.bootstrapAdmin(tenantConnection, {
+        name: dto.admin.name.trim(),
+        email: dto.admin.email.trim().toLowerCase(),
+        password: dto.admin.password,
+      });
       await this.bootstrapTenantFormBuilder(tenantConnection, adminSetup.user.id);
 
-      return this.buildResponse(
-        tenantRecord.id,
-        tenantName,
-        dbName,
-        subdomain,
-        customDomain,
-        adminSetup,
-      );
+      const subscription = await this.billingService.createSubscription({
+        tenantId: tenantRecord.id,
+        planId: dto.planId,
+        billingCycle: dto.billingCycle,
+        trialDays: dto.trialDays,
+        chargeNow: false,
+      });
+
+      const saved = await this.tenantRepo.findOne({
+        where: { id: tenantRecord.id },
+        relations: ['country', 'state'],
+      });
+
+      return this.buildResponse(saved || tenantRecord, adminSetup, subscription.data);
     } catch (error) {
       const err = this.toError(error);
       this.logger.error(`❌ Tenant creation failed for "${tenantName}": ${err.message}`);
 
       await this.rollbackTenantCreation(tenantName, dbName, tenantRecord);
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       throw new InternalServerErrorException(
         `Tenant creation failed: ${err.message}. All operations were rolled back to ensure data consistency.`,
       );
     }
   }
 
-  private async ensureUniqueTenant(name: string): Promise<{ subdomain: string }> {
-    const baseSubdomain = toSubdomainSlug(name);
-    let subdomain = baseSubdomain;
-    let counter = 1;
-
-    while (await this.tenantRepo.exists({ where: { subdomain } })) {
-      subdomain = `${baseSubdomain}-${counter++}`;
+  private async ensureUniqueTenant(name: string, domain: string): Promise<string> {
+    const subdomain = this.domainToSubdomain(domain);
+    if (!subdomain) {
+      throw new BadRequestException('Domain is required');
     }
 
     if (await this.tenantRepo.exists({ where: { name } })) {
       throw new ConflictException(`Tenant "${name}" already exists`);
     }
 
-    return { subdomain };
+    if (await this.tenantRepo.exists({ where: { subdomain } })) {
+      throw new ConflictException(`Domain "${domain}" is already in use`);
+    }
+
+    return subdomain;
   }
 
   private async createDatabase(dbName: string) {
@@ -486,7 +623,21 @@ export class TenantsService {
         throw new NotFoundException(`Tenant with ID ${id} not found.`);
       }
 
-      const loginEmail = `admin@${tenant.subdomain}.com`;
+      let loginEmail = tenant.email || `admin@${tenant.subdomain}.eusocial.com`;
+      let adminPassword = 'Admin@123';
+      try {
+        const connection = await getTenantDataSource(tenant.dbName);
+        const admin = await connection.getRepository(User).findOne({
+          where: { isSystem: true },
+          order: { id: 'ASC' },
+        });
+        if (admin?.email) loginEmail = admin.email;
+        if (admin?.plainPassword) adminPassword = admin.plainPassword;
+      } catch (lookupError) {
+        this.logger.warn(
+          `Could not load tenant admin email for ${tenant.dbName}: ${this.toError(lookupError).message}`,
+        );
+      }
 
       await this.sendTenantCredentialsEmail({
         tenantName: tenant.name,
@@ -494,7 +645,7 @@ export class TenantsService {
         customDomain: tenant.customDomain || null,
         recipientEmail,
         loginEmail,
-        adminPassword: 'Admin@123',
+        adminPassword,
       });
 
       return {
@@ -541,7 +692,10 @@ export class TenantsService {
     }
   }
 
-  private async bootstrapAdmin(connection: DataSource, subdomain: string): Promise<IAdminSetup> {
+  private async bootstrapAdmin(
+    connection: DataSource,
+    admin: { name: string; email: string; password: string },
+  ): Promise<IAdminSetup> {
     const userRepo = connection.getRepository(User);
     const roleRepo = connection.getRepository(Role);
     const permissionRepo = connection.getRepository(Permission);
@@ -669,22 +823,21 @@ export class TenantsService {
       await roleRepo.save(employeeRole);
     }
 
-    const adminEmail = `admin@${subdomain}.com`;
-    const defaultPassword = 'Admin@123';
-    const hashed = await argon2.hash(defaultPassword);
+    const hashed = await argon2.hash(admin.password);
 
     const adminUser = userRepo.create({
-      name: subdomain,
-      email: adminEmail,
+      name: admin.name,
+      email: admin.email,
       password: hashed,
+      plainPassword: admin.password,
       role: adminRole,
       isSystem: true,
     });
     await userRepo.save(adminUser);
 
-    this.logger.log(`👤 Admin user created: ${adminEmail}`);
+    this.logger.log(`👤 Admin user created: ${admin.email}`);
 
-    return { role: adminRole, user: adminUser, plainPassword: defaultPassword };
+    return { role: adminRole, user: adminUser, plainPassword: admin.password };
   }
 
   private async bootstrapTenantFormBuilder(connection: DataSource, actorId: number | null): Promise<void> {
@@ -784,12 +937,9 @@ export class TenantsService {
   }
 
   protected buildResponse(
-    id: number,
-    name: string,
-    dbName: string,
-    subdomain: string,
-    customDomain?: string,
+    tenant: Tenant,
     adminSetup?: IAdminSetup,
+    subscription?: any,
   ): ITenantResponse {
     if (!adminSetup) {
       throw new InternalServerErrorException('Admin setup missing.');
@@ -799,17 +949,19 @@ export class TenantsService {
 
     return {
       success: true,
-      message: `Tenant "${name}" created successfully`,
+      message: `Tenant "${tenant.name}" created successfully`,
       data: {
-        id,
-        name,
-        database: dbName,
-        subdomain,
-        customDomain: customDomain || null,
-        //subdomainUrl: `https://${subdomain}.${process.env.BASE_DOMAIN}`,
-        subdomainUrl: `https://${subdomain}.com`,
-        customDomainUrl: customDomain ? `https://${customDomain}` : null,
+        ...this.serializeTenant(tenant, {
+          plan: subscription?.plan?.name ?? null,
+          planId: subscription?.planId ?? null,
+          subscriptionStatus: subscription?.status ?? null,
+          billingCycle: subscription?.billingCycle ?? null,
+          trialEndsAt: subscription?.trialEndsAt ?? null,
+        }),
+        database: tenant.dbName,
+        subscription: subscription || null,
         admin: {
+          name: user.name || '',
           email: user.email || '',
           password: adminSetup.plainPassword,
           role: {
@@ -909,53 +1061,73 @@ export class TenantsService {
     };
   }
 
-  async update(id: number, updates: Partial<Tenant>) {
+  async update(id: number, dto: UpdateTenantDto) {
     try {
-
-      const tenant = await this.tenantRepo.findOneBy({id});
+      const tenant = await this.tenantRepo.findOne({
+        where: { id },
+        relations: ['country', 'state'],
+      });
       if (!tenant) {
         throw new NotFoundException(`Tenant with ID ${id} not found.`);
       }
 
-      const forbiddenFields = ['id', 'dbName'];
-      for (const field of forbiddenFields) {
-        if (field in updates) {
-          this.logger.warn(`⚠️ Attempted update of protected field "${field}" was ignored.`);
-          delete updates[field];
+      await this.assertLocation(
+        dto.countryId !== undefined ? dto.countryId : tenant.countryId || undefined,
+        dto.stateId !== undefined ? dto.stateId : tenant.stateId || undefined,
+      );
+
+      if (dto.name !== undefined) {
+        const name = dto.name.trim();
+        const taken = await this.tenantRepo.exists({ where: { name } });
+        if (taken && name !== tenant.name) {
+          throw new ConflictException(`Tenant "${name}" already exists`);
         }
+        tenant.name = name;
       }
 
-      Object.keys(updates).forEach((key) => {
-        const value = updates[key];
-        if (
-            value === null ||
-            value === undefined ||
-            (typeof value === 'string' && value.trim() === '')
-        ) {
-          delete updates[key];
+      if (dto.domain !== undefined) {
+        const subdomain = this.domainToSubdomain(dto.domain);
+        const taken = await this.tenantRepo.exists({ where: { subdomain } });
+        if (taken && subdomain !== tenant.subdomain) {
+          throw new ConflictException(`Domain "${dto.domain}" is already in use`);
         }
-      });
-
-      if (Object.keys(updates).length === 0) {
-        throw new BadRequestException('No valid fields provided for update.');
+        tenant.subdomain = subdomain;
       }
 
-      Object.assign(tenant, updates);
+      if (dto.email !== undefined) tenant.email = dto.email.trim().toLowerCase();
+      if (dto.phoneCountryCode !== undefined) tenant.phoneCountryCode = dto.phoneCountryCode.trim() || null;
+      if (dto.phoneNumber !== undefined) tenant.phoneNumber = dto.phoneNumber.trim() || null;
+      if (dto.industry !== undefined) tenant.industry = dto.industry.trim() || null;
+      if (dto.description !== undefined) tenant.description = dto.description.trim() || null;
+      if (dto.countryId !== undefined) tenant.countryId = dto.countryId;
+      if (dto.stateId !== undefined) tenant.stateId = dto.stateId;
+      if (dto.city !== undefined) tenant.city = dto.city.trim() || null;
+      if (dto.address !== undefined) tenant.address = dto.address.trim() || null;
+      if (dto.postalCode !== undefined) tenant.postalCode = dto.postalCode.trim() || null;
+      if (dto.customDomain !== undefined) tenant.customDomain = dto.customDomain.trim() || null;
+
       const saved = await this.tenantRepo.save(tenant).catch((dbError) => {
         this.logger.error(`❌ Database error while updating tenant ${id}: ${dbError.message}`, dbError.stack);
         throw new InternalServerErrorException('Database error while updating tenant.');
       });
 
+      const refreshed = await this.tenantRepo.findOne({
+        where: { id: saved.id },
+        relations: ['country', 'state'],
+      });
+      const [serialized] = await this.withBilling([refreshed || saved]);
+
       return {
         success: true,
         message: `Tenant "${saved?.name}" updated successfully`,
-        data: saved,
+        data: serialized,
       };
     } catch (error) {
       const err = this.toError(error);
       if (
           error instanceof BadRequestException ||
-          error instanceof NotFoundException
+          error instanceof NotFoundException ||
+          error instanceof ConflictException
       ) {
         throw error;
       }

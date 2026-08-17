@@ -13,6 +13,13 @@ describe('TenantAuthService', () => {
     sign: jest.fn(),
     verify: jest.fn(),
   };
+  const mockBillingService = {
+    getTenantEntitlements: jest.fn().mockResolvedValue({
+      allowedModules: ['dashboard', 'users', 'roles', 'jobpositions', 'locations'],
+      plan: { id: 1, name: 'Basic', slug: 'basic' },
+      status: 'active',
+    }),
+  };
 
   let service: TenantAuthService;
 
@@ -26,7 +33,7 @@ describe('TenantAuthService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new TenantAuthService(mockJwtService as any);
+    service = new TenantAuthService(mockJwtService as any, mockBillingService as any);
   });
 
   function createReq(user: any, tenantId = 'test') {

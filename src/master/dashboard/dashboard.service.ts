@@ -7,6 +7,7 @@ import { ActivityLog } from '../activity-logs/entities';
 import { EmailLog, GlobalMailSetting } from '../mail/entities';
 import { EMAIL_LOG_STATUS } from '../../mail/constants/mail.constants';
 import { getTenantDataSource } from '../../database/datasource';
+import { BillingService } from '../billing/billing.service';
 
 type KpiChangeType = 'count' | 'percent';
 
@@ -33,6 +34,7 @@ export class DashboardService {
     private readonly emailLogRepo: Repository<EmailLog>,
     @InjectRepository(GlobalMailSetting)
     private readonly mailSettingRepo: Repository<GlobalMailSetting>,
+    private readonly billingService: BillingService,
   ) {}
 
   private startOfDay(date = new Date()): Date {
@@ -316,18 +318,34 @@ export class DashboardService {
         return { date: point.date, count: runningActive };
       });
 
+      let billing: Awaited<ReturnType<BillingService['getDashboardBilling']>> | null = null;
+      try {
+        billing = await this.billingService.getDashboardBilling();
+      } catch {
+        billing = null;
+      }
+
+      const subscriptionsByTenant = await this.billingService
+        .latestSubscriptionByTenantIds(recentTenants.map((tenant) => tenant.id))
+        .catch(() => new Map());
+
       const recentTenantsWithUsers = await Promise.all(
-        recentTenants.map(async (tenant) => ({
-          id: tenant.id,
-          name: tenant.name,
-          domain: this.tenantDomain(tenant),
-          subdomain: tenant.subdomain,
-          customDomain: tenant.customDomain ?? null,
-          plan: null as string | null,
-          status: 'Active',
-          users: await this.countTenantUsers(tenant.dbName),
-          joinedOn: tenant.createdAt,
-        })),
+        recentTenants.map(async (tenant) => {
+          const subscription = subscriptionsByTenant.get(tenant.id);
+          return {
+            id: tenant.id,
+            name: tenant.name,
+            domain: this.tenantDomain(tenant),
+            subdomain: tenant.subdomain,
+            customDomain: tenant.customDomain ?? null,
+            plan: subscription?.plan?.name ?? null,
+            status: tenant.status
+              ? tenant.status.charAt(0).toUpperCase() + tenant.status.slice(1)
+              : 'Active',
+            users: await this.countTenantUsers(tenant.dbName),
+            joinedOn: tenant.createdAt,
+          };
+        }),
       );
 
       const [emailHealth, apiHealth] = await Promise.all([
@@ -365,7 +383,7 @@ export class DashboardService {
               trend: tenantTrend,
             }),
             activeTenants: this.kpi({
-              value: totalTenants,
+              value: billing?.tenantStatus.active ?? totalTenants,
               change: tenantsThisMonth,
               trend: tenantTrend,
             }),
@@ -375,26 +393,26 @@ export class DashboardService {
               trend: userTrend,
             }),
             mrr: this.kpi({
-              value: 0,
+              value: billing?.subscriptionStats.mrr.amount || 0,
               change: 0,
               changeType: 'percent',
               trend: zeroTrend,
-              available: false,
-              currency: 'EUR',
+              available: true,
+              currency: billing?.subscriptionStats.mrr.currency || 'EUR',
             }),
             activeSubscriptions: this.kpi({
-              value: 0,
+              value: billing?.subscriptionStats.activeSubscriptions || 0,
               change: 0,
               trend: zeroTrend,
-              available: false,
+              available: true,
             }),
             platformRevenue: this.kpi({
-              value: 0,
+              value: billing?.invoiceStats.totalRevenue.amount || 0,
               change: 0,
               changeType: 'percent',
               trend: zeroTrend,
-              available: false,
-              currency: 'EUR',
+              available: true,
+              currency: billing?.invoiceStats.totalRevenue.currency || 'EUR',
             }),
           },
           tenantsOverview: {
@@ -411,16 +429,17 @@ export class DashboardService {
             },
           },
           planDistribution: {
-            available: false,
+            available: true,
             total: totalTenants,
-            segments: [
-              {
-                key: 'unassigned',
-                name: 'Unassigned',
-                count: totalTenants,
-                percentage: totalTenants ? 100 : 0,
-              },
-            ],
+            segments: (billing?.planCounts || []).map((row) => {
+              const count = Number(row.count) || 0;
+              return {
+                key: row.slug || 'unassigned',
+                name: row.name || 'Unassigned',
+                count,
+                percentage: totalTenants ? Number(((count / totalTenants) * 100).toFixed(1)) : 0,
+              };
+            }),
           },
           recentTenants: recentTenantsWithUsers,
           systemHealth: {
