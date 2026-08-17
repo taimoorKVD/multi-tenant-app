@@ -262,21 +262,21 @@ Table: `dc_submissions`.
 
 Publish/create response includes `emailNotify: { sent, failed, skipped }`.
 
-**Production:** uses env SMTP only (no DB mail-settings decrypt). Requires the same Vercel vars that make Tenant Credentials work: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
+**Production:** uses env SMTP only (no DB mail-settings decrypt). Requires the same server env vars that make Tenant Credentials work: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
 
-- Hourly Nest `@Cron` (local / long-running Node only): `AssignmentReminderService`
-- **Production (Vercel):** GitHub Actions → `POST /api/cron/data-collection/due-reminders` with `x-cron-secret`
+- Hourly Nest `@Cron` (local / long-running Node): `AssignmentReminderService`
+- **Production (optional backup):** GitHub Actions → `POST /api/cron/data-collection/due-reminders` with `x-cron-secret`
 - Manual (JWT + permission): `POST /api/data-collection/assignments/send-due-reminders`
 - Disable Nest cron only: `DC_ASSIGNMENT_REMINDERS_ENABLED=false` (GitHub Actions still works)
 
-### GitHub Actions due reminders (recommended on Vercel)
+### GitHub Actions due reminders (optional backup)
 
-Nest `@Cron` does not reliably run on serverless. Use the free Actions schedule instead.
+Use the Actions schedule as a backup to Nest `@Cron`, or when the in-process scheduler is disabled.
 
-1. **Vercel / server env** — set `CRON_SECRET` to a long random string (same value as the GitHub secret).
+1. **Server env** — set `CRON_SECRET` to a long random string (same value as the GitHub secret).
 2. **GitHub → Settings → Secrets and variables → Actions**
    - `CRON_SECRET` — same value as server env
-   - `API_BASE_URL` — deployed API origin, e.g. `https://your-app.vercel.app` (no trailing slash)
+   - `API_BASE_URL` — deployed API origin, e.g. `https://api.example.com` (no trailing slash)
 3. Workflow: `.github/workflows/dc-due-reminders.yml`
    - Runs every hour at `:05` UTC
    - Also runnable manually: **Actions → DC Due Reminders → Run workflow**

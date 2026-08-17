@@ -40,7 +40,7 @@ export class WorkflowActionsService {
   private getFrontendBaseUrl(): string {
     const configured = this.getEnvValue('FRONTEND_URL');
     if (configured) return configured.replace(/\/+$/, '');
-    return 'https://eusocial-admin.vercel.app';
+    return 'http://localhost:4200';
   }
 
   private getLogoUrl(): string {

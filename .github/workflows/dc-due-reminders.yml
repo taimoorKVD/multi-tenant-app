@@ -1,10 +1,10 @@
 # Hourly: call Nest API to mark overdue DC assignments + send due-reminder emails.
-# Free on GitHub Actions; works even when Nest @Cron does not run (e.g. Vercel serverless).
+# Useful when Nest @Cron is disabled or as a backup to the in-process scheduler.
 #
 # Required GitHub Actions repository secrets (Settings → Secrets → Actions):
-#   API_BASE_URL  Nest API origin with https, e.g. https://multi-tenant-app-nine.vercel.app
-#                 (= https:// + your Vercel BASE_DOMAIN). Not FRONTEND_URL.
-#   CRON_SECRET   same value as CRON_SECRET on Vercel env
+#   API_BASE_URL  Nest API origin with https, e.g. https://api.example.com
+#                 (production backend URL). Not FRONTEND_URL.
+#   CRON_SECRET   same value as CRON_SECRET on the server env
 name: DC Due Reminders
 
 on:
@@ -25,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${API_BASE_URL:-}" ]; then
-            echo "::error::Missing repository secret API_BASE_URL (e.g. https://your-app.vercel.app)"
+            echo "::error::Missing repository secret API_BASE_URL (e.g. https://api.example.com)"
             exit 1
           fi
           if [ -z "${CRON_SECRET:-}" ]; then
