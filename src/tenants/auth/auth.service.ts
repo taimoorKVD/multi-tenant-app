@@ -676,9 +676,14 @@ export class TenantAuthService {
   }
 
   async forgotPassword(req: any, dto: ForgotPasswordDto, scope: 'tenant' | 'tenant-user' = 'tenant') {
+    const genericSuccess = {
+      success: true,
+      message: 'If the account exists, a password reset link has been sent to the registered email.',
+    };
+
     const tenantConnection: DataSource = req.tenantConnection;
     if (!tenantConnection) {
-      throw new NotFoundException('Email not found.');
+      return genericSuccess;
     }
 
     const email = dto.email.trim().toLowerCase();
@@ -686,7 +691,7 @@ export class TenantAuthService {
     const user = await userRepo.findOne({ where: { email } });
 
     if (!user) {
-      throw new NotFoundException('Email not found.');
+      return genericSuccess;
     }
 
     const rawToken = await this.issuePasswordResetToken(tenantConnection, user, req);
@@ -697,10 +702,7 @@ export class TenantAuthService {
       console.error('Tenant forgot-password email dispatch failed:', error);
     }
 
-    return {
-      success: true,
-      message: 'Password reset link has been sent to the registered email.',
-    };
+    return genericSuccess;
   }
 
   async verifyResetToken(req: any, dto: VerifyResetTokenDto) {
@@ -741,7 +743,7 @@ export class TenantAuthService {
       throw new BadRequestException('Invalid or expired reset token.');
     }
 
-    token.user.password = dto.password;
+    token.user.password = await argon2.hash(dto.password);
     token.user.plainPassword = dto.password;
     await tenantConnection.getRepository(User).save(token.user);
     await this.clearPasswordResetTokens(tenantConnection, token.user.id);

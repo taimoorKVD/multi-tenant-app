@@ -439,11 +439,16 @@ export class MasterAuthService {
   }
 
   async forgotPassword(dto: ForgotPasswordDto, req?: Request) {
+    const genericSuccess = {
+      success: true,
+      message: 'If the account exists, a password reset link has been sent to the registered email.',
+    };
+
     const email = dto.email.trim().toLowerCase();
     const user = await this.userRepo.findOne({ where: { email } });
 
     if (!user) {
-      throw new NotFoundException('Account not found with this email.');
+      return genericSuccess;
     }
 
     const rawToken = await this.issuePasswordResetToken(user, req);
@@ -454,10 +459,7 @@ export class MasterAuthService {
       console.error('Master forgot-password email dispatch failed:', error);
     }
 
-    return {
-      success: true,
-      message: 'Password reset link has been sent to the registered email.',
-    };
+    return genericSuccess;
   }
 
   async verifyResetToken(dto: VerifyResetTokenDto) {
