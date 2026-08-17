@@ -35,13 +35,12 @@ async function bootstrap() {
     .filter(Boolean);
 
   const allowedOrigins = new Set<string>([
-  'http://localhost:4200',
-  'https://eusocial-admin.vercel.app',
-  'https://eusocial.thebetawebsite.com',
-  'https://admin.eusocial.thebetawebsite.com',
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
-  ...configuredOrigins,
-]);
+    'http://localhost:4200',
+    'https://eusocial.thebetawebsite.com',
+    'https://admin.eusocial.thebetawebsite.com',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+    ...configuredOrigins,
+  ]);
 
 app.enableCors({
   origin: (origin, callback) => {
