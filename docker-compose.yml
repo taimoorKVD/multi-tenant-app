@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eusocial-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eusocial
+      POSTGRES_PASSWORD: eusocial_secure_2026
+      POSTGRES_DB: eusocial_master
+    volumes:
+      - eusocial_postgres_data:/var/lib/postgresql/data
+    networks:
+      - eusocial
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eusocial -d eusocial_master"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: eusocial-redis
+    restart: unless-stopped
+    volumes:
+      - eusocial_redis_data:/data
+    networks:
+      - eusocial
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: eusocial-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    ports:
+      - "3333:3333"
+    networks:
+      - eusocial
+
+  maintenance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: maintenance
+    container_name: eusocial-maintenance
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - eusocial
+    profiles:
+      - maintenance
+
+volumes:
+  eusocial_postgres_data:
+  eusocial_redis_data:
+
+networks:
+  eusocial:
+    name: eusocial
+    driver: bridge

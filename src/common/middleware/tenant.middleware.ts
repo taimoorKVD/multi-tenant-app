@@ -12,7 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  private readonly BASE_DOMAIN = 'eusocial.com';
+  private readonly BASE_DOMAIN = process.env.BASE_DOMAIN || 'localhost';
   private readonly PUBLIC_EMAIL_DOMAINS = new Set([
     'gmail.com',
     'yahoo.com',
