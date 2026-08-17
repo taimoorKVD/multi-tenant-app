@@ -99,12 +99,9 @@ export const masterDatabaseConfig: DataSourceOptions = {
     synchronize: false,
     // migrationsRun: true,
     logging,
-    ssl: isProduction ? {rejectUnauthorized: false} : false,
-    extra: isProduction
-        ? {
-            ssl: {rejectUnauthorized: false},
-            max: 10,
-            connectionTimeoutMillis: 5000,
-        }
-        : {},
+    ssl: false,
+    extra: {
+     max: 10,
+     connectionTimeoutMillis: 5000,
+    },
 };
