@@ -13,7 +13,10 @@ async function bootstrap() {
   app.setViewEngine('ejs');
 
   app.setGlobalPrefix('api', {
-    exclude: [{path: '/', method: RequestMethod.GET}],
+    exclude: [
+      {path: '/', method: RequestMethod.GET},
+      {path: 'health', method: RequestMethod.GET},
+    ],
   });
 
   setupSwagger(app);
