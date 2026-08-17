@@ -49,4 +49,4 @@ FROM base AS maintenance
 
 ENV NODE_ENV=production
 
-CMD ["npm", "run", "migration:run"]
+CMD ["sh", "-c", "npm run migration:baseline && npm run migration:run && npm run seed:master"]
