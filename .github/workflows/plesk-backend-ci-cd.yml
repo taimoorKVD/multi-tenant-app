@@ -1,0 +1,174 @@
+name: Plesk Backend CI/CD
+
+on:
+  pull_request:
+    branches:
+      - production
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event.pull_request.merged != true }}
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test -- --runInBand
+
+  deploy:
+    name: Deploy Backend to Plesk
+    runs-on: ubuntu-latest
+    needs: ci
+    timeout-minutes: 45
+    if: github.event.pull_request.merged == true
+
+    concurrency:
+      group: plesk-backend-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy with automatic rollback
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -Eeuo pipefail
+
+            APP_DIR="/opt/apps/eusocial/multi-tenant-app"
+            CONTAINER="eusocial-backend"
+            HEALTH_URL="http://127.0.0.1:3333/health"
+
+            cd "$APP_DIR"
+
+            echo "========================================="
+            echo "Starting backend deployment"
+            echo "========================================="
+
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+
+            echo "Previous commit: $PREVIOUS_COMMIT"
+
+            git fetch origin production
+            git checkout production
+            git reset --hard origin/production
+
+            NEW_COMMIT=$(git rev-parse HEAD)
+
+            echo "New commit: $NEW_COMMIT"
+
+            rollback() {
+              trap - ERR
+
+              echo "========================================="
+              echo "DEPLOYMENT FAILED"
+              echo "ROLLING BACK"
+              echo "========================================="
+
+              git reset --hard "$PREVIOUS_COMMIT"
+
+              echo "Restored commit: $(git rev-parse HEAD)"
+
+              docker compose build backend
+              docker compose up -d --force-recreate backend
+
+              echo "Waiting for rollback..."
+
+              sleep 10
+
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                echo "Rollback health check passed."
+              else
+                echo "CRITICAL: Rollback health check failed."
+                docker logs --tail 100 "$CONTAINER" || true
+                exit 1
+              fi
+
+              echo "Rollback completed."
+              exit 1
+            }
+
+            trap rollback ERR
+
+            echo "Building backend and maintenance images..."
+
+            docker compose build backend
+            docker compose --profile maintenance build maintenance
+
+            echo "Running database migrations..."
+
+            docker compose --profile maintenance run --rm maintenance
+
+            echo "Starting new backend..."
+
+            docker compose up -d --force-recreate backend
+
+            echo "Waiting for backend startup..."
+
+            sleep 10
+
+            echo "Checking container..."
+
+            RUNNING="$(docker inspect "$CONTAINER" --format='{{.State.Running}}' 2>/dev/null || echo false)"
+
+            if [ "$RUNNING" != "true" ]; then
+              echo "Backend container is not running."
+              docker logs --tail 100 "$CONTAINER" || true
+              rollback
+            fi
+
+            echo "Checking health endpoint..."
+
+            HEALTH_OK=false
+
+            for i in {1..12}; do
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                HEALTH_OK=true
+                echo "Health check passed on attempt $i."
+                break
+              fi
+
+              echo "Health check attempt $i failed."
+              sleep 5
+            done
+
+            if [ "$HEALTH_OK" != "true" ]; then
+              echo "Health check failed."
+              docker logs --tail 100 "$CONTAINER" || true
+              rollback
+            fi
+
+            trap - ERR
+
+            echo "========================================="
+            echo "BACKEND DEPLOYMENT SUCCESSFUL"
+            echo "Commit: $NEW_COMMIT"
+            echo "========================================="
+
+            docker compose ps backend

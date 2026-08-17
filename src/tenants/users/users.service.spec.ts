@@ -4,6 +4,7 @@ import { MailService } from '../../mail/mail.service';
 import { DynamicModule, Form, FormVersion } from '../form-builder/entities';
 import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { Role } from '../role/entities';
+import { JobPosition } from '../job-positions/entities';
 import { User } from './entities';
 import { UsersService } from './users.service';
 import { DynamicFieldsService } from '../form-builder/services';
@@ -31,6 +32,10 @@ describe('UsersService dynamic fields', () => {
   });
 
   function buildReq(repos: Map<any, any>) {
+    const defaultJobPositionRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+
     return {
       tenantId: 'kingdomvision',
       user: { id: 99 },
@@ -38,10 +43,9 @@ describe('UsersService dynamic fields', () => {
         options: { database: 'tenant_kingdomvision' },
         getRepository: jest.fn().mockImplementation((entity: any) => {
           const repo = repos.get(entity);
-          if (!repo) {
-            throw new Error(`Unexpected repository request: ${entity?.name || String(entity)}`);
-          }
-          return repo;
+          if (repo) return repo;
+          if (entity === JobPosition) return defaultJobPositionRepo;
+          throw new Error(`Unexpected repository request: ${entity?.name || String(entity)}`);
         }),
       },
     } as any;
@@ -253,8 +257,8 @@ describe('UsersService dynamic fields', () => {
   });
 
   it('does not shuffle values when one field dataKeys is contaminated with another field id', async () => {
-    // Reproduces the bug where phone_number field carried job_position's
-    // identifiers in its dataKeys and stole its stored value.
+    // Reproduces the bug where one custom field carried another's identifiers
+    // in its dataKeys and stole its stored value.
     const moduleRepo = {
       findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
     };
@@ -267,19 +271,19 @@ describe('UsersService dynamic fields', () => {
           fields: [
             { id: 'fld_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
             {
-              id: 'fld_phone',
-              fieldKey: 'phone_number',
-              label: 'Phone Number',
+              id: 'fld_code',
+              fieldKey: 'employee_code',
+              label: 'Employee Code',
               isSystemField: false,
-              // contaminated: contains job_position's id + keys
-              dataKeys: ['jobPosition', 'job_position', 'fld_job', 'phone_number', 'fld_phone'],
+              // contaminated: contains department's id + keys
+              dataKeys: ['department', 'fld_dept', 'employee_code', 'fld_code'],
             },
             {
-              id: 'fld_job',
-              fieldKey: 'job_position',
-              label: 'Job Position',
+              id: 'fld_dept',
+              fieldKey: 'department',
+              label: 'Department',
               isSystemField: false,
-              dataKeys: ['jobPosition', 'job_position', 'fld_job'],
+              dataKeys: ['department', 'fld_dept'],
             },
           ],
         },
@@ -315,8 +319,8 @@ describe('UsersService dynamic fields', () => {
         {
           moduleId: 10,
           entityId: 4,
-          // job selected = 1 (stored under its own id), phone = 379
-          data: { fld_job: 1, fld_phone: 379 },
+          // department selected = 1 (stored under its own id), employee code = 379
+          data: { fld_dept: 1, fld_code: 379 },
         },
       ]),
       findOne: jest.fn(),
@@ -341,8 +345,8 @@ describe('UsersService dynamic fields', () => {
 
     expect(result.success).toBe(true);
     // each field keeps its own value; no shuffle
-    expect(result.data[0].fld_phone).toBe(379);
-    expect(result.data[0].fld_job).toBe(1);
+    expect(result.data[0].fld_code).toBe(379);
+    expect(result.data[0].fld_dept).toBe(1);
   });
 
   it('rejects create when a required form-builder field is missing', async () => {
@@ -472,9 +476,16 @@ describe('UsersService dynamic fields', () => {
       find: jest.fn(),
     };
 
+    const roleRepo = {
+      findOne: jest.fn().mockImplementation(async ({ where }: { where?: { id?: number; name?: string } }) => {
+        if (where?.name === 'Employee') return { id: 2, name: 'Employee' };
+        return null;
+      }),
+    };
+
     const repos = new Map<any, any>([
       [User, userRepo],
-      [Role, { findOne: jest.fn() }],
+      [Role, roleRepo],
       [DynamicModule, moduleRepo],
       [Form, formRepo],
       [FormVersion, versionRepo],

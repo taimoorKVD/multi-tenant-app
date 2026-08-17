@@ -12,7 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  private readonly BASE_DOMAIN = 'eusocial.com';
+  private readonly BASE_DOMAIN = process.env.BASE_DOMAIN || 'localhost';
   private readonly PUBLIC_EMAIL_DOMAINS = new Set([
     'gmail.com',
     'yahoo.com',
@@ -147,6 +147,7 @@ export class TenantMiddleware implements NestMiddleware {
         '/api/docs',
         '/api/cron',
         '/api/billing/stripe',
+	      '/health'
       ];
 
       if (
@@ -287,6 +288,14 @@ export class TenantMiddleware implements NestMiddleware {
       // ❌ FINAL CHECK
       // =========================
       if (!tenant) {
+        // TEMPORARY: during setup, allow email-driven public requests to continue
+        // even if a workspace slug cannot be derived (e.g. public email domains).
+        if (
+          req.method === 'POST' &&
+          (url.endsWith('/forgot-password') || url.endsWith('/send-email-verification'))
+        ) {
+          return next();
+        }
         throw new BadRequestException(
           'Unable to identify your workspace. Please sign in using your company email on /tenant/login or contact your administrator.',
         );
