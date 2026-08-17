@@ -26,12 +26,55 @@ export class AssignmentsController {
   @TenantAccess('view-dc-assignment')
   @ApiOperation({
     summary: "Today's Work",
-    description: 'Lists assignments for the authenticated employee.',
+    description:
+      'Lists assignments for the authenticated employee. Each item includes `formName`, `submissionId`, and `submission` (answers/response) when a draft or submitted response exists.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false })
-  @ApiResponse({ status: 200, description: 'Assignments fetched successfully.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assignments fetched successfully.',
+    schema: {
+      example: {
+        success: true,
+        meta: { total: 1, page: 1, lastPage: 1 },
+        data: [
+          {
+            id: 1,
+            templateId: 1,
+            templateVersionId: 1,
+            assigneeUserId: 1,
+            jobPositionId: null,
+            locationId: null,
+            dueAt: '2026-08-21T00:00:00.000Z',
+            status: 'in_progress',
+            occurrenceKey: '1:1:2026-08-21T00:00:00.000Z:u:1',
+            formName: 'Manager Report',
+            templateName: 'Manager Report',
+            submissionId: 12,
+            submission: {
+              id: 12,
+              assignmentId: 1,
+              templateVersionId: 1,
+              submittedBy: 1,
+              answers: { fld_001: 'Done' },
+              response: { fld_001: 'Done' },
+              status: 'draft',
+              submittedAt: null,
+              createdAt: '2026-08-12T02:00:00.000Z',
+              updatedAt: '2026-08-12T02:10:00.000Z',
+            },
+            createdBy: 1,
+            updatedBy: 1,
+            createdAt: '2026-08-12T01:41:18.879Z',
+            updatedAt: '2026-08-12T01:41:18.879Z',
+            deletedAt: null,
+          },
+        ],
+      },
+    },
+  })
   myWork(@Req() req: any, @Query() query: QueryAssignmentDto) {
     return this.assignmentsService.findMyWork(req, query);
   }

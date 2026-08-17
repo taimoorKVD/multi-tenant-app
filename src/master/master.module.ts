@@ -16,6 +16,7 @@ import {MailAdminModule} from './mail/mail-admin.module';
 import { ActivityLogsModule } from './activity-logs';
 import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
 import { SystemModule } from './system/system.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -31,7 +32,8 @@ import { SystemModule } from './system/system.module';
     StatesModule,
     MailAdminModule,
     ActivityLogsModule,
-    SystemModule
+    SystemModule,
+    DashboardModule,
   ],
   providers: [
     TenantsService,

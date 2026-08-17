@@ -1,6 +1,6 @@
 import {applyDecorators} from '@nestjs/common';
 import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse,} from '@nestjs/swagger';
-import {CreateUserDto, UpdateUserDto} from '../dto';
+import {CreateUserDto, UpdateMasterProfileDto, UpdateUserDto} from '../dto';
 
 export const UsersSwagger = {
     Auth: () => ApiBearerAuth('access-token'),
@@ -344,45 +344,66 @@ export const UsersSwagger = {
             }),
         ),
 
+    GetProfile: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'Get Super Admin profile',
+                description:
+                    'Returns the authenticated master/Super Admin profile for the Profile screen (first/last name, email, role). Email and role are read-only. Use Authorize with the master access token from POST /api/master/login.',
+            }),
+            ApiResponse({
+                status: 200,
+                description: 'Profile fetched successfully.',
+                schema: {
+                    example: {
+                        success: true,
+                        message: 'Profile fetched successfully',
+                        user_type: 'master',
+                        data: {
+                            id: 1,
+                            name: 'Super Admin',
+                            first_name: 'Super',
+                            last_name: 'Admin',
+                            email: 'superadmin@system.com',
+                            role: { id: 1, name: 'Super Admin' },
+                            user_type: 'master',
+                            account_type: 'super_admin',
+                            created_at: '2025-11-10T10:22:30.000Z',
+                            updated_at: '2025-11-10T10:25:40.000Z',
+                        },
+                    },
+                },
+            }),
+            ApiResponse({ status: 401, description: 'Unauthorized — missing/invalid master token.' }),
+            ApiResponse({ status: 404, description: 'User not found.' }),
+        ),
+
     UpdateProfile: () =>
         applyDecorators(
             ApiOperation({
-                summary: 'Update own profile',
+                summary: 'Update Super Admin profile',
                 description:
-                    'Allows the currently authenticated user to update their own profile details (such as name or password). ' +
-                    'Email updates are not allowed for security reasons. ' +
-                    'If updating the password, both `password` and `password_confirm` fields are required.',
+                    'Updates first_name / last_name (or name) for the logged-in Super Admin. Email and role are read-only. Password change is optional and requires password_confirm.',
             }),
-
             ApiBody({
-                description:
-                    'Profile update payload — you may update your name or change password. ' +
-                    'Email updates are not allowed for security reasons. ' +
-                    'If updating the password, both `password` and `password_confirm` fields are required.',
-                type: UpdateUserDto,
+                type: UpdateMasterProfileDto,
                 examples: {
                     update_name: {
-                        summary: 'Example: Update only the name',
+                        summary: 'Update name',
                         value: {
-                            name: 'John Manager',
+                            first_name: 'Super',
+                            last_name: 'Admin',
                         },
                     },
                     update_password: {
-                        summary: 'Example: Change password',
+                        summary: 'Change password',
                         value: {
                             password: 'NewSecurePass123!',
                             password_confirm: 'NewSecurePass123!',
                         },
                     },
-                    invalid_password_mismatch: {
-                        summary: 'Example: Passwords do not match',
-                        value: {
-                            password: 'Secure123!',
-                            password_confirm: 'Secure321!',
-                        },
-                    },
                 },
-            } as any),
+            }),
             ApiResponse({
                 status: 200,
                 description: 'Profile updated successfully.',
@@ -390,53 +411,24 @@ export const UsersSwagger = {
                     example: {
                         success: true,
                         message: 'Profile updated successfully',
+                        user_type: 'master',
                         data: {
                             id: 1,
                             name: 'Super Admin',
+                            first_name: 'Super',
+                            last_name: 'Admin',
                             email: 'superadmin@system.com',
-                            updatedAt: '2025-11-14T11:47:45.511Z',
+                            role: { id: 1, name: 'Super Admin' },
+                            user_type: 'master',
+                            account_type: 'super_admin',
                         },
                     },
                 },
             }),
-            ApiResponse({
-                status: 400,
-                description:
-                    'Validation failed — for example, passwords do not match, confirm password missing, or invalid input.',
-                schema: {
-                    example: {
-                        statusCode: 400,
-                        message: 'Passwords do not match.',
-                        error: 'Bad Request',
-                    },
-                },
-            }),
-            ApiResponse({
-                status: 404,
-                description: 'User not found.',
-                schema: {
-                    example: {
-                        statusCode: 404,
-                        message: 'User not found.',
-                        error: 'Not Found',
-                    },
-                },
-            }),
-            ApiResponse({
-                status: 500,
-                description:
-                    'Unexpected server error — usually occurs when the database or hashing operation fails.',
-                schema: {
-                    example: {
-                        statusCode: 500,
-                        message:
-                            'Something went wrong while updating your profile. Please try again later.',
-                        error: 'Internal Server Error',
-                    },
-                },
-            }),
+            ApiResponse({ status: 400, description: 'Validation failed.' }),
+            ApiResponse({ status: 401, description: 'Unauthorized.' }),
+            ApiResponse({ status: 404, description: 'User not found.' }),
         ),
-
 
     Delete: () =>
         applyDecorators(

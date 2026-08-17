@@ -11,7 +11,9 @@ import { User } from '../../users/entities';
 import {
   AssignmentStatus,
   DataCollectionAssignment,
+  DataCollectionSubmission,
   DataCollectionTemplate,
+  SubmissionStatus,
   TemplateVersion,
 } from '../entities';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
@@ -28,6 +30,211 @@ export class AssignmentsService {
     if (candidate === null || candidate === undefined) return null;
     const actorId = Number(candidate);
     return Number.isFinite(actorId) ? actorId : null;
+  }
+
+  private resolveFormName(template?: DataCollectionTemplate | null): string | null {
+    if (!template) return null;
+    const name = String(template.name || '').trim();
+    const schemaName =
+      template.schema && typeof (template.schema as any).formName === 'string'
+        ? String((template.schema as any).formName).trim()
+        : '';
+    return name || schemaName || null;
+  }
+
+  private serializeSubmission(submission?: DataCollectionSubmission | null) {
+    if (!submission) return null;
+    return {
+      id: submission.id,
+      assignmentId: submission.assignmentId,
+      templateVersionId: submission.templateVersionId,
+      submittedBy: submission.submittedBy,
+      answers: submission.answers || {},
+      response: submission.answers || {},
+      status: submission.status,
+      submittedAt: submission.submittedAt,
+      createdBy: submission.createdBy,
+      updatedBy: submission.updatedBy,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
+    };
+  }
+
+  private pickLatestSubmission(
+    submissions: DataCollectionSubmission[],
+  ): DataCollectionSubmission | null {
+    if (!submissions.length) return null;
+    const submitted = submissions
+      .filter((s) => s.status === SubmissionStatus.SUBMITTED)
+      .sort(
+        (a, b) =>
+          new Date(b.submittedAt || b.updatedAt).getTime() -
+          new Date(a.submittedAt || a.updatedAt).getTime(),
+      );
+    if (submitted[0]) return submitted[0];
+
+    return [...submissions].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )[0];
+  }
+
+  private async loadSubmissionsByAssignmentIds(
+    req: any,
+    assignmentIds: number[],
+  ): Promise<Map<number, DataCollectionSubmission>> {
+    const map = new Map<number, DataCollectionSubmission>();
+    if (!assignmentIds.length) return map;
+
+    const submissionRepo = req.tenantConnection.getRepository(DataCollectionSubmission);
+    const rows: DataCollectionSubmission[] = await submissionRepo.find({
+      where: { assignmentId: In(assignmentIds) },
+      order: { updatedAt: 'DESC' },
+    });
+
+    const grouped = new Map<number, DataCollectionSubmission[]>();
+    for (const row of rows) {
+      const list = grouped.get(row.assignmentId) || [];
+      list.push(row);
+      grouped.set(row.assignmentId, list);
+    }
+
+    for (const [assignmentId, list] of grouped.entries()) {
+      const picked = this.pickLatestSubmission(list);
+      if (picked) map.set(assignmentId, picked);
+    }
+
+    return map;
+  }
+
+  private serializeAssignment(
+    assignment: DataCollectionAssignment,
+    submission?: DataCollectionSubmission | null,
+  ) {
+    const formName = this.resolveFormName(assignment.template);
+    const submissionPayload = this.serializeSubmission(submission);
+    return {
+      ...assignment,
+      formName,
+      templateName: formName,
+      submissionId: submissionPayload?.id ?? null,
+      submission: submissionPayload,
+    };
+  }
+
+  async findAll(req: any, query: QueryAssignmentDto) {
+    try {
+      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const page = Math.max(1, query.page ?? 1);
+      const limit = Math.min(Math.max(1, query.limit ?? 15), 100);
+      const skip = (page - 1) * limit;
+      const actorId = this.getActorId(req);
+
+      const qb = repo
+        .createQueryBuilder('assignment')
+        .leftJoinAndSelect('assignment.template', 'template');
+
+      if (query.status) {
+        qb.andWhere('assignment.status = :status', { status: query.status });
+      }
+      if (query.templateId) {
+        qb.andWhere('assignment.templateId = :templateId', { templateId: query.templateId });
+      }
+
+      const mineOnly = query.mine === true || query.mine === 'true' || query.mine === '1';
+
+      if (query.assigneeUserId) {
+        qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
+          assigneeUserId: query.assigneeUserId,
+        });
+      } else if (mineOnly && actorId != null) {
+        qb.andWhere('assignment.assigneeUserId = :assigneeUserId', { assigneeUserId: actorId });
+      }
+
+      qb.orderBy('assignment.dueAt', 'ASC').skip(skip).take(limit);
+      const [rows, total] = await qb.getManyAndCount();
+      const lastPage = Math.ceil(total / limit) || 1;
+      const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
+        req,
+        rows.map((row) => row.id),
+      );
+      const data = rows.map((row) =>
+        this.serializeAssignment(row, submissionsByAssignment.get(row.id) || null),
+      );
+
+      return { success: true, meta: { total, page, lastPage }, data };
+    } catch (error) {
+      this.logger.error('Assignment findAll failed', error);
+      throw new InternalServerErrorException('Failed to retrieve assignments');
+    }
+  }
+
+  async findMyWork(req: any, query: QueryAssignmentDto) {
+    const actorId = this.getActorId(req);
+    if (actorId == null) throw new BadRequestException('Authenticated user required');
+    return this.findAll(req, {
+      ...query,
+      mine: true,
+      assigneeUserId: actorId,
+      status: query.status,
+    });
+  }
+
+  async findOne(req: any, id: number) {
+    try {
+      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const assignment = await repo.findOne({
+        where: { id },
+        relations: ['template'],
+      });
+      if (!assignment) throw new NotFoundException(`Assignment with ID ${id} not found`);
+
+      const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(req, [assignment.id]);
+      return {
+        success: true,
+        data: this.serializeAssignment(
+          assignment,
+          submissionsByAssignment.get(assignment.id) || null,
+        ),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to retrieve assignment');
+    }
+  }
+
+  async start(req: any, id: number) {
+    try {
+      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const assignment = await repo.findOne({
+        where: { id },
+        relations: ['template'],
+      });
+      if (!assignment) throw new NotFoundException(`Assignment with ID ${id} not found`);
+
+      if (assignment.status === AssignmentStatus.COMPLETED) {
+        throw new BadRequestException('Assignment is already completed');
+      }
+      if (assignment.status === AssignmentStatus.CANCELLED) {
+        throw new BadRequestException('Assignment is cancelled');
+      }
+
+      assignment.status = AssignmentStatus.IN_PROGRESS;
+      assignment.updatedBy = this.getActorId(req);
+      const saved = await repo.save(assignment);
+      const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(req, [saved.id]);
+
+      return {
+        success: true,
+        message: 'Assignment started',
+        data: this.serializeAssignment(
+          saved,
+          submissionsByAssignment.get(saved.id) || null,
+        ),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new InternalServerErrorException('Failed to start assignment');
+    }
   }
 
   /**
@@ -148,90 +355,6 @@ export class AssignmentsService {
     } catch (error) {
       this.logger.warn(`Failed to resolve users for job position ${jobPositionId}: ${(error as Error).message}`);
       return [];
-    }
-  }
-
-  async findAll(req: any, query: QueryAssignmentDto) {
-    try {
-      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
-      const page = Math.max(1, query.page ?? 1);
-      const limit = Math.min(Math.max(1, query.limit ?? 15), 100);
-      const skip = (page - 1) * limit;
-      const actorId = this.getActorId(req);
-
-      const qb = repo.createQueryBuilder('assignment');
-
-      if (query.status) {
-        qb.andWhere('assignment.status = :status', { status: query.status });
-      }
-      if (query.templateId) {
-        qb.andWhere('assignment.templateId = :templateId', { templateId: query.templateId });
-      }
-
-      const mineOnly = query.mine === true || query.mine === 'true' || query.mine === '1';
-
-      if (query.assigneeUserId) {
-        qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
-          assigneeUserId: query.assigneeUserId,
-        });
-      } else if (mineOnly && actorId != null) {
-        qb.andWhere('assignment.assigneeUserId = :assigneeUserId', { assigneeUserId: actorId });
-      }
-
-      qb.orderBy('assignment.dueAt', 'ASC').skip(skip).take(limit);
-      const [data, total] = await qb.getManyAndCount();
-      const lastPage = Math.ceil(total / limit) || 1;
-
-      return { success: true, meta: { total, page, lastPage }, data };
-    } catch (error) {
-      this.logger.error('Assignment findAll failed', error);
-      throw new InternalServerErrorException('Failed to retrieve assignments');
-    }
-  }
-
-  async findMyWork(req: any, query: QueryAssignmentDto) {
-    const actorId = this.getActorId(req);
-    if (actorId == null) throw new BadRequestException('Authenticated user required');
-    return this.findAll(req, {
-      ...query,
-      mine: true,
-      assigneeUserId: actorId,
-      status: query.status,
-    });
-  }
-
-  async findOne(req: any, id: number) {
-    try {
-      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
-      const assignment = await repo.findOne({ where: { id } });
-      if (!assignment) throw new NotFoundException(`Assignment with ID ${id} not found`);
-      return { success: true, data: assignment };
-    } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Failed to retrieve assignment');
-    }
-  }
-
-  async start(req: any, id: number) {
-    try {
-      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
-      const assignment = await repo.findOne({ where: { id } });
-      if (!assignment) throw new NotFoundException(`Assignment with ID ${id} not found`);
-
-      if (assignment.status === AssignmentStatus.COMPLETED) {
-        throw new BadRequestException('Assignment is already completed');
-      }
-      if (assignment.status === AssignmentStatus.CANCELLED) {
-        throw new BadRequestException('Assignment is cancelled');
-      }
-
-      assignment.status = AssignmentStatus.IN_PROGRESS;
-      assignment.updatedBy = this.getActorId(req);
-      const saved = await repo.save(assignment);
-      return { success: true, message: 'Assignment started', data: saved };
-    } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
-      throw new InternalServerErrorException('Failed to start assignment');
     }
   }
 
