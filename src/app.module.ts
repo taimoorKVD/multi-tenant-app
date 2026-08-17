@@ -7,7 +7,9 @@ import {MasterModule} from './master/master.module';
 import {TenantsModule} from "./tenants/tenants.module";
 import { MailModule } from './mail/mail.module';
 import { TenantResetService } from './tenant-reset/tenant-reset.service';
+import { HealthController } from './health.controller';
 import { SystemModule } from './master/system/system.module';
+
 
 @Module({
   imports: [
@@ -17,7 +19,7 @@ import { SystemModule } from './master/system/system.module';
         MailModule,
         SystemModule
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [TenantResetService],
 })
 export class AppModule implements NestModule {
