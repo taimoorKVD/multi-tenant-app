@@ -7,7 +7,9 @@ import {RequestMethod, ValidationPipe} from '@nestjs/common';
 import {setupSwagger} from './config/swagger.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   app.setBaseViewsDir(join(__dirname, '..', 'src/views'));
   app.setViewEngine('ejs');

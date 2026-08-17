@@ -21,6 +21,7 @@
     "postinstall": "npm install ejs",
     "seed:master": "ts-node src/database/seeders/seed.ts",
     "seed:reset": "ts-node src/database/seeders/seed.ts --reset",
+    "migration:baseline": "ts-node -r tsconfig-paths/register scripts/baseline-master-migrations.ts",
     "migration:run": "ts-node -r tsconfig-paths/register -e \"require('dotenv/config'); require('./src/database/datasource/master-datasource').MasterDataSource.initialize().then(ds => ds.runMigrations()).then(() => { console.log('Migrations complete'); process.exit(0); }).catch(e => { console.error(e); process.exit(1); })\"",
     "migration:revert": "ts-node -r tsconfig-paths/register -e \"require('dotenv/config'); require('./src/database/datasource/master-datasource').MasterDataSource.initialize().then(ds => ds.undoLastMigration()).then(() => { console.log('Migration reverted'); process.exit(0); }).catch(e => { console.error(e); process.exit(1); })\""
   },
@@ -48,6 +49,7 @@
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "stripe": "^22.5.0",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.27"
   },

@@ -1,4 +1,5 @@
 export interface IAdminDetails {
+  name: string;
   email: string;
   password: string;
   role: {

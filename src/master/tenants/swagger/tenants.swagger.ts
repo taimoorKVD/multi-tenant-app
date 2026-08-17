@@ -2,6 +2,36 @@ import {applyDecorators} from '@nestjs/common';
 import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse,} from '@nestjs/swagger';
 import {CreateTenantDto, SendTenantCredentialsDto} from '../dto';
 
+const tenantExample = {
+    id: 12,
+    name: 'Acme Corporation',
+    dbName: 'tenant_acme',
+    subdomain: 'acme',
+    customDomain: null,
+    subdomainUrl: 'https://acme.eusocial.com',
+    customDomainUrl: null,
+    email: 'hello@acme.com',
+    phoneCountryCode: '+1',
+    phoneNumber: '2025550147',
+    phone: '+1 2025550147',
+    industry: 'Restaurant',
+    description: 'Multi-location restaurant group',
+    countryId: 1,
+    country: { id: 1, name: 'United States', code: 'US' },
+    stateId: 5,
+    state: { id: 5, name: 'Texas' },
+    city: 'Austin',
+    address: '123 Main Street',
+    postalCode: '78701',
+    status: 'trial',
+    plan: 'Standard',
+    planId: 2,
+    subscriptionStatus: 'trial',
+    billingCycle: 'monthly',
+    trialEndsAt: '2026-08-27T00:00:00.000Z',
+    createdAt: '2026-08-13T12:00:00.000Z',
+};
+
 export const TenantSwagger = {
     Auth: () => ApiBearerAuth('access-token'),
 
@@ -18,24 +48,7 @@ export const TenantSwagger = {
                 schema: {
                     example: {
                         success: true,
-                        data: [
-                            {
-                                id: 1,
-                                name: 'Tenant 1',
-                                dbName: 'tenant_tenant_1',
-                                subdomain: 'tenant-1',
-                                customDomain: null,
-                                createdAt: '2025-11-06T09:51:33.840Z',
-                            },
-                            {
-                                id: 2,
-                                name: 'Qavi',
-                                dbName: 'tenant_qavi',
-                                subdomain: 'qavi',
-                                customDomain: null,
-                                createdAt: '2025-11-05T13:19:15.896Z',
-                            },
-                        ],
+                        data: [tenantExample],
                         meta: {total: 2, page: 1, lastPage: 1},
                     },
                 },
@@ -100,61 +113,81 @@ export const TenantSwagger = {
             }),
         ),
 
+    Industries: () =>
+        applyDecorators(
+            ApiOperation({
+                summary: 'List industries for Create Tenant',
+                description: 'Returns industry options for the Create Tenant industry dropdown.',
+            }),
+            ApiResponse({
+                status: 200,
+                schema: {
+                    example: {
+                        success: true,
+                        count: 10,
+                        data: [{ name: 'Restaurant' }, { name: 'Hotel' }, { name: 'Cafe' }],
+                    },
+                },
+            }),
+        ),
+
     Create: () =>
         applyDecorators(
             ApiOperation({
                 summary: 'Create a new tenant',
                 description:
-                    'Creates a new tenant in the master database. This operation automatically provisions a tenant database, generates a subdomain, creates the first admin account, and assigns default permissions. The response includes tenant `id` for follow-up actions like sending credentials.',
+                    'Creates a tenant from the Super Admin Create Tenant form: organization details, address, plan/trial, and the first admin user. Provisions the tenant database and subscription.',
             }),
             ApiBody({
-                description:
-                    'Tenant creation payload. The `name` field is required; `customDomain` is optional. ' +
-                    'Subdomain, database name, URLs, and admin credentials are auto-generated. ' +
-                    'Credentials can be sent later via the dedicated send-credentials endpoint.',
+                description: 'Payload matching the Create Tenant screen.',
                 type: CreateTenantDto,
                 examples: {
-                    valid_minimal: {
-                        summary: 'Example: Minimal tenant creation',
+                    create_tenant_form: {
+                        summary: 'Create Tenant form',
                         value: {
-                            name: 'Travel Agency',
-                        },
-                    },
-                    with_custom_domain: {
-                        summary: 'Example: Tenant with custom domain',
-                        value: {
-                            name: 'Luxury Resorts',
-                            customDomain: 'luxuryresorts.co.uk',
+                            name: 'Acme Corporation',
+                            domain: 'acme.com',
+                            email: 'hello@acme.com',
+                            phoneCountryCode: '+1',
+                            phoneNumber: '2025550147',
+                            industry: 'Restaurant',
+                            description: 'Multi-location restaurant group',
+                            countryId: 1,
+                            stateId: 5,
+                            city: 'Austin',
+                            address: '123 Main Street',
+                            postalCode: '78701',
+                            planId: 2,
+                            billingCycle: 'monthly',
+                            trialDays: 14,
+                            admin: {
+                                name: 'Jane Doe',
+                                email: 'jane@acme.com',
+                                password: 'Admin@123',
+                                confirmPassword: 'Admin@123',
+                            },
                         },
                     },
                 },
             } as any),
             ApiResponse({
                 status: 201,
-                description:
-                    'Tenant created successfully — subdomain and admin credentials are automatically generated.',
+                description: 'Tenant created successfully.',
                 schema: {
                     example: {
                         success: true,
-                        message: 'Tenant "Travel Agency" created successfully',
+                        message: 'Tenant "Acme Corporation" created successfully',
                         data: {
-                            id: 1,
-                            name: 'Travel Agency',
-                            database: 'tenant_travel_agency',
-                            subdomain: 'travel-agency',
-                            customDomain: null,
-                            subdomainUrl: 'https://travel-agency.com',
-                            customDomainUrl: null,
+                            ...tenantExample,
+                            database: 'tenant_acme',
                             admin: {
-                                email: 'admin@travel-agency.com',
+                                name: 'Jane Doe',
+                                email: 'jane@acme.com',
                                 password: 'Admin@123',
                                 role: {
                                     id: 1,
                                     name: 'Admin',
-                                    permissions: [
-                                        { id: 1, name: 'create-user' },
-                                        { id: 8, name: 'edit-user' },
-                                    ],
+                                    permissions: [{ id: 1, name: 'create-user' }],
                                 },
                             },
                         },
@@ -286,14 +319,7 @@ export const TenantSwagger = {
                     example: {
                         success: true,
                         message: 'Record fetched successfully',
-                        data: {
-                            id: 1,
-                            name: 'Tenant 1',
-                            dbName: 'tenant_tenant_1',
-                            subdomain: 'tenant-1',
-                            customDomain: null,
-                            createdAt: '2025-11-06T09:51:33.840Z',
-                        },
+                        data: tenantExample,
                     },
                 },
             }),
@@ -326,9 +352,7 @@ export const TenantSwagger = {
             ApiOperation({
                 summary: 'Update tenant details',
                 description:
-                    'Updates an existing tenant record in the master system. ' +
-                    'Only editable fields such as `name` and `customDomain` may be updated. ' +
-                    'Fields like `id` and `dbName` are protected and ignored if provided.',
+                    'Updates tenant organization, contact, and address fields from the Create/Edit Tenant form. Plan changes use the subscription APIs. Admin password is not updated here.',
             }),
             ApiParam({
                 name: 'id',
@@ -343,8 +367,18 @@ export const TenantSwagger = {
                     'Sending an empty object or invalid data will return a 400 error.',
                 schema: {
                     example: {
-                        name: 'Travel Agency International',
-                        customDomain: 'travelagency.co.uk',
+                        name: 'Acme Corporation',
+                        domain: 'acme.com',
+                        email: 'hello@acme.com',
+                        phoneCountryCode: '+1',
+                        phoneNumber: '2025550147',
+                        industry: 'Restaurant',
+                        description: 'Multi-location restaurant group',
+                        countryId: 1,
+                        stateId: 5,
+                        city: 'Austin',
+                        address: '123 Main Street',
+                        postalCode: '78701',
                     },
                 },
             }),
@@ -355,14 +389,7 @@ export const TenantSwagger = {
                     example: {
                         success: true,
                         message: 'Tenant "Travel Agency International" updated successfully',
-                        data: {
-                            id: 2,
-                            name: 'Travel Agency International',
-                            customDomain: 'travelagency.co.uk',
-                            dbName: 'tenant_travel_agency',
-                            subdomain: 'travel-agency',
-                            updatedAt: '2025-11-14T15:15:30.511Z',
-                        },
+                        data: tenantExample,
                     },
                 },
             }),
