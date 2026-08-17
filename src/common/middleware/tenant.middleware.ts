@@ -287,6 +287,14 @@ export class TenantMiddleware implements NestMiddleware {
       // ❌ FINAL CHECK
       // =========================
       if (!tenant) {
+        // TEMPORARY: during setup, allow email-driven public requests to continue
+        // even if a workspace slug cannot be derived (e.g. public email domains).
+        if (
+          req.method === 'POST' &&
+          (url.endsWith('/forgot-password') || url.endsWith('/send-email-verification'))
+        ) {
+          return next();
+        }
         throw new BadRequestException(
           'Unable to identify your workspace. Please sign in using your company email on /tenant/login or contact your administrator.',
         );
