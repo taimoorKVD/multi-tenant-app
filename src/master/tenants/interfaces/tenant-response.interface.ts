@@ -13,6 +13,11 @@ export interface ITenantResponse {
     subdomainUrl: string;
     customDomainUrl?: string | null;
     email?: string | null;
+    credentialsEmail?: {
+      sent: boolean;
+      recipients: string[];
+      error: string | null;
+    };
     phoneCountryCode?: string | null;
     phoneNumber?: string | null;
     phone?: string | null;
@@ -32,6 +37,11 @@ export interface ITenantResponse {
     billingCycle?: string | null;
     trialEndsAt?: Date | null;
     subscription?: unknown;
+    stripe?: {
+      configured: boolean;
+      customerId: string | null;
+      subscriptionId: string | null;
+    };
     admin: IAdminDetails;
   };
 }
