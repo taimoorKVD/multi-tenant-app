@@ -185,6 +185,38 @@ export class TenantsService {
     }
   }
 
+  private async sendCreateTenantEmails(payload: {
+    tenantName: string;
+    subdomain: string;
+    customDomain?: string | null;
+    adminEmail: string;
+    adminPassword: string;
+    businessEmail: string;
+  }): Promise<{ sent: boolean; recipients: string[]; error: string | null }> {
+    const recipients = [...new Set([payload.adminEmail, payload.businessEmail].filter(Boolean))];
+    if (!recipients.length) {
+      return { sent: false, recipients: [], error: 'No recipient email provided' };
+    }
+
+    try {
+      for (const recipientEmail of recipients) {
+        await this.sendTenantCredentialsEmail({
+          tenantName: payload.tenantName,
+          tenantSubdomain: payload.subdomain,
+          customDomain: payload.customDomain,
+          recipientEmail,
+          loginEmail: payload.adminEmail,
+          adminPassword: payload.adminPassword,
+        });
+      }
+      return { sent: true, recipients, error: null };
+    } catch (error) {
+      const message = this.toError(error).message;
+      this.logger.warn(`Tenant created but credentials email was not sent: ${message}`);
+      return { sent: false, recipients, error: message };
+    }
+  }
+
   constructor(
       @InjectRepository(Tenant)
       private tenantRepo: Repository<Tenant>,
@@ -575,7 +607,16 @@ export class TenantsService {
         relations: ['country', 'state'],
       });
 
-      return this.buildResponse(saved || tenantRecord, adminSetup, subscription.data);
+      const email = await this.sendCreateTenantEmails({
+        tenantName,
+        subdomain,
+        customDomain: saved?.customDomain || null,
+        adminEmail: dto.admin.email.trim().toLowerCase(),
+        adminPassword: dto.admin.password,
+        businessEmail: dto.email.trim().toLowerCase(),
+      });
+
+      return this.buildResponse(saved || tenantRecord, adminSetup, subscription.data, email);
     } catch (error) {
       const err = this.toError(error);
       this.logger.error(`❌ Tenant creation failed for "${tenantName}": ${err.message}`);
@@ -940,6 +981,7 @@ export class TenantsService {
     tenant: Tenant,
     adminSetup?: IAdminSetup,
     subscription?: any,
+    email?: { sent: boolean; recipients: string[]; error: string | null },
   ): ITenantResponse {
     if (!adminSetup) {
       throw new InternalServerErrorException('Admin setup missing.');
@@ -960,6 +1002,16 @@ export class TenantsService {
         }),
         database: tenant.dbName,
         subscription: subscription || null,
+        stripe: {
+          configured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
+          customerId: subscription?.stripeCustomerId || null,
+          subscriptionId: subscription?.stripeSubscriptionId || null,
+        },
+        credentialsEmail: {
+          sent: email?.sent ?? false,
+          recipients: email?.recipients ?? [],
+          error: email?.error ?? null,
+        },
         admin: {
           name: user.name || '',
           email: user.email || '',

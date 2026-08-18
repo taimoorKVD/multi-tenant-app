@@ -52,8 +52,7 @@ app.enableCors({
 
     const isAllowed =
       allowedOrigins.has(origin) ||
-      /^https:\/\/[a-z0-9-]+\.eusocial\.thebetawebsite\.com$/i.test(origin);
-
+      /^https:\/\/[a-z0-9-]+.eusocial.thebetawebsite.com$/i.test(origin) || /^http:\/\/[a-z0-9-]+.eusocial.localhost:4200$/i.test(origin);
     if (isAllowed) {
       return callback(null, true);
     }

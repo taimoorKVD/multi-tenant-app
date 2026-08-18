@@ -20,7 +20,8 @@ export class CreateSubscriptionDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'If true (default), create the Stripe subscription immediately.',
+    description:
+      'If a paymentMethodId is sent, attach it and collect payment. Stripe customer/subscription are still created when STRIPE_SECRET_KEY is set, even if this is false.',
   })
   @IsOptional()
   @IsBoolean()

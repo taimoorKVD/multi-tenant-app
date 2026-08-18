@@ -218,6 +218,7 @@ export class BillingService {
     const ids = await this.stripeService.ensureProductAndPrice(plan);
     plan.stripeProductId = ids.productId;
     plan.stripePriceId = ids.priceId;
+    this.logger.log(`Plan ${plan.id} (${plan.slug}) synced to Stripe product ${ids.productId}`);
     return this.planRepo.save(plan);
   }
 
@@ -416,7 +417,10 @@ export class BillingService {
     let stripeCustomerId = tenant.stripeCustomerId || null;
     let stripeSubscription: Stripe.Subscription | null = null;
 
-    if (dto.chargeNow !== false && this.stripeService.isConfigured()) {
+    if (this.stripeService.isConfigured()) {
+      this.logger.log(
+        `Syncing tenant ${tenant.id} (${tenant.subdomain}) subscription to Stripe for plan ${plan.id}`,
+      );
       const synced = await this.syncPlanToStripe(plan);
       stripeCustomerId = await this.stripeService.ensureCustomer({
         customerId: stripeCustomerId,
@@ -436,12 +440,19 @@ export class BillingService {
         customerId: stripeCustomerId,
         priceId: synced.stripePriceId,
         trialDays,
-        paymentMethodId: dto.paymentMethodId,
+        paymentMethodId: dto.chargeNow === false ? undefined : dto.paymentMethodId,
         metadata: {
           tenantId: String(tenant.id),
           planId: String(plan.id),
         },
       });
+      this.logger.log(
+        `Stripe subscription created: ${stripeSubscription.id} (customer ${stripeCustomerId})`,
+      );
+    } else {
+      this.logger.warn(
+        'STRIPE_SECRET_KEY is not set; subscription was saved locally and was not sent to Stripe',
+      );
     }
 
     const period = stripeSubscription ? this.periodFromStripe(stripeSubscription) : { start: new Date(), end: null };
