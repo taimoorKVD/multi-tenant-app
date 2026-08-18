@@ -121,9 +121,10 @@ jobs:
             docker compose build backend
             docker compose --profile maintenance build maintenance
 
-            echo "Running database migrations..."
+            echo "Running database baseline, migrations, and seed..."
 
-            docker compose --profile maintenance run --rm maintenance
+            docker compose --profile maintenance run --rm maintenance sh -c \
+              "npm run migration:baseline && npm run migration:run && npm run seed:master"
 
             echo "Starting new backend..."
 

@@ -58,9 +58,9 @@ export class TenantsService {
     }
 
     this.logger.warn(
-      'FRONTEND_URL is not configured. Falling back to default frontend URL for email links.',
+      'FRONTEND_URL is not configured. Falling back to http://localhost:4200 for email links.',
     );
-    return 'https://eusocial-admin.vercel.app';
+    return 'http://localhost:4200';
   }
 
   private resolveSmtpConfig() {
