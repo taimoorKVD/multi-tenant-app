@@ -1,3 +1,14 @@
 export { DataCollectionTemplate } from './data-collection-template.entity';
 export { TemplateVersion } from './template-version.entity';
-export { TemplateStatus } from './enums';
+export { DataCollectionAssignment } from './data-collection-assignment.entity';
+export { DataCollectionSubmission } from './data-collection-submission.entity';
+export {
+  TemplateStatus,
+  AssignmentStatus,
+  SubmissionStatus,
+  FrequencyType,
+  FrequencyUnit,
+  MonthlyRuleType,
+  SectionType,
+  WeekdayOrdinal,
+} from './enums';

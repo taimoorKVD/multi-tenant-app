@@ -5,13 +5,14 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, Not, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
 import { SendUserCredentialsDto } from './dto';
 import { MailService } from '../../mail/mail.service';
 import { User } from './entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+import { JobPosition } from '../job-positions/entities';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -32,6 +33,8 @@ export class UsersService extends TenantAbstractService<User> {
     'password',
     'plain_password',
     'role_id',
+    'job_position_id',
+    'phone_number',
     'is_system',
     'created_at',
     'updated_at',
@@ -41,6 +44,10 @@ export class UsersService extends TenantAbstractService<User> {
 
   private readonly relationFieldAliases: Record<string, string> = {
     role: 'role_id',
+    jobPosition: 'job_position_id',
+    job_position: 'job_position_id',
+    phone: 'phone_number',
+    phoneNumber: 'phone_number',
   };
 
   private getFrontendBaseUrl(): string {
@@ -139,6 +146,7 @@ export class UsersService extends TenantAbstractService<User> {
       password: user.password,
       plain_password: user.plainPassword,
       role_id: user.role?.id,
+      job_position_id: user.jobPosition?.id,
       ...staticPayload,
       ...dynamicPayload,
     };
@@ -157,6 +165,8 @@ export class UsersService extends TenantAbstractService<User> {
         password: user.plainPassword ?? null,
         plain_password: user.plainPassword ?? null,
         role_id: user.role?.id ?? null,
+        job_position_id: user.jobPosition?.id ?? null,
+        phone_number: user.phoneNumber ?? null,
       },
       dynamicData,
       {
@@ -164,6 +174,9 @@ export class UsersService extends TenantAbstractService<User> {
         is_system: user.isSystem,
         created_at: user.createdAt,
         updated_at: user.updatedAt,
+        job_position: user.jobPosition
+          ? { id: user.jobPosition.id, name: user.jobPosition.name }
+          : null,
       },
     );
   }
@@ -199,11 +212,46 @@ export class UsersService extends TenantAbstractService<User> {
       user.plainPassword = staticPayload.plain_password || staticPayload.password;
     }
 
+    if (isCreate || staticPayload.phone_number !== undefined) {
+      if (staticPayload.phone_number === null || staticPayload.phone_number === '') {
+        user.phoneNumber = null;
+      } else if (shouldApplyScalar(staticPayload.phone_number)) {
+        user.phoneNumber = String(staticPayload.phone_number).trim();
+      }
+    }
+
     const roleId = this.coerceRelationId(staticPayload.role_id);
     if (roleId !== null && roleId !== user.role?.id) {
       const newRole = await roleRepo.findOne({ where: { id: roleId } });
       if (!newRole) throw new BadRequestException(`Role with ID ${roleId} not found.`);
       user.role = newRole;
+    } else if (isCreate && !user.role) {
+      // New staff users default to Employee; only the provisioned bootstrap user is Admin.
+      const employeeRole = await roleRepo.findOne({ where: { name: 'Employee' } });
+      if (employeeRole) {
+        user.role = employeeRole;
+      } else {
+        throw new BadRequestException(
+          'Employee role is not configured for this tenant. Create an Employee role or pass role_id.',
+        );
+      }
+    }
+
+    if (isCreate || staticPayload.job_position_id !== undefined) {
+      const jobPositionRepo: Repository<JobPosition> = req.tenantConnection.getRepository(JobPosition);
+      const jobPositionId = this.coerceRelationId(staticPayload.job_position_id);
+
+      if (jobPositionId === null) {
+        if (!isCreate || staticPayload.job_position_id !== undefined) {
+          user.jobPosition = null;
+        }
+      } else if (jobPositionId !== user.jobPosition?.id) {
+        const jobPosition = await jobPositionRepo.findOne({ where: { id: jobPositionId } });
+        if (!jobPosition) {
+          throw new BadRequestException(`Job position with ID ${jobPositionId} not found.`);
+        }
+        user.jobPosition = jobPosition;
+      }
     }
   }
 
@@ -334,7 +382,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const payload = await userRepo.findOne({
         where: { id: saved.id },
-        relations: ['role'],
+        relations: ['role', 'jobPosition'],
       });
 
       const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
@@ -411,7 +459,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const user = await userRepo.findOne({
         where: { id },
-        relations: ['role'],
+        relations: ['role', 'jobPosition'],
       });
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
@@ -457,7 +505,7 @@ export class UsersService extends TenantAbstractService<User> {
 
       const payload = await userRepo.findOne({
         where: { id: updated.id },
-        relations: ['role'],
+        relations: ['role', 'jobPosition'],
       });
 
       const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, updated.id, context);
@@ -557,6 +605,7 @@ export class UsersService extends TenantAbstractService<User> {
       const qb = userRepo
         .createQueryBuilder('user')
         .leftJoinAndSelect('user.role', 'role')
+        .leftJoinAndSelect('user.jobPosition', 'jobPosition')
         .where('user.isSystem = :isSystem', { isSystem: false });
 
       if (name) qb.andWhere('user.name ILIKE :name', { name: `%${name}%` });
@@ -581,6 +630,15 @@ export class UsersService extends TenantAbstractService<User> {
             const parsedRoleId = Number(value);
             if (Number.isFinite(parsedRoleId)) {
               qb.andWhere('role.id = :sysRoleId', { sysRoleId: parsedRoleId });
+            }
+            break;
+          }
+          case 'job_position_id': {
+            const parsedJobPositionId = Number(value);
+            if (Number.isFinite(parsedJobPositionId)) {
+              qb.andWhere('jobPosition.id = :sysJobPositionId', {
+                sysJobPositionId: parsedJobPositionId,
+              });
             }
             break;
           }
@@ -700,6 +758,176 @@ export class UsersService extends TenantAbstractService<User> {
         throw error;
       }
       throw new InternalServerErrorException('Failed to delete user');
+    }
+  }
+
+  async bulkDelete(req: any, ids: number[]): Promise<any> {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const repo = this.getRepo(req);
+      const users = await repo.findBy({ id: In(uniqueIds) });
+      const foundIds = users.map((user) => user.id);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Users not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      const systemUsers = users.filter((user) => user.isSystem);
+      if (systemUsers.length) {
+        throw new BadRequestException(
+          `System users cannot be deleted: ${systemUsers.map((user) => user.id).join(', ')}`,
+        );
+      }
+
+      await repo.remove(users);
+
+      const context = await this.getUsersSchemaContext(req);
+      for (const id of foundIds) {
+        await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
+      }
+
+      return {
+        success: true,
+        message: `${foundIds.length} user(s) deleted successfully`,
+        tenant: req.tenantConnection.options.database,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to bulk delete users');
+    }
+  }
+
+  private splitDisplayName(fullName: string | null | undefined): {
+    first_name: string;
+    last_name: string;
+  } {
+    const trimmed = String(fullName || '').trim();
+    if (!trimmed) return { first_name: '', last_name: '' };
+    const parts = trimmed.split(/\s+/);
+    return {
+      first_name: parts[0] || '',
+      last_name: parts.slice(1).join(' '),
+    };
+  }
+
+  private buildProfilePayload(user: User) {
+    const { first_name, last_name } = this.splitDisplayName(user.name);
+    return {
+      id: user.id,
+      name: user.name,
+      first_name,
+      last_name,
+      email: user.email,
+      phone: user.phoneNumber,
+      phone_number: user.phoneNumber,
+      role: user.role
+        ? {
+            id: user.role.id,
+            name: user.role.name,
+          }
+        : null,
+      account_type: user.role?.name || null,
+      job_position: user.jobPosition
+        ? { id: user.jobPosition.id, name: user.jobPosition.name }
+        : null,
+      is_system: user.isSystem,
+      created_at: user.createdAt,
+      updated_at: user.updatedAt,
+    };
+  }
+
+  async getOwnProfile(req: any) {
+    try {
+      const userId = this.getActorId(req);
+      if (!userId) {
+        throw new BadRequestException('Authenticated user is required');
+      }
+
+      const repo = this.getRepo(req);
+      const user = await repo.findOne({
+        where: { id: userId },
+        relations: ['role', 'jobPosition'],
+      });
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      return {
+        success: true,
+        message: 'Profile fetched successfully',
+        tenant: req.tenantConnection?.options?.database,
+        tenant_slug: req.tenantId || null,
+        data: this.buildProfilePayload(user),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to fetch profile');
+    }
+  }
+
+  async updateOwnProfile(req: any, dto: Record<string, any>) {
+    try {
+      const userId = this.getActorId(req);
+      if (!userId) {
+        throw new BadRequestException('Authenticated user is required');
+      }
+
+      const repo = this.getRepo(req);
+      const user = await repo.findOne({
+        where: { id: userId },
+        relations: ['role', 'jobPosition'],
+      });
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      const firstName =
+        dto.first_name !== undefined ? String(dto.first_name || '').trim() : undefined;
+      const lastName =
+        dto.last_name !== undefined ? String(dto.last_name || '').trim() : undefined;
+
+      if (dto.name !== undefined) {
+        user.name = String(dto.name || '').trim() || null;
+      } else if (firstName !== undefined || lastName !== undefined) {
+        const current = this.splitDisplayName(user.name);
+        const nextFirst = firstName !== undefined ? firstName : current.first_name;
+        const nextLast = lastName !== undefined ? lastName : current.last_name;
+        user.name = [nextFirst, nextLast].filter(Boolean).join(' ') || null;
+      }
+
+      const phoneValue = dto.phone !== undefined ? dto.phone : dto.phoneNumber ?? dto.phone_number;
+      if (phoneValue !== undefined) {
+        user.phoneNumber =
+          phoneValue === null || String(phoneValue).trim() === ''
+            ? null
+            : String(phoneValue).trim();
+      }
+
+      // Email and role are read-only on profile screen.
+      const saved = await repo.save(user);
+      const refreshed = await repo.findOne({
+        where: { id: saved.id },
+        relations: ['role', 'jobPosition'],
+      });
+
+      return {
+        success: true,
+        message: 'Profile updated successfully',
+        tenant: req.tenantConnection?.options?.database,
+        tenant_slug: req.tenantId || null,
+        data: this.buildProfilePayload(refreshed as User),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to update profile');
     }
   }
 }

@@ -1,7 +1,9 @@
 import {Body, Controller, Delete, Get, Param, Post, Put, Query, Req} from '@nestjs/common';
 import {UsersService} from './users.service';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
-import {CreateUserDto, SendUserCredentialsDto, UpdateUserDto} from './dto';
+import {CreateUserDto, SendUserCredentialsDto, UpdateTenantProfileDto, UpdateUserDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantUsersSwagger} from './swagger';
 
@@ -10,6 +12,20 @@ import {TenantUsersSwagger} from './swagger';
 @Controller(['users', 'tenant/:tenantId/users'])
 export class UsersController {
   constructor(private readonly usersService: UsersService) {
+  }
+
+  @TenantAccess()
+  @Get('profile')
+  @TenantUsersSwagger.GetProfile()
+  getProfile(@Req() req) {
+    return this.usersService.getOwnProfile(req);
+  }
+
+  @TenantAccess()
+  @Put('profile')
+  @TenantUsersSwagger.UpdateProfile()
+  updateProfile(@Req() req, @Body() dto: UpdateTenantProfileDto) {
+    return this.usersService.updateOwnProfile(req, dto);
   }
 
   @TenantAccess('create-user')
@@ -29,7 +45,7 @@ export class UsersController {
     return this.usersService.paginate(
       req,
       Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
-      ['role'],
+      ['role', 'jobPosition'],
       Number.isFinite(parsedLimit) ? parsedLimit : undefined,
     );
   }
@@ -93,7 +109,7 @@ export class UsersController {
   @Get(':id')
   @TenantUsersSwagger.FindOne()
   findOne(@Req() req, @Param('id') id: number) {
-    return this.usersService.findOne(req, id, ['role']);
+    return this.usersService.findOne(req, id, ['role', 'jobPosition']);
   }
 
   @TenantAccess('edit-user')
@@ -101,6 +117,13 @@ export class UsersController {
   @TenantUsersSwagger.Update()
   update(@Req() req, @Param('id') id: number, @Body() body: any) {
     return this.usersService.update(req, id, body);
+  }
+
+  @TenantAccess('delete-user')
+  @Delete('bulk')
+  @BulkDeleteSwagger('users')
+  bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
+    return this.usersService.bulkDelete(req, dto.ids);
   }
 
   @TenantAccess('delete-user')

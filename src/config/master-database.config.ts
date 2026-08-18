@@ -19,6 +19,7 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from '../master/auth/entities';
+import { Invoice, Plan, Subscription } from '../master/billing/entities';
 import {
     CreatePermissionsTable1701010001000,
     CreateRolesTable1701010000000,
@@ -37,6 +38,9 @@ import {
     CreateEmailVerificationTokensTable1701010016000,
     CreateRefreshTokensTable1701010017000,
     AddCountryIdToCitiesTable1701010018000,
+    CreateBillingTables1701010020000,
+    AddModulesToPlansTable1701010021000,
+    AddTenantProfileFields1701010022000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -76,6 +80,9 @@ export const masterDatabaseConfig: DataSourceOptions = {
             PasswordResetToken,
             EmailVerificationToken,
             RefreshToken,
+            Plan,
+            Subscription,
+            Invoice,
         ],
         migrations: [
                 CreatePermissionsTable1701010001000,
@@ -95,16 +102,16 @@ export const masterDatabaseConfig: DataSourceOptions = {
                 CreateEmailVerificationTokensTable1701010016000,
                 CreateRefreshTokensTable1701010017000,
                 AddCountryIdToCitiesTable1701010018000,
+                CreateBillingTables1701010020000,
+                AddModulesToPlansTable1701010021000,
+                AddTenantProfileFields1701010022000,
         ],
     synchronize: false,
     // migrationsRun: true,
     logging,
-    ssl: isProduction ? {rejectUnauthorized: false} : false,
-    extra: isProduction
-        ? {
-            ssl: {rejectUnauthorized: false},
-            max: 10,
-            connectionTimeoutMillis: 5000,
-        }
-        : {},
+    ssl: false,
+    extra: {
+     max: 10,
+     connectionTimeoutMillis: 5000,
+    },
 };

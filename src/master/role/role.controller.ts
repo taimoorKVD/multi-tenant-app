@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query,} f
 import {RoleService} from './role.service';
 import {MasterAccess} from '../../common/decorators';
 import {CreateRoleDto, UpdateRoleDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {Role} from './entities';
 import {ApiResponse} from 'src/common/abstract';
 import {ApiTags} from "@nestjs/swagger";
@@ -65,6 +67,14 @@ export class RoleController {
     @Body() dto: UpdateRoleDto,
   ): Promise<ApiResponse<Role>> {
     return this.roleService.update(id, dto as any);
+  }
+
+  // Bulk delete roles
+  @Delete('bulk')
+  @MasterAccess('delete-role')
+  @BulkDeleteSwagger('roles')
+  async bulkDelete(@Body() dto: BulkDeleteDto) {
+    return this.roleService.bulkDelete(dto.ids);
   }
 
   // Delete role

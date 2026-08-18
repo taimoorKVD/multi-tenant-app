@@ -1,7 +1,8 @@
 import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query} from '@nestjs/common';
 import {TenantsService} from './tenants.service';
-import {Tenant} from './entities';
-import {CreateTenantDto, SendTenantCredentialsDto} from './dto';
+import {CreateTenantDto, SendTenantCredentialsDto, UpdateTenantDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {MasterAccess} from '../../common/decorators';
 import {ApiTags} from "@nestjs/swagger";
 import {TenantSwagger} from "./swagger";
@@ -38,6 +39,13 @@ export class TenantsController {
     });
   }
 
+  @Get('industries')
+  @MasterAccess('view-tenant')
+  @TenantSwagger.Industries()
+  listIndustries() {
+    return this.tenantsService.listIndustries();
+  }
+
   @Post()
   @MasterAccess('create-tenant')
   @TenantSwagger.Create()
@@ -63,6 +71,13 @@ export class TenantsController {
     return this.tenantsService.findOne(id);
   }
 
+  @Delete('bulk')
+  @MasterAccess('delete-tenant')
+  @BulkDeleteSwagger('tenants')
+  async bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.tenantsService.bulkRemove(dto.ids);
+  }
+
   @Delete(':id')
   @MasterAccess('delete-tenant')
   @TenantSwagger.Delete()
@@ -73,7 +88,7 @@ export class TenantsController {
   @Put(':id')
   @MasterAccess('edit-tenant')
   @TenantSwagger.Update()
-  async update(@Param('id') id: number, @Body() body: Partial<Tenant>) {
-    return this.tenantsService.update(id, body);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTenantDto) {
+    return this.tenantsService.update(id, dto);
   }
 }

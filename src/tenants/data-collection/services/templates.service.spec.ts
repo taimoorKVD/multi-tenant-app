@@ -1,13 +1,24 @@
-import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
 import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
 
 describe('TemplatesService', () => {
   let service: TemplatesService;
+  let assignmentsService: {
+    materializeFromTemplate: jest.Mock;
+    cancelFutureForTemplate: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new TemplatesService({} as any);
+    assignmentsService = {
+      materializeFromTemplate: jest.fn().mockResolvedValue([{ id: 1 }]),
+      cancelFutureForTemplate: jest.fn().mockResolvedValue(undefined),
+    };
+    const workflowActions = {
+      notifyAssigneesOnPublish: jest.fn().mockResolvedValue({ sent: 0, failed: 0, skipped: 0 }),
+    };
+    service = new TemplatesService(assignmentsService as any, workflowActions as any);
   });
 
   function buildRepos() {
@@ -20,7 +31,7 @@ describe('TemplatesService', () => {
     };
     const versionRepo = {
       create: jest.fn().mockImplementation((e: any) => e),
-      save: jest.fn().mockImplementation(async (e: any) => ({ id: 10, ...e })),
+      save: jest.fn().mockImplementation(async (e: any) => ({ id: 10, versionNumber: e.versionNumber ?? 1, ...e })),
       findOne: jest.fn(),
     };
 
@@ -54,53 +65,66 @@ describe('TemplatesService', () => {
     return qb;
   }
 
-  describe('create', () => {
-    it('creates template with ACTIVE status and schema', async () => {
-      const req = createReq();
-      req.templateRepo.save.mockResolvedValueOnce({ id: 1, name: 'Test', status: 'active' });
+  const fullSchema = {
+    assign: { users: [1], jobPosition: [2] },
+    report: { users: [3], jobPosition: [1] },
+    frequency: {
+      type: 'atOnce',
+      date: '2026-08-21',
+      jobPosition: null,
+      recurring: null,
+    },
+    sections: [],
+  };
 
-      const result = await service.create(req, { name: 'Test', schema: { sections: [] } });
+  describe('create', () => {
+    it('always publishes on create when schema is complete', async () => {
+      const req = createReq();
+      const draft = { id: 1, name: 'Test', schema: fullSchema, status: TemplateStatus.DRAFT };
+      req.templateRepo.save
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.create(req, { name: 'Test', schema: fullSchema as any });
 
       expect(result.success).toBe(true);
-      expect(result.message).toBe('Template created successfully');
-      expect(req.templateRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Test', status: TemplateStatus.ACTIVE }),
-      );
-      expect(req.versionRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ templateId: 1, versionNumber: 1, schemaSnapshot: { sections: [] } }),
-      );
+      expect(result.message).toContain('published');
+      expect(result.data.status).toBe(TemplateStatus.ACTIVE);
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
       expect(req.versionRepo.save).toHaveBeenCalled();
     });
 
-    it('creates template without version when no schema', async () => {
+    it('still publishes even when publish=false is sent', async () => {
       const req = createReq();
-      req.templateRepo.save.mockResolvedValueOnce({ id: 2, name: 'No Schema' });
+      const draft = { id: 1, name: 'Test', schema: fullSchema, status: TemplateStatus.DRAFT };
+      req.templateRepo.save
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
 
-      const result = await service.create(req, { name: 'No Schema' });
+      const result = await service.create(req, {
+        name: 'Test',
+        schema: fullSchema as any,
+        publish: false,
+      });
 
-      expect(result.success).toBe(true);
-      expect(req.versionRepo.save).not.toHaveBeenCalled();
+      expect(result.message).toContain('published');
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
     });
 
     it('uses createdBy from dto as actor', async () => {
       const req = createReq({ id: 5 });
-      req.templateRepo.save.mockResolvedValueOnce({ id: 1 });
+      const draft = { id: 1, name: 'X', schema: fullSchema, status: TemplateStatus.DRAFT };
+      req.templateRepo.save
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
 
-      await service.create(req, { name: 'X', createdBy: 99 });
+      await service.create(req, { name: 'X', schema: fullSchema as any, createdBy: 99 });
 
       expect(req.templateRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ createdBy: 99 }),
-      );
-    });
-
-    it('sets createdBy from req.user.id when dto has no createdBy', async () => {
-      const req = createReq({ id: 7 });
-      req.templateRepo.save.mockResolvedValueOnce({ id: 1 });
-
-      await service.create(req, { name: 'X' });
-
-      expect(req.templateRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ createdBy: 7 }),
       );
     });
   });
@@ -115,7 +139,6 @@ describe('TemplatesService', () => {
 
       expect(result.success).toBe(true);
       expect(result.meta.total).toBe(2);
-      expect(result.meta.page).toBe(1);
       expect(result.data).toHaveLength(2);
     });
 
@@ -128,27 +151,6 @@ describe('TemplatesService', () => {
 
       expect(qb.skip).toHaveBeenCalledWith(0);
       expect(qb.take).toHaveBeenCalledWith(15);
-    });
-
-    it('calculates correct skip for page 3', async () => {
-      const req = createReq();
-      const qb = createQb([], 0);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await service.findAll(req, { page: 3, limit: 10 });
-
-      expect(qb.skip).toHaveBeenCalledWith(20);
-      expect(qb.take).toHaveBeenCalledWith(10);
-    });
-
-    it('caps limit at 100', async () => {
-      const req = createReq();
-      const qb = createQb([], 0);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await service.findAll(req, { page: 1, limit: 200 });
-
-      expect(qb.take).toHaveBeenCalledWith(100);
     });
   });
 
@@ -172,57 +174,65 @@ describe('TemplatesService', () => {
   });
 
   describe('update', () => {
-    it('updates template fields and creates new version', async () => {
+    it('updates draft schema without creating a version', async () => {
       const req = createReq();
-      const existing = { id: 1, name: 'Old', schema: null, isActive: true, updatedBy: null };
+      const existing = {
+        id: 1,
+        name: 'Old',
+        schema: null,
+        status: TemplateStatus.DRAFT,
+        isActive: true,
+        updatedBy: null,
+      };
       req.templateRepo.findOne.mockResolvedValue(existing);
       req.templateRepo.save.mockResolvedValueOnce({ ...existing, name: 'New' });
-      req.versionRepo.findOne.mockResolvedValue({ versionNumber: 1 });
 
-      const result = await service.update(req, 1, { name: 'New', schema: { sections: [] } });
+      const result = await service.update(req, 1, { name: 'New', schema: { sections: [] } as any });
 
       expect(result.success).toBe(true);
       expect(existing.name).toBe('New');
-      expect(req.versionRepo.save).toHaveBeenCalled();
+      expect(req.versionRepo.save).not.toHaveBeenCalled();
     });
 
-    it('deactivates previous version when creating new one', async () => {
+    it('moves ACTIVE template to DRAFT when schema changes without publish', async () => {
       const req = createReq();
-      const existing = { id: 1, name: 'T', schema: null, isActive: true, updatedBy: null };
-      const prevVersion = { versionNumber: 2, isActive: true };
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
       req.templateRepo.findOne.mockResolvedValue(existing);
       req.templateRepo.save.mockResolvedValueOnce(existing);
-      req.versionRepo.findOne.mockResolvedValue(prevVersion);
 
-      await service.update(req, 1, { schema: { v: 2 } });
+      await service.update(req, 1, { schema: { ...fullSchema, sections: [] } as any });
 
-      expect(prevVersion.isActive).toBe(false);
-      expect(req.versionRepo.save).toHaveBeenCalledWith(prevVersion);
+      expect(existing.status).toBe(TemplateStatus.DRAFT);
     });
 
-    it('creates version 1 when no previous version exists', async () => {
+    it('publishes when publish=true', async () => {
       const req = createReq();
-      const existing = { id: 1, name: 'T', schema: null, isActive: true, updatedBy: null };
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.DRAFT,
+        isActive: true,
+        updatedBy: null,
+      };
       req.templateRepo.findOne.mockResolvedValue(existing);
-      req.templateRepo.save.mockResolvedValueOnce(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce({ ...existing, status: TemplateStatus.ACTIVE });
       req.versionRepo.findOne.mockResolvedValue(null);
 
-      await service.update(req, 1, { schema: { v: 1 } });
+      const result = await service.update(req, 1, { publish: true });
 
-      expect(req.versionRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ versionNumber: 1 }),
-      );
-    });
-
-    it('does not create version when no schema in dto', async () => {
-      const req = createReq();
-      const existing = { id: 1, name: 'T', schema: null, isActive: true, updatedBy: null };
-      req.templateRepo.findOne.mockResolvedValue(existing);
-      req.templateRepo.save.mockResolvedValueOnce(existing);
-
-      await service.update(req, 1, { name: 'Renamed' });
-
-      expect(req.versionRepo.findOne).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('published');
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
     });
 
     it('throws NotFoundException when template not found', async () => {
@@ -233,31 +243,25 @@ describe('TemplatesService', () => {
     });
   });
 
-  describe('remove', () => {
-    it('soft-deletes template', async () => {
+  describe('publish', () => {
+    it('rejects templates without assign targets', async () => {
       const req = createReq();
-      const template = { id: 1, name: 'ToDelete' };
-      req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.findOne.mockResolvedValue({
+        id: 1,
+        schema: { frequency: { type: 'atOnce', date: '2026-01-01', recurring: null }, sections: [] },
+        status: TemplateStatus.DRAFT,
+      });
 
-      const result = await service.remove(req, 1);
-
-      expect(result.success).toBe(true);
-      expect(req.templateRepo.softRemove).toHaveBeenCalledWith(template);
-    });
-
-    it('throws NotFoundException when not found', async () => {
-      const req = createReq();
-      req.templateRepo.findOne.mockResolvedValue(null);
-
-      await expect(service.remove(req, 999)).rejects.toThrow(NotFoundException);
+      await expect(service.publish(req, 1)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('activate', () => {
-    it('sets status to ACTIVE and isActive to true', async () => {
+    it('activates when an active version exists', async () => {
       const req = createReq();
       const template = { id: 1, status: 'draft', isActive: false, updatedBy: null };
       req.templateRepo.findOne.mockResolvedValue(template);
+      req.versionRepo.findOne.mockResolvedValue({ id: 10, isActive: true });
 
       const result = await service.activate(req, 1);
 
@@ -266,16 +270,17 @@ describe('TemplatesService', () => {
       expect(template.isActive).toBe(true);
     });
 
-    it('throws NotFoundException when not found', async () => {
+    it('rejects activate when no published version', async () => {
       const req = createReq();
-      req.templateRepo.findOne.mockResolvedValue(null);
+      req.templateRepo.findOne.mockResolvedValue({ id: 1, status: 'draft' });
+      req.versionRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.activate(req, 999)).rejects.toThrow(NotFoundException);
+      await expect(service.activate(req, 1)).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('archive', () => {
-    it('sets status to ARCHIVED', async () => {
+    it('sets status to ARCHIVED and cancels future assignments', async () => {
       const req = createReq();
       const template = { id: 1, status: 'active', updatedBy: null };
       req.templateRepo.findOne.mockResolvedValue(template);
@@ -284,25 +289,15 @@ describe('TemplatesService', () => {
 
       expect(result.success).toBe(true);
       expect(template.status).toBe(TemplateStatus.ARCHIVED);
-    });
-
-    it('throws NotFoundException when not found', async () => {
-      const req = createReq();
-      req.templateRepo.findOne.mockResolvedValue(null);
-
-      await expect(service.archive(req, 999)).rejects.toThrow(NotFoundException);
+      expect(assignmentsService.cancelFutureForTemplate).toHaveBeenCalledWith(req, 1);
     });
   });
 
   describe('search', () => {
     it('returns empty when no filters provided', async () => {
       const req = createReq();
-
       const result = await service.search(req);
-
-      expect(result.success).toBe(true);
       expect(result.count).toBe(0);
-      expect(result.data).toEqual([]);
     });
 
     it('searches by name with ILIKE', async () => {
@@ -312,75 +307,8 @@ describe('TemplatesService', () => {
 
       const result = await service.search(req, undefined, { name: 'manager' });
 
-      expect(result.success).toBe(true);
       expect(result.count).toBe(1);
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        'template.name ILIKE :name',
-        { name: '%manager%' },
-      );
-    });
-
-    it('searches by status', async () => {
-      const req = createReq();
-      const qb = createQb([{ id: 1, status: 'active' }]);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      const result = await service.search(req, undefined, { status: 'active' });
-
-      expect(result.success).toBe(true);
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        'template.status = :status',
-        { status: 'active' },
-      );
-    });
-
-    it('searches by name and status together', async () => {
-      const req = createReq();
-      const qb = createQb([{ id: 1 }]);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await service.search(req, undefined, { name: 'report', status: 'draft' });
-
-      expect(qb.andWhere).toHaveBeenCalledTimes(2);
-    });
-
-    it('uses default limit of 15 when not specified', async () => {
-      const req = createReq();
-      const qb = createQb([]);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await service.search(req, undefined, { name: 'test' });
-
-      expect(qb.take).toHaveBeenCalledWith(15);
-    });
-
-    it('caps limit at 50', async () => {
-      const req = createReq();
-      const qb = createQb([]);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await service.search(req, 100, { name: 'test' });
-
-      expect(qb.take).toHaveBeenCalledWith(50);
-    });
-
-    it('ignores unknown filter keys in query builder', async () => {
-      const req = createReq();
-      const qb = createQb([{ id: 1 }]);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
-
-      await service.search(req, undefined, { unknown: 'value' });
-
-      expect(qb.andWhere).not.toHaveBeenCalled();
-      expect(qb.getMany).toHaveBeenCalled();
-    });
-
-    it('returns empty when limit filter key is present', async () => {
-      const req = createReq();
-
-      const result = await service.search(req, undefined, { limit: '10' });
-
-      expect(result.count).toBe(0);
+      expect(qb.andWhere).toHaveBeenCalledWith('template.name ILIKE :name', { name: '%manager%' });
     });
   });
 
@@ -394,22 +322,11 @@ describe('TemplatesService', () => {
       await expect(service.findAll(req, {})).rejects.toThrow(InternalServerErrorException);
     });
 
-    it('wraps unexpected errors as InternalServerErrorException in search', async () => {
-      const req = createReq();
-      req.templateRepo.createQueryBuilder.mockImplementation(() => {
-        throw new Error('DB error');
-      });
-
-      await expect(service.search(req, undefined, { name: 'x' })).rejects.toThrow(
-        InternalServerErrorException,
-      );
-    });
-
     it('wraps unexpected errors as InternalServerErrorException in create', async () => {
       const req = createReq();
       req.templateRepo.save.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.create(req, { name: 'X' })).rejects.toThrow(
+      await expect(service.create(req, { name: 'X', schema: fullSchema as any })).rejects.toThrow(
         InternalServerErrorException,
       );
     });

@@ -6,10 +6,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { TenantJwtStrategy } from './strategies/tenant-jwt.strategy';
 import { TenantAuthGuard } from './guards';
+import { BillingModule } from '../../master/billing/billing.module';
 
 @Module({
   imports: [
     ConfigModule,
+    BillingModule,
     PassportModule.register({ defaultStrategy: 'tenant-jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

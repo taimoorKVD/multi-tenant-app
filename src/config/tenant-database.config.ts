@@ -3,13 +3,16 @@ import {User} from '../tenants/users/entities';
 import {Role} from '../tenants/role/entities';
 import {Permission} from '../tenants/permission/entities';
 import {Product} from '../tenants/products/entities';
-import {JobPosition} from "../tenants/job-positions/entities";
-import {Location} from "../tenants/locations/entities";
+import {JobPosition} from '../tenants/job-positions/entities';
+import {Location} from '../tenants/locations/entities';
 import {Vendor} from '../tenants/vendors/entities';
-import { ReportingGroup } from '../tenants/reporting-groups/entities';
-import { ReportingCategory } from '../tenants/reporting-categories/entities';
-import { Item } from '../tenants/items/entities';
-import { TenantEmailTemplate, TenantMailSetting } from '../tenants/mail/entities';
+import {ReportingGroup} from '../tenants/reporting-groups/entities';
+import {ReportingCategory} from '../tenants/reporting-categories/entities';
+import {Item} from '../tenants/items/entities';
+import {
+  TenantEmailTemplate,
+  TenantMailSetting,
+} from '../tenants/mail/entities';
 import {
   EmailVerificationToken,
   PasswordResetToken,
@@ -25,45 +28,34 @@ import {
 import {
   DataCollectionTemplate,
   TemplateVersion,
+  DataCollectionAssignment,
+  DataCollectionSubmission,
 } from '../tenants/data-collection/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
   const env = process.env.NODE_ENV?.toLowerCase() || 'development';
-  const isProduction = env === 'production';
 
   const requiredVars = [
-    isProduction ? 'TENANT_DB_HOST_NEON' : 'TENANT_DB_HOST',
-    isProduction ? 'TENANT_DB_USER_NEON' : 'TENANT_DB_USER',
-    isProduction ? 'TENANT_DB_PASS_NEON' : 'TENANT_DB_PASS',
+    'TENANT_DB_HOST',
+    'TENANT_DB_USER',
+    'TENANT_DB_PASS',
   ];
+
   for (const variable of requiredVars) {
     if (!process.env[variable]) {
       throw new Error(`❌ Missing required environment variable: ${variable}`);
     }
   }
 
-  const host = isProduction
-    ? process.env.TENANT_DB_HOST_NEON!
-    : process.env.TENANT_DB_HOST || 'localhost';
-
-  const port = Number(
-    isProduction ? process.env.TENANT_DB_PORT_NEON || 5432 : process.env.TENANT_DB_PORT || 5432,
-  );
-
-  const username = isProduction
-    ? process.env.TENANT_DB_USER_NEON!
-    : process.env.TENANT_DB_USER || 'postgres';
-
-  const password = isProduction
-    ? process.env.TENANT_DB_PASS_NEON!
-    : process.env.TENANT_DB_PASS || '';
+  const host = process.env.TENANT_DB_HOST!;
+  const port = Number(process.env.TENANT_DB_PORT || 5432);
+  const username = process.env.TENANT_DB_USER!;
+  const password = process.env.TENANT_DB_PASS!;
 
   const logging = process.env.DB_LOGGING === 'true';
 
   console.info(
-    `📦 Tenant DB: ${host}:${port} | ENV=${env.toUpperCase()} | SSL=${
-      isProduction ? 'ENABLED' : 'DISABLED'
-    }`,
+    `📦 Tenant DB: ${host}:${port}/${dbName} | ENV=${env.toUpperCase()} | SSL=DISABLED`,
   );
 
   return {
@@ -73,6 +65,7 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
     username,
     password,
     database: dbName,
+
     entities: [
       User,
       Product,
@@ -96,16 +89,18 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       EntityDynamicData,
       DataCollectionTemplate,
       TemplateVersion,
+      DataCollectionAssignment,
+      DataCollectionSubmission,
     ],
+
     synchronize: true,
     logging,
-    ssl: isProduction ? {rejectUnauthorized: false} : false,
-    extra: isProduction
-        ? {
-          ssl: {rejectUnauthorized: false},
-          max: 10,
-          connectionTimeoutMillis: 5000,
-        }
-        : {},
+
+    ssl: false,
+
+    extra: {
+      max: 10,
+      connectionTimeoutMillis: 5000,
+    },
   };
 };

@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, DeepPartial, ObjectLiteral, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, DeepPartial, In, ObjectLiteral, QueryFailedError, Repository } from 'typeorm';
 
 @Injectable()
 export abstract class TenantAbstractService<T extends ObjectLiteral> {
@@ -213,6 +213,45 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
       throw error instanceof NotFoundException
         ? error
         : new InternalServerErrorException('Failed to delete record');
+    }
+  }
+
+  /**
+   * Bulk delete records
+   */
+  async bulkDelete(req: any, ids: number[]): Promise<any> {
+    try {
+      const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+      if (!uniqueIds.length) {
+        throw new BadRequestException('At least one valid ID is required');
+      }
+
+      const repo = this.getRepo(req);
+      const entities = await repo.findBy({ id: In(uniqueIds) } as any);
+      const foundIds = entities.map((entity: any) => entity.id as number);
+      const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+      if (missingIds.length) {
+        throw new NotFoundException(`Records not found for IDs: ${missingIds.join(', ')}`);
+      }
+
+      await repo.delete(foundIds);
+
+      return {
+        success: true,
+        message: `${foundIds.length} record(s) deleted successfully`,
+        tenant: req.tenantConnection.options.database,
+        data: { deletedIds: foundIds, count: foundIds.length },
+      };
+    } catch (error) {
+      console.error('❌ Bulk delete failed:', error);
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to bulk delete records');
     }
   }
 }

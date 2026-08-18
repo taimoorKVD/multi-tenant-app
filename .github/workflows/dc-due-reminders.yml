@@ -1,0 +1,54 @@
+# Hourly: call Nest API to mark overdue DC assignments + send due-reminder emails.
+# Free on GitHub Actions; works even when Nest @Cron does not run (e.g. Vercel serverless).
+#
+# Required GitHub Actions repository secrets (Settings → Secrets → Actions):
+#   API_BASE_URL  Nest API origin with https, e.g. https://multi-tenant-app-nine.vercel.app
+#                 (= https:// + your Vercel BASE_DOMAIN). Not FRONTEND_URL.
+#   CRON_SECRET   same value as CRON_SECRET on Vercel env
+name: DC Due Reminders
+
+on:
+  schedule:
+    # Every hour at minute 5 (UTC)
+    - cron: '5 * * * *'
+  workflow_dispatch: # allow manual run from Actions tab
+
+jobs:
+  send-due-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger due-reminders cron endpoint
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${API_BASE_URL:-}" ]; then
+            echo "::error::Missing repository secret API_BASE_URL (e.g. https://your-app.vercel.app)"
+            exit 1
+          fi
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Missing repository secret CRON_SECRET"
+            exit 1
+          fi
+
+          BASE="${API_BASE_URL%/}"
+          URL="${BASE}/api/cron/data-collection/due-reminders"
+          echo "POST ${URL}"
+
+          HTTP_CODE=$(curl -sS -o /tmp/cron-response.json -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${CRON_SECRET}" \
+            --max-time 120 \
+            "${URL}")
+
+          echo "HTTP ${HTTP_CODE}"
+          cat /tmp/cron-response.json || true
+          echo
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "::error::Cron endpoint returned HTTP ${HTTP_CODE}"
+            exit 1
+          fi

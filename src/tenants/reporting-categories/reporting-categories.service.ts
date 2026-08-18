@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, ILike, Repository } from 'typeorm';
+import { DataSource, In, ILike, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { ReportingCategory } from './entities';
 import { ReportingGroup } from '../reporting-groups/entities';
-import { CreateReportingCategoryDto, UpdateReportingCategoryDto } from './dto';
+import { Item } from '../items/entities';
+import { AssignReportingCategoryItemsDto, CreateReportingCategoryDto, UpdateReportingCategoryDto } from './dto';
 
 @Injectable()
 export class ReportingCategoriesService extends TenantAbstractService<ReportingCategory> {
@@ -13,6 +14,10 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
 
   protected getRepo(req: any): Repository<ReportingCategory> {
     return super.getRepo(req);
+  }
+
+  private getItemRepo(req: any): Repository<Item> {
+    return req.tenantConnection.getRepository(Item);
   }
 
   async create(req: any, dto: CreateReportingCategoryDto) {
@@ -50,7 +55,7 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
   }
 
   async paginate(req: any, page = 1, relations: string[] = [], limit?: number) {
-    const resolvedRelations = relations.length ? relations : ['reportingGroup'];
+    const resolvedRelations = relations.length ? relations : ['reportingGroup', 'items'];
     return super.paginate(req, page, resolvedRelations, limit);
   }
 
@@ -62,7 +67,10 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
     const repo = this.getRepo(req);
     const parsedLimit = Number(limit);
     const take = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 15;
-    const qb = repo.createQueryBuilder('category').leftJoinAndSelect('category.reportingGroup', 'group');
+    const qb = repo
+      .createQueryBuilder('category')
+      .leftJoinAndSelect('category.reportingGroup', 'group')
+      .leftJoinAndSelect('category.items', 'items');
 
     if (filters?.reportingGroupId) qb.andWhere('category.reportingGroupId = :groupId', { groupId: filters.reportingGroupId });
     if (filters?.name) qb.andWhere('category.name ILIKE :name', { name: `%${filters.name.trim()}%` });
@@ -80,7 +88,7 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
   }
 
   async findOne(req: any, id: number) {
-    return super.findOne(req, id, ['reportingGroup']);
+    return super.findOne(req, id, ['reportingGroup', 'items']);
   }
 
   async update(req: any, id: number, dto: UpdateReportingCategoryDto) {
@@ -113,6 +121,94 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
       message: 'Reporting category updated successfully',
       tenant: req.tenantConnection.options.database,
       data: saved,
+    };
+  }
+
+  async assignItems(req: any, categoryId: number, dto: AssignReportingCategoryItemsDto) {
+    const repo = this.getRepo(req);
+    const itemRepo = this.getItemRepo(req);
+    const category = await repo.findOne({
+      where: { id: categoryId } as any,
+      relations: ['items'],
+    });
+
+    if (!category) {
+      throw new NotFoundException(`Reporting category with ID ${categoryId} not found`);
+    }
+
+    const uniqueIds = [...new Set(dto.itemIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid item ID is required');
+    }
+
+    const items = await itemRepo.findBy({ id: In(uniqueIds) });
+    if (items.length !== uniqueIds.length) {
+      const found = new Set(items.map((item) => item.id));
+      const missing = uniqueIds.filter((id) => !found.has(id));
+      throw new BadRequestException(`Item(s) not found: ${missing.join(', ')}`);
+    }
+
+    const existingIds = new Set((category.items || []).map((item) => item.id));
+    const toAdd = items.filter((item) => !existingIds.has(item.id));
+    category.items = [...(category.items || []), ...toAdd];
+    const saved = await repo.save(category);
+
+    return {
+      success: true,
+      message: 'Items assigned to reporting category successfully',
+      tenant: req.tenantConnection.options.database,
+      data: {
+        id: saved.id,
+        name: saved.name,
+        assignedCount: toAdd.length,
+        items: (saved.items || []).map((item) => ({
+          id: item.id,
+          itemName: item.itemName,
+        })),
+      },
+    };
+  }
+
+  async removeItems(req: any, categoryId: number, dto: AssignReportingCategoryItemsDto) {
+    const repo = this.getRepo(req);
+    const category = await repo.findOne({
+      where: { id: categoryId } as any,
+      relations: ['items'],
+    });
+
+    if (!category) {
+      throw new NotFoundException(`Reporting category with ID ${categoryId} not found`);
+    }
+
+    const removeIds = new Set(dto.itemIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    if (!removeIds.size) {
+      throw new BadRequestException('At least one valid item ID is required');
+    }
+
+    const before = category.items || [];
+    const remaining = before.filter((item) => !removeIds.has(item.id));
+    const removedCount = before.length - remaining.length;
+
+    if (!removedCount) {
+      throw new BadRequestException('None of the provided items are assigned to this category');
+    }
+
+    category.items = remaining;
+    const saved = await repo.save(category);
+
+    return {
+      success: true,
+      message: 'Items removed from reporting category successfully',
+      tenant: req.tenantConnection.options.database,
+      data: {
+        id: saved.id,
+        name: saved.name,
+        removedCount,
+        items: (saved.items || []).map((item) => ({
+          id: item.id,
+          itemName: item.itemName,
+        })),
+      },
     };
   }
 }

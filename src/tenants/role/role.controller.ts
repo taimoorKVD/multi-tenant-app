@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import {RoleService} from './role.service';
 import {TenantAccess} from '../../common/decorators/tenant-access.decorator';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantRoleSwagger} from './swagger';
 
@@ -113,6 +115,16 @@ export class RoleController {
       ...updated,
       message: 'Role updated successfully',
     };
+  }
+
+  /**
+   * Bulk delete roles
+   */
+  @Delete('bulk')
+  @TenantAccess('delete-role')
+  @BulkDeleteSwagger('roles')
+  async bulkDelete(@Req() req, @Body() dto: BulkDeleteDto) {
+    return await this.roleService.bulkDelete(req, dto.ids);
   }
 
   /**

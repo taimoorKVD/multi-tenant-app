@@ -14,7 +14,9 @@ import {
 } from '@nestjs/common';
 import {UsersService} from './users.service';
 import {MasterAccess} from '../../common/decorators';
-import {CreateUserDto, UpdateUserDto} from './dto';
+import {CreateUserDto, UpdateMasterProfileDto, UpdateUserDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {MasterAuthGuard} from '../auth/guards';
 import {MasterAuthService} from '../auth/auth.service';
 import {Request} from 'express';
@@ -73,12 +75,22 @@ export class UsersController {
     });
   }
 
+  @UseGuards(MasterAuthGuard)
+  @Get('profile')
+  @UsersSwagger.GetProfile()
+  async getProfile(@Req() req: AuthenticatedRequest) {
+    if (!req.user) {
+      throw new BadRequestException('User not authenticated');
+    }
+    return this.masterAuthService.getOwnProfile(req.user.id);
+  }
+
   // Update current logged-in user's own profile
   // Must appear BEFORE `@Put(':id')` to avoid routing conflicts
   @UseGuards(MasterAuthGuard)
   @Put('profile')
   @UsersSwagger.UpdateProfile()
-  async updateUserInfo(@Req() req: AuthenticatedRequest, @Body() dto: UpdateUserDto) {
+  async updateUserInfo(@Req() req: AuthenticatedRequest, @Body() dto: UpdateMasterProfileDto) {
     if (!req.user) {
       throw new BadRequestException('User not authenticated');
     }
@@ -100,6 +112,14 @@ export class UsersController {
   @UsersSwagger.Update()
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
+  }
+
+  // Bulk delete users (Admin)
+  @Delete('bulk')
+  @MasterAccess('delete-user')
+  @BulkDeleteSwagger('users')
+  async bulkDelete(@Body() dto: BulkDeleteDto) {
+    return this.usersService.bulkDelete(dto.ids);
   }
 
   // Delete user by ID (Admin)

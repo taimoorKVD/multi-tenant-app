@@ -11,6 +11,7 @@ import { DataSource, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
 import { User } from '../users/entities';
+import { JobPosition } from '../job-positions/entities';
 import {
   ForgotPasswordDto,
   RefreshTokenDto,
@@ -23,6 +24,9 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from './entities';
+import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
+import { BillingService } from '../../master/billing/billing.service';
+import { ALL_PLAN_MODULE_KEYS, serializePlanModules } from '../../master/billing/plan-modules';
 
 @Injectable()
 export class TenantAuthService {
@@ -44,7 +48,143 @@ export class TenantAuthService {
     'protonmail.com',
   ]);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly billingService: BillingService,
+  ) {}
+
+  private async resolveEntitlements(req: any) {
+    const slug = String(req?.tenantId || '').trim();
+    if (!slug) {
+      return {
+        allowedModules: [...ALL_PLAN_MODULE_KEYS],
+        modules: serializePlanModules(ALL_PLAN_MODULE_KEYS),
+        plan: null,
+        status: null,
+      };
+    }
+    try {
+      const entitlement = await this.billingService.getTenantEntitlements(slug);
+      return {
+        allowedModules: entitlement.allowedModules,
+        modules: serializePlanModules(entitlement.allowedModules),
+        plan: entitlement.plan,
+        status: entitlement.status,
+      };
+    } catch {
+      return {
+        allowedModules: [...ALL_PLAN_MODULE_KEYS],
+        modules: serializePlanModules(ALL_PLAN_MODULE_KEYS),
+        plan: null,
+        status: null,
+      };
+    }
+  }
+
+  private serializeJobPosition(jobPosition: JobPosition | null | undefined) {
+    if (!jobPosition?.id) return null;
+    return {
+      id: jobPosition.id,
+      name: jobPosition.name,
+    };
+  }
+
+  /**
+   * Distinguishes tenant workspace admins/managers from employee users on the same /tenant/login.
+   * - tenant_admin: Admin/Manager role name, or management permissions
+   * - tenant_user: everyone else (Today's Work / assignments)
+   */
+  private resolveAccountType(
+    user: User,
+    permissionNames: string[],
+  ): 'tenant_admin' | 'tenant_user' {
+    const roleName = String(user.role?.name || '')
+      .trim()
+      .toLowerCase();
+
+    if (
+      roleName === 'admin' ||
+      roleName.includes('admin') ||
+      roleName.includes('manager') ||
+      roleName.includes('owner')
+    ) {
+      return 'tenant_admin';
+    }
+
+    const adminPermissionHints = [
+      'create-user',
+      'edit-user',
+      'create-role',
+      'create-dc-template',
+      'edit-dc-template',
+      'activate-dc-template',
+      'archive-dc-template',
+      'review-dc-submission',
+    ];
+
+    if (adminPermissionHints.some((name) => permissionNames.includes(name))) {
+      return 'tenant_admin';
+    }
+
+    return 'tenant_user';
+  }
+
+  private coerceRelationId(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'object' && value !== null && 'id' in (value as Record<string, unknown>)) {
+      const id = Number((value as Record<string, unknown>).id);
+      return Number.isFinite(id) ? id : null;
+    }
+    const id = Number(value);
+    return Number.isFinite(id) ? id : null;
+  }
+
+  /**
+   * Prefer FK relation; fall back to legacy users-form dynamic field values.
+   */
+  private async resolveJobPositionSummary(
+    tenantConnection: DataSource,
+    user: User,
+  ): Promise<{ id: number; name: string } | null> {
+    const fromRelation = this.serializeJobPosition(user.jobPosition);
+    if (fromRelation) return fromRelation;
+
+    try {
+      const moduleRepo = tenantConnection.getRepository(DynamicModule);
+      const usersModule = await moduleRepo.findOne({ where: { slug: 'users' } });
+      if (!usersModule?.id) return null;
+
+      const dynamicRepo = tenantConnection.getRepository(EntityDynamicData);
+      const row = await dynamicRepo.findOne({
+        where: { moduleId: usersModule.id, entityId: user.id },
+      });
+      if (!row?.data || typeof row.data !== 'object') return null;
+
+      const data = row.data as Record<string, unknown>;
+      const candidates: unknown[] = [
+        data.job_position_id,
+        data.jobPosition,
+        data.job_position,
+        ...Object.entries(data)
+          .filter(([key]) => /job.?position/i.test(key))
+          .map(([, value]) => value),
+      ];
+
+      let jobPositionId: number | null = null;
+      for (const candidate of candidates) {
+        jobPositionId = this.coerceRelationId(candidate);
+        if (jobPositionId !== null) break;
+      }
+      if (jobPositionId === null) return null;
+
+      const jobPosition = await tenantConnection.getRepository(JobPosition).findOne({
+        where: { id: jobPositionId },
+      });
+      return this.serializeJobPosition(jobPosition);
+    } catch {
+      return null;
+    }
+  }
 
   private getFrontendBaseUrl(): string {
     const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
@@ -252,10 +392,13 @@ export class TenantAuthService {
   ) {
     const payload = {
       sub: user.id,
+      userType: 'tenant',
+      accountType: this.resolveAccountType(user, permissionNames),
       tenantId: req.tenantId || null,
       tenantDb: req.tenantConnection?.options?.database,
       email: user.email,
       role: user.role?.name,
+      jobPositionId: user.jobPosition?.id ?? null,
       permissions: permissionNames,
       emailVerified,
     };
@@ -500,7 +643,7 @@ export class TenantAuthService {
       const userRepo = tenantConnection.getRepository(User);
       const user = await userRepo.findOne({
         where: { email: dto.email },
-        relations: ['role', 'role.permissions'],
+        relations: ['role', 'role.permissions', 'jobPosition'],
       });
 
       if (!user) {
@@ -519,6 +662,8 @@ export class TenantAuthService {
       const resolvedPermissions = user.role?.permissions ?? [];
       const permissionNames = resolvedPermissions.map((permission) => permission.name);
       const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+      const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
+      const accountType = this.resolveAccountType(user, permissionNames);
       const tokens = await this.issueAuthTokens(
         tenantConnection,
         req,
@@ -526,18 +671,26 @@ export class TenantAuthService {
         permissionNames,
         emailVerified,
       );
+      const entitlements = await this.resolveEntitlements(req);
 
       return {
         success: true,
         message: 'Login successful',
+        user_type: 'tenant',
+        account_type: accountType,
         tenant_slug: req.tenantId || null,
         tenant: tenantConnection.options.database,
+        plan: entitlements.plan,
+        allowedModules: entitlements.allowedModules,
+        modules: entitlements.modules,
         ...tokens,
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
           email_verified: emailVerified,
+          account_type: accountType,
+          job_position: jobPosition,
           role: {
             ...user.role,
             permissions: resolvedPermissions,
@@ -560,9 +713,14 @@ export class TenantAuthService {
   }
 
   async forgotPassword(req: any, dto: ForgotPasswordDto, scope: 'tenant' | 'tenant-user' = 'tenant') {
+    const genericSuccess = {
+      success: true,
+      message: 'If the account exists, a password reset link has been sent to the registered email.',
+    };
+
     const tenantConnection: DataSource = req.tenantConnection;
     if (!tenantConnection) {
-      throw new NotFoundException('Email not found.');
+      return genericSuccess;
     }
 
     const email = dto.email.trim().toLowerCase();
@@ -570,7 +728,7 @@ export class TenantAuthService {
     const user = await userRepo.findOne({ where: { email } });
 
     if (!user) {
-      throw new NotFoundException('Email not found.');
+      return genericSuccess;
     }
 
     const rawToken = await this.issuePasswordResetToken(tenantConnection, user, req);
@@ -581,10 +739,7 @@ export class TenantAuthService {
       console.error('Tenant forgot-password email dispatch failed:', error);
     }
 
-    return {
-      success: true,
-      message: 'Password reset link has been sent to the registered email.',
-    };
+    return genericSuccess;
   }
 
   async verifyResetToken(req: any, dto: VerifyResetTokenDto) {
@@ -625,7 +780,7 @@ export class TenantAuthService {
       throw new BadRequestException('Invalid or expired reset token.');
     }
 
-    token.user.password = dto.password;
+    token.user.password = await argon2.hash(dto.password);
     token.user.plainPassword = dto.password;
     await tenantConnection.getRepository(User).save(token.user);
     await this.clearPasswordResetTokens(tenantConnection, token.user.id);
@@ -742,7 +897,7 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: payload.sub },
-      relations: ['role', 'role.permissions'],
+      relations: ['role', 'role.permissions', 'jobPosition'],
     });
 
     if (!user) {
@@ -751,6 +906,7 @@ export class TenantAuthService {
 
     const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
     const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+    const accountType = this.resolveAccountType(user, permissionNames);
     const tokens = await this.issueAuthTokens(
       tenantConnection,
       req,
@@ -758,12 +914,18 @@ export class TenantAuthService {
       permissionNames,
       emailVerified,
     );
+    const entitlements = await this.resolveEntitlements(req);
 
     return {
       success: true,
       message: 'Token refreshed successfully.',
+      user_type: 'tenant',
+      account_type: accountType,
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: entitlements.modules,
       ...tokens,
     };
   }
@@ -776,7 +938,7 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: userId },
-      relations: ['role', 'role.permissions'],
+      relations: ['role', 'role.permissions', 'jobPosition'],
     });
 
     if (!user) {
@@ -784,17 +946,28 @@ export class TenantAuthService {
     }
 
     const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+    const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
+    const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const accountType = this.resolveAccountType(user, permissionNames);
+    const entitlements = await this.resolveEntitlements(req);
 
     return {
       success: true,
       message: 'Session is active.',
+      user_type: 'tenant',
+      account_type: accountType,
       tenant_slug: req.tenantId || null,
       tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: entitlements.modules,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         email_verified: emailVerified,
+        account_type: accountType,
+        job_position: jobPosition,
         role: user.role
           ? {
               id: user.role.id,

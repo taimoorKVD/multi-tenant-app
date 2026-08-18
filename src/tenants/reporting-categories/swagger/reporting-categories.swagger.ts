@@ -1,6 +1,10 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CreateReportingCategoryDto, UpdateReportingCategoryDto } from '../dto';
+import {
+  AssignReportingCategoryItemsDto,
+  CreateReportingCategoryDto,
+  UpdateReportingCategoryDto,
+} from '../dto';
 
 export const TenantReportingCategoriesSwagger = {
   Tags: () => ApiTags('Reporting Category Management'),
@@ -31,7 +35,10 @@ export const TenantReportingCategoriesSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List reporting categories', description: 'Returns tenant reporting categories with pagination.' }),
+      ApiOperation({
+        summary: 'List reporting categories',
+        description: 'Returns tenant reporting categories with assigned items and parent group.',
+      }),
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
       ApiResponse({ status: 200, description: 'Reporting categories fetched successfully.' }),
@@ -77,6 +84,48 @@ export const TenantReportingCategoriesSwagger = {
       } as any),
       ApiResponse({ status: 200, description: 'Reporting category updated successfully.' }),
       ApiResponse({ status: 400, description: 'Validation failed.' }),
+      ApiResponse({ status: 404, description: 'Reporting category not found.' }),
+    ),
+
+  AssignItems: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Assign items to reporting category',
+        description: 'Links existing inventory items to a reporting category (does not create items).',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiBody({
+        type: AssignReportingCategoryItemsDto,
+        examples: {
+          valid: {
+            summary: 'Assign items',
+            value: { itemIds: [3, 4] },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 200, description: 'Items assigned successfully.' }),
+      ApiResponse({ status: 400, description: 'Validation failed or item(s) not found.' }),
+      ApiResponse({ status: 404, description: 'Reporting category not found.' }),
+    ),
+
+  RemoveItems: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Remove items from reporting category',
+        description: 'Unlinks items from a reporting category (does not delete the items).',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiBody({
+        type: AssignReportingCategoryItemsDto,
+        examples: {
+          valid: {
+            summary: 'Remove items',
+            value: { itemIds: [3] },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 200, description: 'Items removed successfully.' }),
+      ApiResponse({ status: 400, description: 'Validation failed or items not assigned.' }),
       ApiResponse({ status: 404, description: 'Reporting category not found.' }),
     ),
 

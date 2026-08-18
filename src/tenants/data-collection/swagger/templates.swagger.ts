@@ -18,26 +18,34 @@ export const TenantDataCollectionTemplatesSwagger = {
             value: {
               name: 'Manager Report',
               schema: {
+                formName: 'Manager Report',
                 assign: { users: [1], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
                 frequency: {
-                  type: 'recurring',
-                  startDate: '2026-07-17',
-                  endDate: null,
-                  jobPosition: [2],
-                  schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } },
+                  type: 'atOnce',
+                  date: '2026-08-21',
+                  jobPosition: null,
+                  recurring: null,
                 },
                 sections: [
                   {
                     id: 'sec_001',
                     type: 'responseForm',
-                    title: 'Response Form',
+                    name: 'Response Form',
                     sortOrder: 1,
                     rows: [
                       {
                         id: 'row_001',
                         fields: [
-                          { id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' },
+                          {
+                            id: 'fld_001',
+                            label: 'Description',
+                            name: 'description',
+                            type: 'textarea',
+                            required: true,
+                            width: '100%',
+                            value: 'Kitchen looks clean',
+                          },
                         ],
                       },
                     ],
@@ -45,28 +53,62 @@ export const TenantDataCollectionTemplatesSwagger = {
                   {
                     id: 'sec_002',
                     type: 'dataEntry',
-                    title: 'Data Entry',
+                    name: 'Data Entry',
                     sortOrder: 2,
                     rows: [
                       {
                         id: 'row_001',
                         fields: [
                           { id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%', optionSource: { type: 'dynamic', method: 'GET', endpoint: 'items', response: { dataPath: 'data', labelKey: 'name', valueKey: 'id' } } },
-                          { id: 'fld_003', label: 'Include Par', name: 'includePar', type: 'checkbox', width: '10%' },
-                          { id: 'fld_004', label: 'Par', name: 'par', type: 'number', width: '20%' },
-                          { id: 'fld_005', label: 'User Response', name: 'userResponse', type: 'select', required: true, width: '20%', options: [{ label: 'Current Quantity', value: 'current_quantity' }, { label: 'Current Value', value: 'current_value' }] },
-                          { id: 'fld_006', label: 'Action', name: 'action', type: 'select', required: true, width: '20%', options: [{ label: 'None', value: 'none' }, { label: 'Order', value: 'order' }, { label: 'Purchase Request', value: 'purchase_request' }, { label: 'Maintenance Request', value: 'maintenance_request' }] },
+                          { id: 'fld_003', label: 'Include Par', name: 'includePar', type: 'checkbox', width: '10%', value: false },
+                          { id: 'fld_004', label: 'Par', name: 'par', type: 'number', width: '20%', value: 10 },
+                          { id: 'fld_005', label: 'User Response', name: 'userResponse', type: 'select', required: true, width: '20%', options: [{ label: 'Current Quantity', value: 'current_quantity' }, { label: 'Current Value', value: 'current_value' }], value: 'current_quantity' },
+                          { id: 'fld_006', label: 'Action', name: 'action', type: 'select', required: true, width: '20%', options: [{ label: 'None', value: 'none' }, { label: 'Order', value: 'order' }], value: 'none' },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    id: 'sec_003',
+                    type: 'checklist',
+                    name: 'Checklist Form',
+                    sortOrder: 3,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          { id: 'fld_007', label: 'Description', name: 'description', type: 'textarea', width: '50%', value: '' },
+                          { id: 'fld_008', label: 'Response', name: 'response', type: 'yesNo', required: true, width: '50%', options: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }], value: 'yes' },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    id: 'sec_004',
+                    type: 'visual',
+                    name: 'Visual Form',
+                    sortOrder: 4,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          { id: 'fld_009', label: 'Images Upload', name: 'images', type: 'image', width: '40%', value: null },
+                          { id: 'fld_010', label: 'Description', name: 'description', type: 'textarea', width: '60%', value: 'Notes' },
                         ],
                       },
                     ],
                   },
                 ],
               },
+              publish: true,
             },
           },
         },
       } as any),
-      ApiResponse({ status: 201, description: 'Template created successfully.' }),
+      ApiResponse({
+        status: 201,
+        description: 'Template created and published successfully. Schema fields round-trip props like `value`.',
+      }),
       ApiResponse({ status: 400, description: 'Validation failed.' }),
     ),
 
@@ -90,20 +132,51 @@ export const TenantDataCollectionTemplatesSwagger = {
             success: true,
             data: {
               id: 1,
-              name: 'Manager Report',
-              status: 'active',
+              name: 'Form 1',
+              status: 'draft',
               isActive: true,
               schema: {
-                assign: { users: [1], jobPosition: [2] },
-                report: { users: [3], jobPosition: [1] },
-                frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
+                formName: 'Form 1',
+                assign: { users: [3], jobPosition: null },
+                report: { users: [3], jobPosition: null },
+                frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
                 sections: [
-                  { id: 'sec_001', type: 'responseForm', title: 'Response Form', sortOrder: 1, rows: [{ id: 'row_001', fields: [{ id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' }] }] },
-                  { id: 'sec_002', type: 'dataEntry', title: 'Data Entry', sortOrder: 2, rows: [{ id: 'row_001', fields: [{ id: 'fld_002', label: 'Item', name: 'itemId', type: 'select', required: true, width: '30%' }] }] },
+                  {
+                    id: 'section_1786359677448_se9uyri',
+                    type: 'custom',
+                    name: 'Personal Info',
+                    rows: [
+                      {
+                        fields: [
+                          {
+                            id: 'fld_1786359681840_7s5shri',
+                            name: 'name',
+                            type: 'text',
+                            label: 'Name',
+                            required: false,
+                            value: 'Omais',
+                          },
+                        ],
+                      },
+                      {
+                        fields: [
+                          {
+                            id: 'fld_1786359710579_yow725e',
+                            name: 'email',
+                            type: 'email',
+                            label: 'Email',
+                            required: false,
+                            value: 'omais@gmail.com',
+                          },
+                        ],
+                      },
+                    ],
+                  },
                 ],
               },
               createdBy: 1,
-              createdAt: '2026-07-15T10:00:00.000Z',
+              createdAt: '2026-08-10T11:02:18.883Z',
+              updatedAt: '2026-08-10T11:03:18.067Z',
             },
           },
         },
@@ -113,26 +186,106 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   Update: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Update template', description: 'Updates template fields by ID.' }),
+      ApiOperation({
+        summary: 'Update template',
+        description:
+          'Updates template fields by ID. Schema is stored as JSON — nested field props such as `value` are preserved and returned.',
+      }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiBody({
         type: UpdateTemplateDto,
         examples: {
           valid: {
-            summary: 'Update template',
+            summary: 'Update template (including field values)',
             value: {
-              name: 'Updated Manager Report',
+              name: 'Form 1',
               schema: {
-                assign: { users: [1, 5], jobPosition: [2] },
-                report: { users: [3], jobPosition: [1] },
-                frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } } },
-                sections: [],
+                formName: 'Form 1',
+                assign: { users: [3], jobPosition: null },
+                report: { users: [3], jobPosition: null },
+                frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
+                sections: [
+                  {
+                    id: 'section_1786359677448_se9uyri',
+                    name: 'Personal Info',
+                    type: 'custom',
+                    rows: [
+                      {
+                        fields: [
+                          {
+                            name: 'name',
+                            type: 'text',
+                            label: 'Name',
+                            required: false,
+                            value: 'Omais',
+                          },
+                        ],
+                      },
+                      {
+                        fields: [
+                          {
+                            name: 'email',
+                            type: 'email',
+                            label: 'Email',
+                            required: false,
+                            value: 'omais@gmail.com',
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
               },
             },
           },
         },
       } as any),
-      ApiResponse({ status: 200, description: 'Template updated successfully.' }),
+      ApiResponse({
+        status: 200,
+        description: 'Template updated successfully. Response schema includes field `value` when sent.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Template updated successfully',
+            data: {
+              id: 16,
+              name: 'Form 1',
+              status: 'draft',
+              schema: {
+                formName: 'Form 1',
+                assign: { users: [3], jobPosition: null },
+                report: { users: [3], jobPosition: null },
+                frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
+                sections: [
+                  {
+                    id: 'section_1786359677448_se9uyri',
+                    name: 'Personal Info',
+                    type: 'custom',
+                    rows: [
+                      {
+                        fields: [
+                          { name: 'name', type: 'text', label: 'Name', required: false, value: 'Omais' },
+                        ],
+                      },
+                      {
+                        fields: [
+                          {
+                            name: 'email',
+                            type: 'email',
+                            label: 'Email',
+                            required: false,
+                            value: 'omais@gmail.com',
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      } as any),
       ApiResponse({ status: 400, description: 'Validation failed.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
@@ -145,9 +298,25 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
 
+  Publish: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Publish template',
+        description:
+          'Publishes the current schema as a new active version and materializes assignments from Assign & Report + Frequency.',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template published successfully.' }),
+      ApiResponse({ status: 400, description: 'Missing assign/frequency or invalid schema.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
   Activate: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Activate template', description: 'Sets the template status to ACTIVE and enables it.' }),
+      ApiOperation({
+        summary: 'Activate template',
+        description: 'Re-enables a previously published template. Use publish to create versions and assignments.',
+      }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template activated successfully.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),

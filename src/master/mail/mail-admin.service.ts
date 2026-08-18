@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { EmailTemplate, EmailTemplateRecipient, GlobalMailSetting } from './entities';
 import {
   CreateEmailTemplateDto,
@@ -191,6 +191,28 @@ export class MailAdminService {
     return { success: true, message: 'Email template deleted successfully.' };
   }
 
+  async bulkDeleteTemplates(ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const records = await this.templateRepo.findBy({ id: In(uniqueIds) });
+    const foundIds = records.map((record) => record.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Email templates not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await this.templateRepo.delete(foundIds);
+    return {
+      success: true,
+      message: `${foundIds.length} email template(s) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
+  }
+
   async listRecipients(templateId: number) {
     await this.getTemplate(templateId);
     const data = await this.recipientRepo.find({
@@ -304,5 +326,27 @@ export class MailAdminService {
 
     await this.globalMailRepo.delete(id);
     return { success: true, message: 'Global SMTP setting deleted successfully.' };
+  }
+
+  async bulkDeleteGlobalMailSettings(ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const records = await this.globalMailRepo.findBy({ id: In(uniqueIds) });
+    const foundIds = records.map((record) => record.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Global SMTP settings not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await this.globalMailRepo.delete(foundIds);
+    return {
+      success: true,
+      message: `${foundIds.length} global SMTP setting(s) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
   }
 }

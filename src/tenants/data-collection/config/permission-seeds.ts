@@ -5,4 +5,8 @@ export const DATA_COLLECTION_PERMISSIONS = [
   'delete-dc-template',
   'activate-dc-template',
   'archive-dc-template',
+  'view-dc-assignment',
+  'complete-dc-assignment',
+  'view-dc-submission',
+  'review-dc-submission',
 ];

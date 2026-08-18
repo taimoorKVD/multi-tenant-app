@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Re
 import {JobPositionsService} from './job-positions.service';
 import {TenantAccess} from "../../common/decorators/tenant-access.decorator";
 import {CreateJobPositionDto, UpdateJobPositionDto} from "./dto";
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {TenantJobPositionsSwagger} from './swagger';
 import { JobPosition } from './entities';
 
@@ -63,6 +65,13 @@ export class JobPositionController {
     @TenantJobPositionsSwagger.Update()
     update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateJobPositionDto) {
         return this.jobPositionService.update(req, id, dto);
+    }
+
+    @TenantAccess('delete-job-position')
+    @Delete('bulk')
+    @BulkDeleteSwagger('job positions')
+    bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
+        return this.jobPositionService.bulkDelete(req, dto.ids);
     }
 
     @TenantAccess('delete-job-position')

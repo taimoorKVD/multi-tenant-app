@@ -35,8 +35,8 @@ export class User {
   // @Column() //Same email should be allowed in different tenants
   email: string | null;
 
-  // @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
-  // phoneNumber: string | null;
+  @Column({ type: 'varchar', name: 'phone_number', nullable: true, length: 30 })
+  phoneNumber: string | null;
 
   // @Column({ type: 'varchar', nullable: true, length: 255 })
   // address: string | null;
@@ -55,9 +55,9 @@ export class User {
   @JoinColumn({ name: 'role_id' })
   role: Role;
 
-  // @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
-  // @JoinColumn({ name: 'job_position_id' })
-  // jobPosition: JobPosition | null;
+  @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'job_position_id' })
+  jobPosition: JobPosition | null;
 
   // @ManyToOne(() => Location, { nullable: true, onDelete: 'SET NULL' })
   // @JoinColumn({ name: 'location_id' })

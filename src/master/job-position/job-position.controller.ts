@@ -2,6 +2,8 @@ import {Body, Controller, Delete, Get, Param, Post, Put, Query} from '@nestjs/co
 import {JobPositionService} from './job-position.service';
 import {MasterAccess} from '../../common/decorators';
 import {CreateJobPositionDto, PushJobPositionDto, UpdateJobPositionDto} from './dto';
+import {BulkDeleteDto} from '../../common/dto';
+import {BulkDeleteSwagger} from '../../common/swagger';
 import {ApiTags} from "@nestjs/swagger";
 import {JobPositionSwagger} from "./swagger";
 
@@ -53,6 +55,13 @@ export class JobPositionController {
   @JobPositionSwagger.FindOne()
   async findOne(@Param('id') id: number) {
     return this.jobPositionService.findOne(id);
+  }
+
+  @Delete('bulk')
+  @MasterAccess('delete-jobposition')
+  @BulkDeleteSwagger('job positions')
+  async bulkDelete(@Body() dto: BulkDeleteDto) {
+    return this.jobPositionService.bulkDelete(dto.ids);
   }
 
   @Delete(':id')

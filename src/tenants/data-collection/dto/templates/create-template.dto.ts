@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsObject, IsOptional, IsString, Length } from 'class-validator';
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Length } from 'class-validator';
+import { TemplateSchemaDto } from './schema';
 
 export class CreateTemplateDto {
   @ApiProperty({ example: 'Manager Report', description: 'Template / form display name.' })
@@ -8,24 +9,62 @@ export class CreateTemplateDto {
   name!: string;
 
   @ApiPropertyOptional({
-    description: 'Complete template schema containing assign, report, frequency, and sections.',
+    type: TemplateSchemaDto,
+    description:
+      'Complete template schema: assign, report, frequency, and sections (Form Details → Assign & Report → Frequency). Stored as JSON — field props like `value` are preserved.',
     example: {
       assign: { users: [1], jobPosition: [2] },
       report: { users: [3], jobPosition: [1] },
       frequency: {
-        type: 'recurring',
-        startDate: '2026-07-17',
-        endDate: null,
-        jobPosition: [2],
-        schedule: { interval: 1, unit: 'month', repeat: 12, monthlyRule: { type: 'dayOfMonth', day: 1 } },
+        type: 'atOnce',
+        date: '2026-08-21',
+        jobPosition: null,
+        recurring: null,
       },
+      formName: 'Manager Report',
       sections: [
         {
           id: 'sec_001',
           type: 'responseForm',
-          title: 'Response Form',
+          name: 'Response Form',
           sortOrder: 1,
-          rows: [{ id: 'row_001', fields: [{ id: 'fld_001', label: 'Description', name: 'description', type: 'textarea', required: true, width: '100%' }] }],
+          rows: [
+            {
+              id: 'row_001',
+              fields: [
+                {
+                  id: 'fld_001',
+                  label: 'Description',
+                  name: 'description',
+                  type: 'textarea',
+                  required: true,
+                  width: '100%',
+                  value: 'test',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'sec_002',
+          type: 'dataEntry',
+          name: 'Data Entry',
+          sortOrder: 2,
+          rows: [
+            {
+              id: 'row_001',
+              fields: [
+                {
+                  id: 'fld_002',
+                  label: 'Item',
+                  name: 'itemId',
+                  type: 'select',
+                  required: true,
+                  width: '30%',
+                },
+              ],
+            },
+          ],
         },
       ],
     },
@@ -33,6 +72,16 @@ export class CreateTemplateDto {
   @IsOptional()
   @IsObject()
   schema?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Ignored on create — templates are always published on create. Kept for API compatibility.',
+    deprecated: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  publish?: boolean;
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()

@@ -56,7 +56,11 @@ export class QueueService implements OnModuleDestroy {
     return this.redisConnection;
   }
 
-  async enqueueEmail(payload: EmailJobPayload) {
+  isEnabled(): boolean {
+    return Boolean(this.queue);
+  }
+
+  async enqueueEmail(payload: EmailJobPayload): Promise<void> {
     if (!this.queue) {
       throw new InternalServerErrorException('Email queue is not initialized.');
     }

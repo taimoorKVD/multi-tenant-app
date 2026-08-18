@@ -11,6 +11,8 @@ import {
     UseGuards,
 } from '@nestjs/common';
 import { Permissions } from '../../../common/decorators';
+import { BulkDeleteDto } from '../../../common/dto';
+import { BulkDeleteSwagger } from '../../../common/swagger';
 import {
     CreateFormDto,
     SaveSchemaDto,
@@ -68,6 +70,13 @@ export class FormsController {
     @TenantFormBuilderFormsSwagger.Update()
     update(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFormDto) {
         return this.formsService.update(req, id, dto);
+    }
+
+    @Delete(['forms/bulk', 'tenant/:tenantId/forms/bulk'])
+    @Permissions('delete-form')
+    @BulkDeleteSwagger('forms')
+    bulkRemove(@Req() req: any, @Body() dto: BulkDeleteDto) {
+        return this.formsService.bulkRemove(req, dto.ids);
     }
 
     @Delete(['forms/:id', 'tenant/:tenantId/forms/:id'])
