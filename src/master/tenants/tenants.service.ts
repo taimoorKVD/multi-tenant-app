@@ -63,6 +63,63 @@ export class TenantsService {
     return 'http://localhost:4200';
   }
 
+  private getPlatformHost(): string {
+    const explicit = this.getEnvValue('PLATFORM_DOMAIN');
+    if (explicit) return explicit.replace(/^\./, '').replace(/\/+$/, '');
+
+    try {
+      return new URL(this.getFrontendBaseUrl()).hostname.replace(/^(www|admin)\./, '');
+    } catch {
+      return 'eusocial.thebetawebsite.com';
+    }
+  }
+
+  private getTenantAppUrl(subdomain: string, customDomain?: string | null): string {
+    if (customDomain?.trim()) {
+      const host = customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      const protocol = host.includes('localhost') ? 'http' : 'https';
+      return `${protocol}://${host}`;
+    }
+
+    let protocol = 'https';
+    let port = '';
+    try {
+      const frontend = new URL(this.getFrontendBaseUrl());
+      protocol = frontend.protocol.replace(':', '') || 'https';
+      port = frontend.port ? `:${frontend.port}` : '';
+    } catch {
+      protocol = 'https';
+    }
+
+    return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
+  }
+
+  private getLogoUrl(tenantAppUrl: string): string {
+    const configured = this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL');
+    if (configured) return configured;
+    return `${tenantAppUrl}/assets/eusocial-logo.png`;
+  }
+
+  private async loadLogoAttachment(logoUrl: string): Promise<{
+    filename: string;
+    content: Buffer;
+    contentType: string;
+  } | null> {
+    try {
+      const response = await fetch(logoUrl, { signal: AbortSignal.timeout(4000) });
+      if (!response.ok) return null;
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.startsWith('image/')) return null;
+      const content = Buffer.from(await response.arrayBuffer());
+      if (!content.length) return null;
+      const filename = logoUrl.split('/').pop()?.split('?')[0] || 'eusocial-logo.png';
+      return { filename, content, contentType };
+    } catch (error) {
+      this.logger.warn(`Could not embed email logo from ${logoUrl}: ${this.toError(error).message}`);
+      return null;
+    }
+  }
+
   private resolveSmtpConfig() {
     const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
     const smtpUsername = this.getEnvValue('SMTP_USER', 'MAIL_USER');
@@ -107,9 +164,11 @@ export class TenantsService {
       );
     }
 
-    const frontendBaseUrl = this.getFrontendBaseUrl();
-    const logoUrl = `${frontendBaseUrl}/assets/eusocial-logo.png`;
-    const loginUrl = `${frontendBaseUrl}/tenant/login`;
+    const tenantAppUrl = this.getTenantAppUrl(payload.tenantSubdomain, payload.customDomain);
+    const loginUrl = `${tenantAppUrl}/`;
+    const remoteLogoUrl = this.getLogoUrl(tenantAppUrl);
+    const logoAttachment = await this.loadLogoAttachment(remoteLogoUrl);
+    const logoSrc = logoAttachment ? 'cid:eusocial-logo' : remoteLogoUrl;
 
     const transporter = nodemailer.createTransport({
       host: smtp.host,
@@ -132,7 +191,7 @@ export class TenantsService {
               <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
                 <tr>
                   <td style="padding:24px 28px;background:#101820;">
-                    <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
+                    <img src="${logoSrc}" alt="EuSocial" width="160" height="50" style="height:50px;width:auto;display:block;border:0;outline:none;text-decoration:none;" />
                   </td>
                 </tr>
                 <tr>
@@ -177,6 +236,16 @@ export class TenantsService {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
+        attachments: logoAttachment
+          ? [
+              {
+                filename: logoAttachment.filename,
+                content: logoAttachment.content,
+                cid: 'eusocial-logo',
+                contentType: logoAttachment.contentType,
+              },
+            ]
+          : undefined,
       });
 
       this.logger.log(`📧 Tenant credentials email sent to ${payload.recipientEmail}`);
@@ -259,8 +328,8 @@ export class TenantsService {
       dbName: tenant.dbName,
       subdomain: tenant.subdomain,
       customDomain: tenant.customDomain ?? null,
-      subdomainUrl: `https://${tenant.subdomain}.eusocial.com`,
-      customDomainUrl: tenant.customDomain ? `https://${tenant.customDomain}` : null,
+      subdomainUrl: this.getTenantAppUrl(tenant.subdomain),
+      customDomainUrl: tenant.customDomain ? this.getTenantAppUrl(tenant.subdomain, tenant.customDomain) : null,
       email: tenant.email ?? null,
       phoneCountryCode: tenant.phoneCountryCode ?? null,
       phoneNumber: tenant.phoneNumber ?? null,
