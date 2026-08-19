@@ -113,17 +113,33 @@ describe('TenantAuthService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rejects public email domains for tenant login', async () => {
+  it('logs in tenant user with the public email used at tenant creation', async () => {
     const req = createReq({
       id: 10,
       email: 'omais.kv@gmail.com',
       password: 'hashed',
-      role: { name: 'Admin', permissions: [{ name: 'view-user' }] },
+      name: 'Tenant Admin',
+      role: {
+        id: 1,
+        name: 'Admin',
+        permissions: [{ name: 'view-user' }],
+      },
     });
 
-    await expect(
-      service.login(req, { email: 'omais.kv@gmail.com', password: 'Secret123' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    jest.spyOn(argon2, 'verify').mockResolvedValue(true as never);
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'tenant-jwt', refreshToken: 'refresh-jwt' });
+
+    const result = await service.login(req, {
+      email: 'omais.kv@gmail.com',
+      password: 'Secret123',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.accessToken).toBe('tenant-jwt');
+    expect(result.user_type).toBe('tenant');
   });
 
   it('throws when tenant user is not found', async () => {

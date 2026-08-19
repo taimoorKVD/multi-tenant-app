@@ -571,6 +571,11 @@ export class TenantsService {
       if (byDomain) return byDomain;
 
       if (lookup.includes('@')) {
+        const byEmail = await this.tenantRepo.findOne({
+          where: {email: lookup},
+        });
+        if (byEmail) return byEmail;
+
         const emailDomain = lookup.split('@')[1]?.toLowerCase();
         if (emailDomain) {
           const emailSub = emailDomain.split('.')[0];
