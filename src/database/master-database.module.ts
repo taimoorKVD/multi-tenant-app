@@ -21,7 +21,12 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from '../master/auth/entities';
-import { Invoice, Plan, Subscription } from '../master/billing/entities';
+import {  
+  Invoice,
+  Plan,
+  Subscription,
+  WebsiteSignup,
+} from '../master/billing/entities';
 
 @Global()
 @Module({
@@ -47,6 +52,7 @@ import { Invoice, Plan, Subscription } from '../master/billing/entities';
       Plan,
       Subscription,
       Invoice,
+      WebsiteSignup,
     ]),
   ],
   exports: [TypeOrmModule],

@@ -26,6 +26,7 @@ import { ItemsModule as TenantItemsModule } from '../tenants/items/items.module'
 import { FormBuilderModule as TenantFormBuilderModule } from '../tenants/form-builder/form-builder.module';
 import { DataCollectionModule as TenantDataCollectionModule } from '../tenants/data-collection/data-collection.module';
 import { BillingModule as MasterBillingModule } from '../master/billing/billing.module';
+import { PublicSignupModule as MasterPublicSignupModule } from '../master/billing/public-signup/public-signup.module';
 import { DashboardModule as MasterDashboardModule } from '../master/dashboard/dashboard.module';
 
 export function setupSwagger(app: INestApplication) {
@@ -73,6 +74,7 @@ export function setupSwagger(app: INestApplication) {
             MasterActivityLogsModule,
             MasterDashboardModule,
             MasterBillingModule,
+            MasterPublicSignupModule,
         ],
     });
 
@@ -127,6 +129,7 @@ export function setupSwagger(app: INestApplication) {
                     'Plan Management',
                     'Subscriptions',
                     'Billing & Invoices',
+                    'Website Signup',
                     'Tenant Locations',
                 ];
                 const idxA = order.indexOf(a);

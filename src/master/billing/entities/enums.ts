@@ -31,3 +31,11 @@ export enum TenantBillingStatus {
   TRIAL = 'trial',
   SUSPENDED = 'suspended',
 }
+
+export enum WebsiteSignupStatus {
+  PENDING = 'pending',
+  PAID = 'paid',
+  PROVISIONED = 'provisioned',
+  FAILED = 'failed',
+  EXPIRED = 'expired',
+}

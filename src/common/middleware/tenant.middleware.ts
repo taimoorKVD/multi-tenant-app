@@ -147,6 +147,7 @@ export class TenantMiddleware implements NestMiddleware {
         '/api/docs',
         '/api/cron',
         '/api/billing/stripe',
+        '/api/public',
 	      '/health'
       ];
 

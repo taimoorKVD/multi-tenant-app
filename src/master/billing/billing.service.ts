@@ -1,9 +1,12 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -28,6 +31,7 @@ import {
   UpdatePlanDto,
 } from './dto';
 import { StripeService } from './stripe.service';
+import { PublicSignupService } from './public-signup/public-signup.service';
 import {
   ALL_PLAN_MODULE_KEYS,
   normalizePlanModules,
@@ -49,6 +53,9 @@ export class BillingService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly stripeService: StripeService,
+    @Optional()
+    @Inject(forwardRef(() => PublicSignupService))
+    private readonly publicSignupService?: PublicSignupService,
   ) {}
 
   private money(cents: number, currency = 'EUR') {
@@ -220,6 +227,22 @@ export class BillingService {
     plan.stripePriceId = ids.priceId;
     this.logger.log(`Plan ${plan.id} (${plan.slug}) synced to Stripe product ${ids.productId}`);
     return this.planRepo.save(plan);
+  }
+
+  async listPublicPlans() {
+    const plans = await this.planRepo.find({
+      where: { status: PlanStatus.ACTIVE },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return {
+      success: true,
+      data: plans.map((plan) => {
+        const serialized = this.serializePlan(plan);
+        const { stripeProductId, stripePriceId, ...publicPlan } = serialized;
+        return publicPlan;
+      }),
+      count: plans.length,
+    };
   }
 
   async listPlans() {
@@ -509,6 +532,88 @@ export class BillingService {
     };
   }
 
+  async attachCheckoutSubscription(params: {
+    tenantId: number;
+    planId: number;
+    billingCycle?: BillingCycle;
+    trialDays?: number;
+    stripeCustomerId: string;
+    stripeSubscriptionId: string;
+  }) {
+    const tenant = await this.tenantRepo.findOne({ where: { id: params.tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const plan = await this.planRepo.findOne({ where: { id: params.planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    const existingByStripe = await this.subscriptionRepo.findOne({
+      where: { stripeSubscriptionId: params.stripeSubscriptionId },
+      relations: ['tenant', 'plan'],
+    });
+    if (existingByStripe) {
+      return {
+        success: true,
+        message: 'Subscription already attached',
+        data: this.serializeSubscription(existingByStripe),
+        stripe: { clientSecret: null, subscriptionId: params.stripeSubscriptionId },
+      };
+    }
+
+    tenant.stripeCustomerId = params.stripeCustomerId;
+    await this.tenantRepo.save(tenant);
+
+    let stripeSubscription: Stripe.Subscription | null = null;
+    if (this.stripeService.isConfigured()) {
+      stripeSubscription = await this.stripeService.retrieveSubscription(params.stripeSubscriptionId);
+    }
+
+    const billingCycle = params.billingCycle || plan.billingCycle;
+    const trialDays = params.trialDays ?? plan.trialDays;
+    const period = stripeSubscription ? this.periodFromStripe(stripeSubscription) : { start: new Date(), end: null };
+    const status = stripeSubscription
+      ? this.mapStripeSubscriptionStatus(stripeSubscription.status)
+      : trialDays > 0
+        ? SubscriptionStatus.TRIAL
+        : SubscriptionStatus.ACTIVE;
+    const trialEndsAt =
+      stripeSubscription?.trial_end
+        ? this.stripeService.unixToDate(stripeSubscription.trial_end)
+        : trialDays > 0
+          ? new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
+          : null;
+
+    const saved = await this.subscriptionRepo.save(
+      this.subscriptionRepo.create({
+        tenantId: tenant.id,
+        planId: plan.id,
+        status,
+        billingCycle,
+        amountCents: plan.priceCents,
+        currency: plan.currency,
+        trialEndsAt,
+        currentPeriodStart: period.start,
+        currentPeriodEnd: period.end,
+        stripeCustomerId: params.stripeCustomerId,
+        stripeSubscriptionId: params.stripeSubscriptionId,
+      }),
+    );
+
+    tenant.status = status === SubscriptionStatus.TRIAL ? 'trial' : 'active';
+    await this.tenantRepo.save(tenant);
+
+    const withRelations = await this.subscriptionRepo.findOne({
+      where: { id: saved.id },
+      relations: ['tenant', 'plan'],
+    });
+
+    return {
+      success: true,
+      message: 'Subscription created',
+      data: this.serializeSubscription(withRelations as Subscription),
+      stripe: { clientSecret: null, subscriptionId: params.stripeSubscriptionId },
+    };
+  }
+
   async changePlan(id: number, dto: ChangePlanDto) {
     const subscription = await this.subscriptionRepo.findOne({
       where: { id },
@@ -780,6 +885,15 @@ export class BillingService {
       case 'invoice.payment_failed':
       case 'invoice.updated':
         await this.upsertInvoiceFromStripe(event.data.object as Stripe.Invoice);
+        break;
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded':
+        await this.publicSignupService?.completeFromCheckoutSession(
+          event.data.object as Stripe.Checkout.Session,
+        );
+        break;
+      case 'checkout.session.expired':
+        await this.publicSignupService?.markCheckoutExpired(event.data.object as Stripe.Checkout.Session);
         break;
       default:
         this.logger.debug(`Ignored Stripe event ${event.type}`);
