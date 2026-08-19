@@ -265,6 +265,56 @@ export class StripeService {
     }
   }
 
+  async retrieveSubscription(subscriptionId: string) {
+    try {
+      return await this.getClient().subscriptions.retrieve(subscriptionId, {
+        expand: ['latest_invoice'],
+      });
+    } catch (error) {
+      this.rethrow(error, 'Failed to retrieve Stripe subscription');
+    }
+  }
+
+  async createCheckoutSession(params: {
+    priceId: string;
+    customerEmail: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+    trialDays?: number;
+    clientReferenceId?: string;
+  }) {
+    try {
+      const stripe = this.getClient();
+      const hasTrial = Boolean(params.trialDays && params.trialDays > 0);
+      return await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer_email: params.customerEmail,
+        client_reference_id: params.clientReferenceId,
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        line_items: [{ price: params.priceId, quantity: 1 }],
+        allow_promotion_codes: true,
+        billing_address_collection: 'auto',
+        metadata: params.metadata,
+        subscription_data: {
+          metadata: params.metadata,
+          trial_period_days: hasTrial ? params.trialDays : undefined,
+        },
+      });
+    } catch (error) {
+      this.rethrow(error, 'Failed to create Stripe Checkout session');
+    }
+  }
+
+  async retrieveCheckoutSession(sessionId: string) {
+    try {
+      return await this.getClient().checkout.sessions.retrieve(sessionId);
+    } catch (error) {
+      this.rethrow(error, 'Failed to retrieve Stripe Checkout session');
+    }
+  }
+
   constructWebhookEvent(payload: Buffer | string, signature: string): Stripe.Event {
     const secret = this.getWebhookSecret();
     if (!secret) {

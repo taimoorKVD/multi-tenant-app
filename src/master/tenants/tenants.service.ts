@@ -623,7 +623,17 @@ export class TenantsService {
     }
   }
 
-  async create(dto: CreateTenantDto): Promise<ITenantResponse> {
+  async assertTenantAvailable(name: string, domain: string) {
+    return this.ensureUniqueTenant(name, domain);
+  }
+
+  async create(
+    dto: CreateTenantDto,
+    options?: {
+      stripeCustomerId?: string;
+      stripeSubscriptionId?: string;
+    },
+  ): Promise<ITenantResponse> {
     const tenantName = dto.name?.trim();
     if (!tenantName) throw new BadRequestException('Tenant name is required');
     if (!dto.admin) throw new BadRequestException('Admin user details are required');
@@ -668,13 +678,23 @@ export class TenantsService {
       });
       await this.bootstrapTenantFormBuilder(tenantConnection, adminSetup.user.id);
 
-      const subscription = await this.billingService.createSubscription({
-        tenantId: tenantRecord.id,
-        planId: dto.planId,
-        billingCycle: dto.billingCycle,
-        trialDays: dto.trialDays,
-        chargeNow: false,
-      });
+      const subscription =
+        options?.stripeCustomerId && options?.stripeSubscriptionId
+          ? await this.billingService.attachCheckoutSubscription({
+              tenantId: tenantRecord.id,
+              planId: dto.planId,
+              billingCycle: dto.billingCycle,
+              trialDays: dto.trialDays,
+              stripeCustomerId: options.stripeCustomerId,
+              stripeSubscriptionId: options.stripeSubscriptionId,
+            })
+          : await this.billingService.createSubscription({
+              tenantId: tenantRecord.id,
+              planId: dto.planId,
+              billingCycle: dto.billingCycle,
+              trialDays: dto.trialDays,
+              chargeNow: false,
+            });
 
       const saved = await this.tenantRepo.findOne({
         where: { id: tenantRecord.id },

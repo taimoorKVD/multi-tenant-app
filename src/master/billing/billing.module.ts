@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Tenant } from '../tenants/entities';
-import { Invoice, Plan, Subscription } from './entities';
+import { Invoice, Plan, Subscription, WebsiteSignup } from './entities';
 import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
 import {
@@ -13,11 +13,13 @@ import {
 import { StripeWebhookController } from './stripe-webhook.controller';
 import { MasterAuthModule } from '../auth/auth.module';
 import { PlanModulesGuard } from '../../common/guards/plan-modules.guard';
+import { PublicSignupModule } from './public-signup/public-signup.module';
 
 @Module({
   imports: [
     MasterAuthModule,
-    TypeOrmModule.forFeature([Plan, Subscription, Invoice, Tenant]),
+    TypeOrmModule.forFeature([Plan, Subscription, Invoice, Tenant, WebsiteSignup]),
+    forwardRef(() => PublicSignupModule),
   ],
   controllers: [
     PlansController,

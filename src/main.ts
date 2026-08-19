@@ -41,6 +41,7 @@ async function bootstrap() {
     'https://eusocial.thebetawebsite.com',
     'https://admin.eusocial.thebetawebsite.com',
     ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+    ...(process.env.PUBLIC_WEBSITE_URL ? [process.env.PUBLIC_WEBSITE_URL.trim()] : []),
     ...configuredOrigins,
   ]);
 

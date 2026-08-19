@@ -19,7 +19,7 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from '../master/auth/entities';
-import { Invoice, Plan, Subscription } from '../master/billing/entities';
+import { Invoice, Plan, Subscription, WebsiteSignup } from '../master/billing/entities';
 import {
     CreatePermissionsTable1701010001000,
     CreateRolesTable1701010000000,
@@ -41,6 +41,7 @@ import {
     CreateBillingTables1701010020000,
     AddModulesToPlansTable1701010021000,
     AddTenantProfileFields1701010022000,
+    CreateWebsiteSignupsTable1701010023000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -83,6 +84,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
             Plan,
             Subscription,
             Invoice,
+            WebsiteSignup,
         ],
         migrations: [
                 CreatePermissionsTable1701010001000,
@@ -105,6 +107,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
                 CreateBillingTables1701010020000,
                 AddModulesToPlansTable1701010021000,
                 AddTenantProfileFields1701010022000,
+                CreateWebsiteSignupsTable1701010023000,
         ],
     synchronize: false,
     // migrationsRun: true,

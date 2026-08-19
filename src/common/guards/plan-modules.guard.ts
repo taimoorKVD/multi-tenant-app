@@ -12,6 +12,7 @@ export class PlanModulesGuard implements CanActivate {
     if (
       path.startsWith('/api/master') ||
       path.startsWith('/api/billing/stripe') ||
+      path.startsWith('/api/public') ||
       path.startsWith('/api/cron') ||
       path.startsWith('/api/docs')
     ) {
