@@ -68,7 +68,7 @@ export class BillingPlansSeeder implements ISeeder {
       plans.map((plan) =>
         repo.create({
           ...plan,
-          currency: 'EUR',
+          currency: 'USD',
           billingCycle: BillingCycle.MONTHLY,
           trialDays: 14,
           status: PlanStatus.ACTIVE,

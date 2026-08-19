@@ -36,17 +36,6 @@ export class TenantAuthService {
   );
   private readonly accessTokenTtl = process.env.JWT_ACCESS_TOKEN_TTL || '2h';
   private readonly refreshTokenTtlDays = Number(process.env.JWT_REFRESH_TOKEN_TTL_DAYS || 7);
-  private readonly PUBLIC_EMAIL_DOMAINS = new Set([
-    'gmail.com',
-    'yahoo.com',
-    'hotmail.com',
-    'outlook.com',
-    'live.com',
-    'icloud.com',
-    'aol.com',
-    'proton.me',
-    'protonmail.com',
-  ]);
 
   constructor(
     private readonly jwtService: JwtService,
@@ -621,28 +610,17 @@ export class TenantAuthService {
       .getOne();
   }
 
-  private validateTenantLoginEmail(email: string) {
-    const domain = String(email || '').toLowerCase().trim().split('@')[1] || '';
-
-    if (!domain || this.PUBLIC_EMAIL_DOMAINS.has(domain)) {
-      throw new BadRequestException(
-        'Please sign in using your company email address (for example, user@companyname.com).',
-      );
-    }
-  }
-
   async login(req: any, dto: { email: string; password: string }) {
     try {
-      this.validateTenantLoginEmail(dto.email);
-
       const tenantConnection: DataSource = req.tenantConnection;
       if (!tenantConnection) {
         throw new BadRequestException('Missing tenant connection');
       }
 
       const userRepo = tenantConnection.getRepository(User);
+      const loginEmail = String(dto.email || '').trim().toLowerCase();
       const user = await userRepo.findOne({
-        where: { email: dto.email },
+        where: { email: loginEmail },
         relations: ['role', 'role.permissions', 'jobPosition'],
       });
 

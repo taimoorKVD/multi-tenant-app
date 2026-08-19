@@ -61,6 +61,19 @@ describe('TenantMiddleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('resolves tenant from the email stored at tenant creation for login', async () => {
+    const req = createReq('/api/login', 'omais.kv@gmail.com');
+    mockTenantsService.findOneFlexible.mockResolvedValueOnce({ subdomain: 'acme' });
+
+    const next = jest.fn();
+    await middleware.use(req, {} as any, next);
+
+    expect(mockTenantsService.findOneFlexible).toHaveBeenCalledWith('omais.kv@gmail.com');
+    expect(req.tenantId).toBe('acme');
+    expect(req.tenantConnection).toBeDefined();
+    expect(next).toHaveBeenCalled();
+  });
+
   it('allows forgot-password when tenant cannot be derived (temporary bypass)', async () => {
     const req = createReq('/api/forgot-password', 'admin@gmail.com');
     mockTenantsService.findOneFlexible.mockResolvedValue(null);
