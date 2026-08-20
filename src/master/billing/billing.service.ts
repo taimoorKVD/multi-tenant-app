@@ -838,52 +838,117 @@ export class BillingService {
     return this.invoiceRepo.save(invoice);
   }
 
-  async applyStripeSubscription(stripeSub: Stripe.Subscription) {
-    const local = await this.subscriptionRepo.findOne({
+  private tenantStatusFromSubscription(status: SubscriptionStatus) {
+    if (
+      status === SubscriptionStatus.CANCELLED ||
+      status === SubscriptionStatus.UNPAID ||
+      status === SubscriptionStatus.INCOMPLETE
+    ) {
+      return 'suspended';
+    }
+    if (status === SubscriptionStatus.TRIAL) return 'trial';
+    return 'active';
+  }
+
+  private stripeCustomerId(value: Stripe.Subscription | { customer?: string | { id?: string } | null }) {
+    const customer = (value as Stripe.Subscription).customer;
+    if (!customer) return null;
+    return typeof customer === 'string' ? customer : customer.id || null;
+  }
+
+  private async findLocalSubscription(stripeSub: Stripe.Subscription) {
+    const byStripeId = await this.subscriptionRepo.findOne({
       where: { stripeSubscriptionId: stripeSub.id },
       relations: ['tenant', 'plan'],
     });
+    if (byStripeId) return byStripeId;
+
+    const customerId = this.stripeCustomerId(stripeSub);
+    if (!customerId) return null;
+
+    return this.subscriptionRepo.findOne({
+      where: { stripeCustomerId: customerId },
+      relations: ['tenant', 'plan'],
+      order: { id: 'DESC' },
+    });
+  }
+
+  private async suspendTenantForStripeCustomer(stripeSub: Pick<Stripe.Subscription, 'customer'> | Stripe.Subscription) {
+    const customerId = this.stripeCustomerId(stripeSub as Stripe.Subscription);
+    if (!customerId) return;
+    const tenant = await this.tenantRepo.findOne({ where: { stripeCustomerId: customerId } });
+    if (!tenant) return;
+    tenant.status = 'suspended';
+    await this.tenantRepo.save(tenant);
+    this.logger.log(`Tenant ${tenant.id} suspended after Stripe customer/subscription removal (${customerId})`);
+  }
+
+  async applyStripeSubscription(
+    stripeSub: Stripe.Subscription,
+    options?: { deleted?: boolean },
+  ) {
+    const local = await this.findLocalSubscription(stripeSub);
     if (!local) {
+      if (options?.deleted) {
+        await this.suspendTenantForStripeCustomer(stripeSub);
+      }
       this.logger.warn(`No local subscription for Stripe id ${stripeSub.id}`);
       return;
     }
 
     const period = this.periodFromStripe(stripeSub);
-    local.status = this.mapStripeSubscriptionStatus(stripeSub.status);
+    const deleted = Boolean(options?.deleted) || stripeSub.status === 'canceled';
+    local.status = deleted
+      ? SubscriptionStatus.CANCELLED
+      : this.mapStripeSubscriptionStatus(stripeSub.status);
     local.currentPeriodStart = period.start;
     local.currentPeriodEnd = period.end;
-    local.cancelAtPeriodEnd = Boolean(stripeSub.cancel_at_period_end);
-    local.cancelAt = this.stripeService.unixToDate(stripeSub.cancel_at);
-    local.cancelledAt =
-      stripeSub.status === 'canceled' ? this.stripeService.unixToDate(stripeSub.canceled_at) : local.cancelledAt;
+    local.cancelAtPeriodEnd = deleted ? false : Boolean(stripeSub.cancel_at_period_end);
+    local.cancelAt = deleted ? null : this.stripeService.unixToDate(stripeSub.cancel_at);
+    local.cancelledAt = deleted
+      ? this.stripeService.unixToDate(stripeSub.canceled_at) || new Date()
+      : local.cancelledAt;
+    if (typeof stripeSub.customer === 'string') {
+      local.stripeCustomerId = stripeSub.customer;
+    } else if (stripeSub.customer?.id) {
+      local.stripeCustomerId = stripeSub.customer.id;
+    }
     await this.subscriptionRepo.save(local);
 
     if (local.tenant) {
-      if (local.status === SubscriptionStatus.CANCELLED || local.status === SubscriptionStatus.UNPAID) {
-        local.tenant.status = 'suspended';
-      } else if (local.status === SubscriptionStatus.TRIAL) {
-        local.tenant.status = 'trial';
-      } else {
-        local.tenant.status = 'active';
-      }
+      local.tenant.status = this.tenantStatusFromSubscription(local.status);
       await this.tenantRepo.save(local.tenant);
+      this.logger.log(
+        `Stripe subscription ${stripeSub.id} synced as ${local.status}; tenant ${local.tenant.id} is ${local.tenant.status}`,
+      );
     }
   }
 
   async handleWebhook(rawBody: Buffer | string, signature: string) {
     const event = this.stripeService.constructWebhookEvent(rawBody, signature);
+    return this.processStripeEvent(event);
+  }
 
+  async processStripeEvent(event: Stripe.Event) {
     switch (event.type) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
+      case 'customer.subscription.paused':
+      case 'customer.subscription.resumed':
         await this.applyStripeSubscription(event.data.object as Stripe.Subscription);
+        break;
+      case 'customer.subscription.deleted':
+        await this.applyStripeSubscription(event.data.object as Stripe.Subscription, { deleted: true });
         break;
       case 'invoice.created':
       case 'invoice.finalized':
       case 'invoice.paid':
+      case 'invoice.payment_succeeded':
       case 'invoice.payment_failed':
+      case 'invoice.payment_action_required':
       case 'invoice.updated':
+      case 'invoice.voided':
+      case 'invoice.marked_uncollectible':
         await this.upsertInvoiceFromStripe(event.data.object as Stripe.Invoice);
         break;
       case 'checkout.session.completed':
@@ -895,6 +960,14 @@ export class BillingService {
       case 'checkout.session.expired':
         await this.publicSignupService?.markCheckoutExpired(event.data.object as Stripe.Checkout.Session);
         break;
+      case 'checkout.session.async_payment_failed':
+        await this.publicSignupService?.markCheckoutFailed(event.data.object as Stripe.Checkout.Session);
+        break;
+      case 'customer.deleted': {
+        const customer = event.data.object as Stripe.Customer | Stripe.DeletedCustomer;
+        await this.suspendTenantForStripeCustomer({ customer: customer.id } as Stripe.Subscription);
+        break;
+      }
       default:
         this.logger.debug(`Ignored Stripe event ${event.type}`);
     }

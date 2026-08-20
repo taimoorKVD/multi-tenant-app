@@ -106,4 +106,38 @@ describe('PublicSignupService', () => {
       { stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' },
     );
   });
+
+  it('looks up status by Stripe checkout session id without treating it as a UUID', async () => {
+    signupRepo.findOne.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      status: WebsiteSignupStatus.PENDING,
+      email: 'hello@acme.com',
+      tenantId: null,
+      errorMessage: null,
+    });
+
+    const result = await service.getStatus('cs_test_a1b2c3');
+
+    expect(signupRepo.findOne).toHaveBeenCalledWith({
+      where: { stripeCheckoutSessionId: 'cs_test_a1b2c3' },
+    });
+    expect(result.data.status).toBe('pending');
+    expect(result.data.provisioned).toBe(false);
+  });
+
+  it('marks expired and failed checkout sessions', async () => {
+    const pending = {
+      id: 'signup-1',
+      status: WebsiteSignupStatus.PENDING,
+      errorMessage: null,
+    };
+    signupRepo.findOne.mockResolvedValue(pending);
+
+    await service.markCheckoutExpired({ id: 'cs_exp', metadata: { signupId: 'signup-1' } } as any);
+    expect(pending.status).toBe(WebsiteSignupStatus.EXPIRED);
+
+    pending.status = WebsiteSignupStatus.PAID;
+    await service.markCheckoutFailed({ id: 'cs_fail', metadata: { signupId: 'signup-1' } } as any);
+    expect(pending.status).toBe(WebsiteSignupStatus.FAILED);
+  });
 });
