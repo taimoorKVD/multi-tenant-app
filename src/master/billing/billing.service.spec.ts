@@ -146,6 +146,49 @@ describe('BillingService', () => {
     expect(tenantRepo.save).toHaveBeenCalledWith(tenant);
   });
 
+  it('sends a billing email when a Stripe subscription is deleted', async () => {
+    const tenant = { id: 12, status: 'active', email: 'hello@acme.com', name: 'Acme' };
+    const local = {
+      id: 5,
+      status: SubscriptionStatus.ACTIVE,
+      tenant,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+    };
+    subscriptionRepo.findOne.mockResolvedValue(local);
+    subscriptionRepo.save.mockImplementation(async (value) => value);
+    tenantRepo.save.mockImplementation(async (value) => value);
+    const mail = { notify: jest.fn().mockResolvedValue(undefined), findSignupByCheckout: jest.fn() };
+    service = new BillingService(
+      planRepo as any,
+      subscriptionRepo as any,
+      invoiceRepo as any,
+      tenantRepo as any,
+      stripeService as any,
+      undefined,
+      mail as any,
+    );
+
+    await service.processStripeEvent(
+      stripeEvent('customer.subscription.deleted', {
+        id: 'sub_del',
+        status: 'canceled',
+        customer: 'cus_1',
+        canceled_at: 1700000000,
+        cancel_at_period_end: false,
+        items: { data: [] },
+      }),
+    );
+
+    expect(mail.notify).toHaveBeenCalledWith(
+      'customer.subscription.deleted',
+      expect.objectContaining({
+        tenant,
+        subscription: expect.objectContaining({ status: SubscriptionStatus.CANCELLED }),
+      }),
+    );
+  });
+
   it('keeps tenant active on past_due but records the subscription status', async () => {
     const tenant = { id: 12, status: 'active' };
     const local = {
@@ -214,7 +257,13 @@ describe('BillingService', () => {
   });
 
   it('upserts an invoice when Stripe reports payment failed', async () => {
-    invoiceRepo.findOne.mockResolvedValue(null);
+    invoiceRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 3,
+        tenant: { id: 12, name: 'Acme', email: 'hello@acme.com' },
+        subscription: { id: 5, plan: { name: 'Basic' } },
+      });
     invoiceRepo.create.mockImplementation((value) => value);
     invoiceRepo.save.mockImplementation(async (value) => ({ id: 3, ...value }));
     subscriptionRepo.findOne.mockResolvedValue({

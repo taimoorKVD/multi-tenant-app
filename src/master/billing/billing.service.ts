@@ -20,6 +20,7 @@ import {
   PlanStatus,
   Subscription,
   SubscriptionStatus,
+  WebsiteSignup,
 } from './entities';
 import {
   CancelSubscriptionDto,
@@ -32,6 +33,7 @@ import {
 } from './dto';
 import { StripeService } from './stripe.service';
 import { PublicSignupService } from './public-signup/public-signup.service';
+import { StripeBillingMailService } from './stripe-billing-mail.service';
 import {
   ALL_PLAN_MODULE_KEYS,
   normalizePlanModules,
@@ -56,6 +58,8 @@ export class BillingService {
     @Optional()
     @Inject(forwardRef(() => PublicSignupService))
     private readonly publicSignupService?: PublicSignupService,
+    @Optional()
+    private readonly stripeBillingMail?: StripeBillingMailService,
   ) {}
 
   private money(cents: number, currency = 'EUR') {
@@ -893,7 +897,7 @@ export class BillingService {
         await this.suspendTenantForStripeCustomer(stripeSub);
       }
       this.logger.warn(`No local subscription for Stripe id ${stripeSub.id}`);
-      return;
+      return null;
     }
 
     const period = this.periodFromStripe(stripeSub);
@@ -922,6 +926,7 @@ export class BillingService {
         `Stripe subscription ${stripeSub.id} synced as ${local.status}; tenant ${local.tenant.id} is ${local.tenant.status}`,
       );
     }
+    return local;
   }
 
   async handleWebhook(rawBody: Buffer | string, signature: string) {
@@ -935,37 +940,100 @@ export class BillingService {
       case 'customer.subscription.updated':
       case 'customer.subscription.paused':
       case 'customer.subscription.resumed':
-        await this.applyStripeSubscription(event.data.object as Stripe.Subscription);
+      case 'customer.subscription.deleted': {
+        const stripeSub = event.data.object as Stripe.Subscription;
+        const previous = await this.findLocalSubscription(stripeSub);
+        const previousSnapshot = previous
+          ? { status: previous.status, cancelAtPeriodEnd: previous.cancelAtPeriodEnd }
+          : null;
+        const local = await this.applyStripeSubscription(stripeSub, {
+          deleted: event.type === 'customer.subscription.deleted',
+        });
+        const meaningful =
+          event.type !== 'customer.subscription.updated' ||
+          !previousSnapshot ||
+          previousSnapshot.status !== local?.status ||
+          previousSnapshot.cancelAtPeriodEnd !== local?.cancelAtPeriodEnd;
+        if (meaningful) {
+          await this.notifyStripeMail(event.type, {
+            tenant: local?.tenant || (await this.tenantFromStripeCustomer(stripeSub)),
+            subscription: local,
+            details: {
+              'Stripe event': event.type,
+            },
+          });
+        }
         break;
-      case 'customer.subscription.deleted':
-        await this.applyStripeSubscription(event.data.object as Stripe.Subscription, { deleted: true });
-        break;
-      case 'invoice.created':
+      }
       case 'invoice.finalized':
       case 'invoice.paid':
       case 'invoice.payment_succeeded':
       case 'invoice.payment_failed':
       case 'invoice.payment_action_required':
-      case 'invoice.updated':
       case 'invoice.voided':
-      case 'invoice.marked_uncollectible':
+      case 'invoice.marked_uncollectible': {
+        const saved = await this.upsertInvoiceFromStripe(event.data.object as Stripe.Invoice);
+        if (saved) {
+          const invoice = await this.invoiceRepo.findOne({
+            where: { id: saved.id },
+            relations: ['tenant', 'subscription', 'subscription.plan'],
+          });
+          await this.notifyStripeMail(event.type, {
+            tenant: invoice?.tenant,
+            subscription: invoice?.subscription,
+            invoice,
+            details: { 'Stripe event': event.type },
+          });
+        }
+        break;
+      }
+      case 'invoice.created':
+      case 'invoice.updated':
         await this.upsertInvoiceFromStripe(event.data.object as Stripe.Invoice);
         break;
       case 'checkout.session.completed':
-      case 'checkout.session.async_payment_succeeded':
-        await this.publicSignupService?.completeFromCheckoutSession(
-          event.data.object as Stripe.Checkout.Session,
-        );
+      case 'checkout.session.async_payment_succeeded': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.publicSignupService?.completeFromCheckoutSession(session);
+        const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
+        const tenant = signup?.tenantId
+          ? await this.tenantRepo.findOne({ where: { id: signup.tenantId } })
+          : null;
+        await this.notifyStripeMail(event.type, {
+          tenant,
+          signup,
+          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+        });
         break;
-      case 'checkout.session.expired':
-        await this.publicSignupService?.markCheckoutExpired(event.data.object as Stripe.Checkout.Session);
+      }
+      case 'checkout.session.expired': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.publicSignupService?.markCheckoutExpired(session);
+        const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
+        await this.notifyStripeMail(event.type, {
+          signup,
+          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+        });
         break;
-      case 'checkout.session.async_payment_failed':
-        await this.publicSignupService?.markCheckoutFailed(event.data.object as Stripe.Checkout.Session);
+      }
+      case 'checkout.session.async_payment_failed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.publicSignupService?.markCheckoutFailed(session);
+        const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
+        await this.notifyStripeMail(event.type, {
+          signup,
+          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+        });
         break;
+      }
       case 'customer.deleted': {
         const customer = event.data.object as Stripe.Customer | Stripe.DeletedCustomer;
         await this.suspendTenantForStripeCustomer({ customer: customer.id } as Stripe.Subscription);
+        const tenant = await this.tenantRepo.findOne({ where: { stripeCustomerId: customer.id } });
+        await this.notifyStripeMail(event.type, {
+          tenant,
+          details: { 'Stripe event': event.type, 'Customer': customer.id },
+        });
         break;
       }
       default:
@@ -973,6 +1041,28 @@ export class BillingService {
     }
 
     return { received: true, type: event.type };
+  }
+
+  private async tenantFromStripeCustomer(stripeSub: Stripe.Subscription) {
+    const customerId = this.stripeCustomerId(stripeSub);
+    if (!customerId) return null;
+    return this.tenantRepo.findOne({ where: { stripeCustomerId: customerId } });
+  }
+
+  private async notifyStripeMail(eventType: string, context: {
+    tenant?: Tenant | null;
+    subscription?: Subscription | null;
+    invoice?: Invoice | null;
+    signup?: WebsiteSignup | null;
+    details?: Record<string, string | null | undefined>;
+  }) {
+    try {
+      await this.stripeBillingMail?.notify(eventType, context);
+    } catch (error) {
+      this.logger.warn(
+        `Stripe billing email failed for ${eventType}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
   }
 
   async getDashboardBilling() {
