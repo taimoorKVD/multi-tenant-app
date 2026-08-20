@@ -20,6 +20,7 @@ import {
   PlanStatus,
   Subscription,
   SubscriptionStatus,
+  WebsiteSignup,
 } from './entities';
 import {
   CancelSubscriptionDto,
@@ -32,6 +33,7 @@ import {
 } from './dto';
 import { StripeService } from './stripe.service';
 import { PublicSignupService } from './public-signup/public-signup.service';
+import { StripeBillingMailService } from './stripe-billing-mail.service';
 import {
   ALL_PLAN_MODULE_KEYS,
   normalizePlanModules,
@@ -56,6 +58,8 @@ export class BillingService {
     @Optional()
     @Inject(forwardRef(() => PublicSignupService))
     private readonly publicSignupService?: PublicSignupService,
+    @Optional()
+    private readonly stripeBillingMail?: StripeBillingMailService,
   ) {}
 
   private money(cents: number, currency = 'EUR') {
@@ -838,68 +842,227 @@ export class BillingService {
     return this.invoiceRepo.save(invoice);
   }
 
-  async applyStripeSubscription(stripeSub: Stripe.Subscription) {
-    const local = await this.subscriptionRepo.findOne({
+  private tenantStatusFromSubscription(status: SubscriptionStatus) {
+    if (
+      status === SubscriptionStatus.CANCELLED ||
+      status === SubscriptionStatus.UNPAID ||
+      status === SubscriptionStatus.INCOMPLETE
+    ) {
+      return 'suspended';
+    }
+    if (status === SubscriptionStatus.TRIAL) return 'trial';
+    return 'active';
+  }
+
+  private stripeCustomerId(value: Stripe.Subscription | { customer?: string | { id?: string } | null }) {
+    const customer = (value as Stripe.Subscription).customer;
+    if (!customer) return null;
+    return typeof customer === 'string' ? customer : customer.id || null;
+  }
+
+  private async findLocalSubscription(stripeSub: Stripe.Subscription) {
+    const byStripeId = await this.subscriptionRepo.findOne({
       where: { stripeSubscriptionId: stripeSub.id },
       relations: ['tenant', 'plan'],
     });
+    if (byStripeId) return byStripeId;
+
+    const customerId = this.stripeCustomerId(stripeSub);
+    if (!customerId) return null;
+
+    return this.subscriptionRepo.findOne({
+      where: { stripeCustomerId: customerId },
+      relations: ['tenant', 'plan'],
+      order: { id: 'DESC' },
+    });
+  }
+
+  private async suspendTenantForStripeCustomer(stripeSub: Pick<Stripe.Subscription, 'customer'> | Stripe.Subscription) {
+    const customerId = this.stripeCustomerId(stripeSub as Stripe.Subscription);
+    if (!customerId) return;
+    const tenant = await this.tenantRepo.findOne({ where: { stripeCustomerId: customerId } });
+    if (!tenant) return;
+    tenant.status = 'suspended';
+    await this.tenantRepo.save(tenant);
+    this.logger.log(`Tenant ${tenant.id} suspended after Stripe customer/subscription removal (${customerId})`);
+  }
+
+  async applyStripeSubscription(
+    stripeSub: Stripe.Subscription,
+    options?: { deleted?: boolean },
+  ) {
+    const local = await this.findLocalSubscription(stripeSub);
     if (!local) {
+      if (options?.deleted) {
+        await this.suspendTenantForStripeCustomer(stripeSub);
+      }
       this.logger.warn(`No local subscription for Stripe id ${stripeSub.id}`);
-      return;
+      return null;
     }
 
     const period = this.periodFromStripe(stripeSub);
-    local.status = this.mapStripeSubscriptionStatus(stripeSub.status);
+    const deleted = Boolean(options?.deleted) || stripeSub.status === 'canceled';
+    local.status = deleted
+      ? SubscriptionStatus.CANCELLED
+      : this.mapStripeSubscriptionStatus(stripeSub.status);
     local.currentPeriodStart = period.start;
     local.currentPeriodEnd = period.end;
-    local.cancelAtPeriodEnd = Boolean(stripeSub.cancel_at_period_end);
-    local.cancelAt = this.stripeService.unixToDate(stripeSub.cancel_at);
-    local.cancelledAt =
-      stripeSub.status === 'canceled' ? this.stripeService.unixToDate(stripeSub.canceled_at) : local.cancelledAt;
+    local.cancelAtPeriodEnd = deleted ? false : Boolean(stripeSub.cancel_at_period_end);
+    local.cancelAt = deleted ? null : this.stripeService.unixToDate(stripeSub.cancel_at);
+    local.cancelledAt = deleted
+      ? this.stripeService.unixToDate(stripeSub.canceled_at) || new Date()
+      : local.cancelledAt;
+    if (typeof stripeSub.customer === 'string') {
+      local.stripeCustomerId = stripeSub.customer;
+    } else if (stripeSub.customer?.id) {
+      local.stripeCustomerId = stripeSub.customer.id;
+    }
     await this.subscriptionRepo.save(local);
 
     if (local.tenant) {
-      if (local.status === SubscriptionStatus.CANCELLED || local.status === SubscriptionStatus.UNPAID) {
-        local.tenant.status = 'suspended';
-      } else if (local.status === SubscriptionStatus.TRIAL) {
-        local.tenant.status = 'trial';
-      } else {
-        local.tenant.status = 'active';
-      }
+      local.tenant.status = this.tenantStatusFromSubscription(local.status);
       await this.tenantRepo.save(local.tenant);
+      this.logger.log(
+        `Stripe subscription ${stripeSub.id} synced as ${local.status}; tenant ${local.tenant.id} is ${local.tenant.status}`,
+      );
     }
+    return local;
   }
 
   async handleWebhook(rawBody: Buffer | string, signature: string) {
     const event = this.stripeService.constructWebhookEvent(rawBody, signature);
+    return this.processStripeEvent(event);
+  }
 
+  async processStripeEvent(event: Stripe.Event) {
     switch (event.type) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-        await this.applyStripeSubscription(event.data.object as Stripe.Subscription);
+      case 'customer.subscription.paused':
+      case 'customer.subscription.resumed':
+      case 'customer.subscription.deleted': {
+        const stripeSub = event.data.object as Stripe.Subscription;
+        const previous = await this.findLocalSubscription(stripeSub);
+        const previousSnapshot = previous
+          ? { status: previous.status, cancelAtPeriodEnd: previous.cancelAtPeriodEnd }
+          : null;
+        const local = await this.applyStripeSubscription(stripeSub, {
+          deleted: event.type === 'customer.subscription.deleted',
+        });
+        const meaningful =
+          event.type !== 'customer.subscription.updated' ||
+          !previousSnapshot ||
+          previousSnapshot.status !== local?.status ||
+          previousSnapshot.cancelAtPeriodEnd !== local?.cancelAtPeriodEnd;
+        if (meaningful) {
+          await this.notifyStripeMail(event.type, {
+            tenant: local?.tenant || (await this.tenantFromStripeCustomer(stripeSub)),
+            subscription: local,
+            details: {
+              'Stripe event': event.type,
+            },
+          });
+        }
         break;
-      case 'invoice.created':
+      }
       case 'invoice.finalized':
       case 'invoice.paid':
+      case 'invoice.payment_succeeded':
       case 'invoice.payment_failed':
+      case 'invoice.payment_action_required':
+      case 'invoice.voided':
+      case 'invoice.marked_uncollectible': {
+        const saved = await this.upsertInvoiceFromStripe(event.data.object as Stripe.Invoice);
+        if (saved) {
+          const invoice = await this.invoiceRepo.findOne({
+            where: { id: saved.id },
+            relations: ['tenant', 'subscription', 'subscription.plan'],
+          });
+          await this.notifyStripeMail(event.type, {
+            tenant: invoice?.tenant,
+            subscription: invoice?.subscription,
+            invoice,
+            details: { 'Stripe event': event.type },
+          });
+        }
+        break;
+      }
+      case 'invoice.created':
       case 'invoice.updated':
         await this.upsertInvoiceFromStripe(event.data.object as Stripe.Invoice);
         break;
       case 'checkout.session.completed':
-      case 'checkout.session.async_payment_succeeded':
-        await this.publicSignupService?.completeFromCheckoutSession(
-          event.data.object as Stripe.Checkout.Session,
-        );
+      case 'checkout.session.async_payment_succeeded': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.publicSignupService?.completeFromCheckoutSession(session);
+        const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
+        const tenant = signup?.tenantId
+          ? await this.tenantRepo.findOne({ where: { id: signup.tenantId } })
+          : null;
+        await this.notifyStripeMail(event.type, {
+          tenant,
+          signup,
+          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+        });
         break;
-      case 'checkout.session.expired':
-        await this.publicSignupService?.markCheckoutExpired(event.data.object as Stripe.Checkout.Session);
+      }
+      case 'checkout.session.expired': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.publicSignupService?.markCheckoutExpired(session);
+        const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
+        await this.notifyStripeMail(event.type, {
+          signup,
+          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+        });
         break;
+      }
+      case 'checkout.session.async_payment_failed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.publicSignupService?.markCheckoutFailed(session);
+        const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
+        await this.notifyStripeMail(event.type, {
+          signup,
+          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+        });
+        break;
+      }
+      case 'customer.deleted': {
+        const customer = event.data.object as Stripe.Customer | Stripe.DeletedCustomer;
+        await this.suspendTenantForStripeCustomer({ customer: customer.id } as Stripe.Subscription);
+        const tenant = await this.tenantRepo.findOne({ where: { stripeCustomerId: customer.id } });
+        await this.notifyStripeMail(event.type, {
+          tenant,
+          details: { 'Stripe event': event.type, 'Customer': customer.id },
+        });
+        break;
+      }
       default:
         this.logger.debug(`Ignored Stripe event ${event.type}`);
     }
 
     return { received: true, type: event.type };
+  }
+
+  private async tenantFromStripeCustomer(stripeSub: Stripe.Subscription) {
+    const customerId = this.stripeCustomerId(stripeSub);
+    if (!customerId) return null;
+    return this.tenantRepo.findOne({ where: { stripeCustomerId: customerId } });
+  }
+
+  private async notifyStripeMail(eventType: string, context: {
+    tenant?: Tenant | null;
+    subscription?: Subscription | null;
+    invoice?: Invoice | null;
+    signup?: WebsiteSignup | null;
+    details?: Record<string, string | null | undefined>;
+  }) {
+    try {
+      await this.stripeBillingMail?.notify(eventType, context);
+    } catch (error) {
+      this.logger.warn(
+        `Stripe billing email failed for ${eventType}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
   }
 
   async getDashboardBilling() {

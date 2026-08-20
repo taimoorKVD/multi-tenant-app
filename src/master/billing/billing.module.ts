@@ -5,6 +5,7 @@ import { Tenant } from '../tenants/entities';
 import { Invoice, Plan, Subscription, WebsiteSignup } from './entities';
 import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
+import { StripeBillingMailService } from './stripe-billing-mail.service';
 import {
   InvoicesController,
   PlansController,
@@ -30,6 +31,7 @@ import { PublicSignupModule } from './public-signup/public-signup.module';
   providers: [
     BillingService,
     StripeService,
+    StripeBillingMailService,
     PlanModulesGuard,
     {
       provide: APP_GUARD,

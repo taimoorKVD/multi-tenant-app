@@ -113,9 +113,15 @@ export class PublicSignupService {
     const lookup = String(sessionId || '').trim();
     if (!lookup) throw new BadRequestException('session_id is required');
 
-    const signup = await this.signupRepo.findOne({
-      where: [{ stripeCheckoutSessionId: lookup }, { id: lookup }],
-    });
+    const uuidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const signup = uuidPattern.test(lookup)
+      ? await this.signupRepo.findOne({
+          where: [{ id: lookup }, { stripeCheckoutSessionId: lookup }],
+        })
+      : await this.signupRepo.findOne({
+          where: { stripeCheckoutSessionId: lookup },
+        });
     if (!signup) throw new NotFoundException('Signup session not found');
 
     return {
@@ -195,6 +201,15 @@ export class PublicSignupService {
     const signup = await this.findSignupFromSession(session);
     if (!signup || signup.status !== WebsiteSignupStatus.PENDING) return;
     signup.status = WebsiteSignupStatus.EXPIRED;
+    signup.errorMessage = 'Stripe Checkout session expired before payment';
+    await this.signupRepo.save(signup);
+  }
+
+  async markCheckoutFailed(session: Stripe.Checkout.Session) {
+    const signup = await this.findSignupFromSession(session);
+    if (!signup || signup.status === WebsiteSignupStatus.PROVISIONED) return;
+    signup.status = WebsiteSignupStatus.FAILED;
+    signup.errorMessage = 'Stripe Checkout payment failed';
     await this.signupRepo.save(signup);
   }
 
