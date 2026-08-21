@@ -25,6 +25,7 @@ describe('PublicSignupService', () => {
   };
   const tenantsService = {
     assertTenantAvailable: jest.fn().mockResolvedValue('acme'),
+    getTenantLoginUrl: jest.fn().mockReturnValue('https://acme.eusocial.com/login'),
     create: jest.fn().mockResolvedValue({
       data: { id: 42, credentialsEmail: { error: null } },
     }),
@@ -58,12 +59,6 @@ describe('PublicSignupService', () => {
       domain: 'acme.com',
       email: 'hello@acme.com',
       planId: 2,
-      admin: {
-        name: 'Jane',
-        email: 'jane@acme.com',
-        password: 'Admin@123',
-        confirmPassword: 'Admin@123',
-      },
     } as any);
 
     expect(tenantsService.assertTenantAvailable).toHaveBeenCalledWith('Acme', 'acme.com');
@@ -85,7 +80,6 @@ describe('PublicSignupService', () => {
         domain: 'acme.com',
         email: 'hello@acme.com',
         planId: 2,
-        admin: { name: 'Jane', email: 'jane@acme.com' },
       },
     });
 
@@ -101,9 +95,12 @@ describe('PublicSignupService', () => {
       expect.objectContaining({
         name: 'Acme',
         email: 'hello@acme.com',
-        admin: expect.objectContaining({ email: 'jane@acme.com', password: 'Admin@123' }),
       }),
-      { stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' },
+      expect.objectContaining({
+        stripeCustomerId: 'cus_1',
+        stripeSubscriptionId: 'sub_1',
+        adminPassword: 'Admin@123',
+      }),
     );
   });
 
@@ -115,7 +112,9 @@ describe('PublicSignupService', () => {
       tenantId: null,
       errorMessage: null,
       payload: {
-        admin: { name: 'Jane Doe', email: 'jane@acme.com' },
+        name: 'Acme Corporation',
+        domain: 'acme.com',
+        email: 'hello@acme.com',
       },
     });
 
@@ -127,7 +126,32 @@ describe('PublicSignupService', () => {
     expect(result.data.status).toBe('pending');
     expect(result.data.provisioned).toBe(false);
     expect(result.data.email).toBe('hello@acme.com');
-    expect(result.data.admin).toEqual({ name: 'Jane Doe', email: 'jane@acme.com' });
+    expect(result.data.password).toBeNull();
+    expect(result.data.loginUrl).toBeNull();
+  });
+
+  it('returns password and loginUrl after the tenant is provisioned', async () => {
+    signupRepo.findOne.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      status: WebsiteSignupStatus.PROVISIONED,
+      email: 'hello@acme.com',
+      tenantId: 12,
+      errorMessage: null,
+      adminPasswordEncrypted: encryptMailSecret('K7m$pQ2nLx9w'),
+      payload: {
+        name: 'Acme Corporation',
+        domain: 'acme.com',
+        email: 'hello@acme.com',
+      },
+    });
+
+    const result = await service.getStatus('cs_test_a1b2c3');
+
+    expect(result.data.provisioned).toBe(true);
+    expect(result.data.email).toBe('hello@acme.com');
+    expect(result.data.password).toBe('K7m$pQ2nLx9w');
+    expect(result.data.loginUrl).toBe('https://acme.eusocial.com/login');
+    expect(tenantsService.getTenantLoginUrl).toHaveBeenCalledWith('acme');
   });
 
   it('marks expired and failed checkout sessions', async () => {

@@ -16,6 +16,8 @@ import { TenantsService } from '../../tenants/tenants.service';
 import { CreateTenantDto } from '../../tenants/dto';
 import { StartWebsiteSignupDto } from './dto/start-website-signup.dto';
 import { decryptMailSecret, encryptMailSecret } from '../../../mail/utils/mail-crypto.util';
+import { toSubdomainSlug } from '../../../utils';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class PublicSignupService {
@@ -57,14 +59,14 @@ export class PublicSignupService {
       throw new BadRequestException('This plan is not ready for payment. Contact support.');
     }
 
-    const adminPassword = dto.admin.password;
+    const businessEmail = dto.email.trim().toLowerCase();
     const payload = this.toStoredPayload(dto);
     const signup = await this.signupRepo.save(
       this.signupRepo.create({
         planId: plan.id,
-        email: dto.email.trim().toLowerCase(),
+        email: businessEmail,
         payload,
-        adminPasswordEncrypted: encryptMailSecret(adminPassword) as string,
+        adminPasswordEncrypted: encryptMailSecret(this.generateAdminPassword()) as string,
         status: WebsiteSignupStatus.PENDING,
       }),
     );
@@ -78,7 +80,7 @@ export class PublicSignupService {
 
     const session = await this.stripeService.createCheckoutSession({
       priceId: synced.stripePriceId,
-      customerEmail: dto.admin.email.trim().toLowerCase(),
+      customerEmail: businessEmail,
       successUrl,
       cancelUrl,
       clientReferenceId: signup.id,
@@ -125,24 +127,33 @@ export class PublicSignupService {
     if (!signup) throw new NotFoundException('Signup session not found');
 
     const payload = (signup.payload || {}) as {
-      admin?: { name?: string; email?: string };
+      name?: string;
+      email?: string;
+      domain?: string;
     };
-    const adminName = String(payload.admin?.name || '').trim() || null;
-    const adminEmail = String(payload.admin?.email || '').trim().toLowerCase() || null;
+    const email =
+      String(payload.email || signup.email || '')
+        .trim()
+        .toLowerCase() || null;
+    const provisioned = signup.status === WebsiteSignupStatus.PROVISIONED;
+    const password = provisioned
+      ? decryptMailSecret(signup.adminPasswordEncrypted) || null
+      : null;
+    const subdomain = this.domainToSubdomain(String(payload.domain || ''));
+    const loginUrl =
+      provisioned && subdomain ? this.tenantsService.getTenantLoginUrl(subdomain) : null;
 
     return {
       success: true,
       data: {
         signupId: signup.id,
         status: signup.status,
-        email: signup.email,
-        admin: {
-          name: adminName,
-          email: adminEmail,
-        },
+        email,
+        password,
+        loginUrl,
         tenantId: signup.tenantId,
         paid: [WebsiteSignupStatus.PAID, WebsiteSignupStatus.PROVISIONED].includes(signup.status),
-        provisioned: signup.status === WebsiteSignupStatus.PROVISIONED,
+        provisioned,
         error: signup.status === WebsiteSignupStatus.FAILED ? signup.errorMessage : null,
       },
     };
@@ -188,6 +199,7 @@ export class PublicSignupService {
       const created = await this.tenantsService.create(dto, {
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscriptionId,
+        adminPassword: decryptMailSecret(signup.adminPasswordEncrypted) || undefined,
       });
 
       signup.tenantId = created.data.id;
@@ -266,6 +278,24 @@ export class PublicSignupService {
     return value;
   }
 
+  private generateAdminPassword(length = 12): string {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const digits = '23456789';
+    const special = '@$!%*?&';
+    const all = upper + lower + digits + special;
+    const pick = (set: string) => set[crypto.randomInt(set.length)];
+    const chars = [pick(upper), pick(lower), pick(digits), pick(special)];
+    while (chars.length < length) {
+      chars.push(pick(all));
+    }
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join('');
+  }
+
   private toStoredPayload(dto: StartWebsiteSignupDto) {
     return {
       name: dto.name.trim(),
@@ -273,7 +303,6 @@ export class PublicSignupService {
       email: dto.email.trim().toLowerCase(),
       phoneCountryCode: dto.phoneCountryCode,
       phoneNumber: dto.phoneNumber,
-      industry: dto.industry,
       description: dto.description,
       countryId: dto.countryId,
       stateId: dto.stateId,
@@ -283,27 +312,17 @@ export class PublicSignupService {
       planId: dto.planId,
       billingCycle: dto.billingCycle,
       trialDays: dto.trialDays,
-      admin: {
-        name: dto.admin.name.trim(),
-        email: dto.admin.email.trim().toLowerCase(),
-      },
     };
   }
 
   private toCreateTenantDto(signup: WebsiteSignup): CreateTenantDto {
     const payload = signup.payload || {};
-    const admin = (payload.admin || {}) as { name?: string; email?: string };
-    const password = decryptMailSecret(signup.adminPasswordEncrypted);
-    if (!password) {
-      throw new BadRequestException('Could not recover the admin password for this signup');
-    }
     const dto = {
       name: String(payload.name || ''),
       domain: String(payload.domain || ''),
       email: String(payload.email || signup.email),
       phoneCountryCode: payload.phoneCountryCode as string | undefined,
       phoneNumber: payload.phoneNumber as string | undefined,
-      industry: payload.industry as CreateTenantDto['industry'],
       description: payload.description as string | undefined,
       countryId: payload.countryId as number | undefined,
       stateId: payload.stateId as number | undefined,
@@ -313,14 +332,19 @@ export class PublicSignupService {
       planId: Number(payload.planId || signup.planId),
       billingCycle: payload.billingCycle as CreateTenantDto['billingCycle'],
       trialDays: payload.trialDays as number | undefined,
-      admin: {
-        name: String(admin.name || ''),
-        email: String(admin.email || ''),
-        password,
-        confirmPassword: password,
-      },
     };
     return dto as CreateTenantDto;
+  }
+
+  private domainToSubdomain(domain: string): string {
+    const host = String(domain || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0]
+      .replace(/^www\./, '');
+    const firstLabel = host.split('.')[0] || host;
+    return firstLabel ? toSubdomainSlug(firstLabel) : '';
   }
 
   private asId(value: unknown): string | null {

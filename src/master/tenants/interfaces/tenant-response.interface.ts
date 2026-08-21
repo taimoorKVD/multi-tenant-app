@@ -1,5 +1,3 @@
-import { IAdminDetails } from './admin-details.interface';
-
 export interface ITenantResponse {
   success: boolean;
   message: string;
@@ -42,6 +40,7 @@ export interface ITenantResponse {
       customerId: string | null;
       subscriptionId: string | null;
     };
-    admin: IAdminDetails;
+    password: string;
+    loginUrl: string;
   };
 }

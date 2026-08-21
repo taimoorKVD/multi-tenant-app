@@ -13,6 +13,7 @@ import {getTenantDataSource, tenantConnections} from '../../database/datasource'
 import {Tenant} from './entities';
 import {User} from '../../tenants/users/entities';
 import * as argon2 from 'argon2';
+import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
 import {Role} from '../../tenants/role/entities';
 import {CreateTenantDto, UpdateTenantDto} from './dto';
@@ -92,6 +93,10 @@ export class TenantsService {
     }
 
     return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
+  }
+
+  getTenantLoginUrl(subdomain: string, customDomain?: string | null): string {
+    return `${this.getTenantAppUrl(subdomain, customDomain)}/login`;
   }
 
   private getLogoUrl(tenantAppUrl: string): string {
@@ -202,7 +207,7 @@ export class TenantsService {
                     </p>
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
                       <tr style="border-bottom:1px solid #e8edf3;">
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Admin Email</strong></td>
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Business Email</strong></td>
                         <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.loginEmail}</td>
                       </tr>
                       <tr style="border-bottom:1px solid #e8edf3;">
@@ -254,15 +259,32 @@ export class TenantsService {
     }
   }
 
+  private generateAdminPassword(length = 12): string {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const digits = '23456789';
+    const special = '@$!%*?&';
+    const all = upper + lower + digits + special;
+    const pick = (set: string) => set[crypto.randomInt(set.length)];
+    const chars = [pick(upper), pick(lower), pick(digits), pick(special)];
+    while (chars.length < length) {
+      chars.push(pick(all));
+    }
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join('');
+  }
+
   private async sendCreateTenantEmails(payload: {
     tenantName: string;
     subdomain: string;
     customDomain?: string | null;
-    adminEmail: string;
+    loginEmail: string;
     adminPassword: string;
-    businessEmail: string;
   }): Promise<{ sent: boolean; recipients: string[]; error: string | null }> {
-    const recipients = [...new Set([payload.adminEmail, payload.businessEmail].filter(Boolean))];
+    const recipients = payload.loginEmail ? [payload.loginEmail] : [];
     if (!recipients.length) {
       return { sent: false, recipients: [], error: 'No recipient email provided' };
     }
@@ -274,7 +296,7 @@ export class TenantsService {
           tenantSubdomain: payload.subdomain,
           customDomain: payload.customDomain,
           recipientEmail,
-          loginEmail: payload.adminEmail,
+          loginEmail: payload.loginEmail,
           adminPassword: payload.adminPassword,
         });
       }
@@ -632,11 +654,13 @@ export class TenantsService {
     options?: {
       stripeCustomerId?: string;
       stripeSubscriptionId?: string;
+      adminPassword?: string;
     },
   ): Promise<ITenantResponse> {
     const tenantName = dto.name?.trim();
     if (!tenantName) throw new BadRequestException('Tenant name is required');
-    if (!dto.admin) throw new BadRequestException('Admin user details are required');
+    const businessEmail = dto.email.trim().toLowerCase();
+    const adminPassword = options?.adminPassword || this.generateAdminPassword();
 
     let dbName = '';
     let tenantRecord: Tenant | null = null;
@@ -651,10 +675,10 @@ export class TenantsService {
         dbName,
         subdomain,
         customDomain: null,
-        email: dto.email.trim().toLowerCase(),
+        email: businessEmail,
         phoneCountryCode: dto.phoneCountryCode?.trim() || null,
         phoneNumber: dto.phoneNumber?.trim() || null,
-        industry: dto.industry?.trim() || null,
+        industry: null,
         description: dto.description?.trim() || null,
         countryId: dto.countryId || null,
         stateId: dto.stateId || null,
@@ -672,9 +696,9 @@ export class TenantsService {
       await tenantConnection.synchronize();
 
       const adminSetup = await this.bootstrapAdmin(tenantConnection, {
-        name: dto.admin.name.trim(),
-        email: dto.admin.email.trim().toLowerCase(),
-        password: dto.admin.password,
+        name: tenantName,
+        email: businessEmail,
+        password: adminPassword,
       });
       await this.bootstrapTenantFormBuilder(tenantConnection, adminSetup.user.id);
 
@@ -705,9 +729,8 @@ export class TenantsService {
         tenantName,
         subdomain,
         customDomain: saved?.customDomain || null,
-        adminEmail: dto.admin.email.trim().toLowerCase(),
-        adminPassword: dto.admin.password,
-        businessEmail: dto.email.trim().toLowerCase(),
+        loginEmail: businessEmail,
+        adminPassword,
       });
 
       return this.buildResponse(saved || tenantRecord, adminSetup, subscription.data, email);
@@ -1081,8 +1104,6 @@ export class TenantsService {
       throw new InternalServerErrorException('Admin setup missing.');
     }
 
-    const { user, role } = adminSetup;
-
     return {
       success: true,
       message: `Tenant "${tenant.name}" created successfully`,
@@ -1106,19 +1127,8 @@ export class TenantsService {
           recipients: email?.recipients ?? [],
           error: email?.error ?? null,
         },
-        admin: {
-          name: user.name || '',
-          email: user.email || '',
-          password: adminSetup.plainPassword,
-          role: {
-            id: role.id,
-            name: role.name,
-            permissions: role.permissions.map((p) => ({
-              id: p.id,
-              name: p.name,
-            })),
-          },
-        },
+        password: adminSetup.plainPassword,
+        loginUrl: this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain),
       },
     };
   }
