@@ -165,7 +165,7 @@ export class TenantsService {
     }
 
     const tenantAppUrl = this.getTenantAppUrl(payload.tenantSubdomain, payload.customDomain);
-    const loginUrl = `${tenantAppUrl}/`;
+    const loginUrl = `${tenantAppUrl}/login`;
     const remoteLogoUrl = this.getLogoUrl(tenantAppUrl);
     const logoAttachment = await this.loadLogoAttachment(remoteLogoUrl);
     const logoSrc = logoAttachment ? 'cid:eusocial-logo' : remoteLogoUrl;

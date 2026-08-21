@@ -170,6 +170,7 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.department).toBe('Operations');
     expect(result.data.nickname).toBe('JD');
     expect(result.data.fld_test_name).toBe('John Doe');
+    expect(result.credentialsEmail).toEqual({ sent: false, error: expect.any(String) });
     expect((mailServiceMock.sendTemplateMail as any)).not.toHaveBeenCalled();
   });
 
@@ -509,6 +510,68 @@ describe('UsersService dynamic fields', () => {
     );
     expect(result.success).toBe(true);
     expect(result.data.fld_test_email).toBe('john@kingdomvision.com');
+  });
+
+  it('sends employee account-ready credentials email when a user is created', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+    const roleRepo = { findOne: jest.fn().mockResolvedValue({ id: 1, name: 'Staff' }) };
+    const userRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 101,
+          name: 'John Doe',
+          email: 'john@kingdomvision.com',
+          role: { id: 1, name: 'Staff' },
+          isSystem: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      create: jest.fn().mockReturnValue({}),
+      save: jest.fn().mockImplementation(async (entity) => ({ id: 101, ...entity })),
+    };
+    const dynamicRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+    const req = buildReq(
+      new Map<any, any>([
+        [User, userRepo],
+        [Role, roleRepo],
+        [DynamicModule, moduleRepo],
+        [Form, formRepo],
+        [FormVersion, versionRepo],
+        [EntityDynamicData, dynamicRepo],
+      ]),
+    );
+
+    const sendSpy = jest
+      .spyOn(service as any, 'sendEmployeeAccountReadyEmail')
+      .mockResolvedValue(undefined);
+
+    const result = await service.create(req, {
+      name: 'John Doe',
+      email: 'john@kingdomvision.com',
+      password: 'Secret123!',
+      password_confirm: 'Secret123!',
+      role_id: 1,
+    });
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientEmail: 'john@kingdomvision.com',
+        loginEmail: 'john@kingdomvision.com',
+        password: 'Secret123!',
+        tenantSlug: 'kingdomvision',
+        roleName: 'Staff',
+      }),
+    );
+    expect(result.credentialsEmail).toEqual({ sent: true, error: null });
+    sendSpy.mockRestore();
   });
 
   it('update merges new dynamic fields with existing dynamic data', async () => {

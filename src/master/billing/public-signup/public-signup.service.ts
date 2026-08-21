@@ -124,12 +124,22 @@ export class PublicSignupService {
         });
     if (!signup) throw new NotFoundException('Signup session not found');
 
+    const payload = (signup.payload || {}) as {
+      admin?: { name?: string; email?: string };
+    };
+    const adminName = String(payload.admin?.name || '').trim() || null;
+    const adminEmail = String(payload.admin?.email || '').trim().toLowerCase() || null;
+
     return {
       success: true,
       data: {
         signupId: signup.id,
         status: signup.status,
         email: signup.email,
+        admin: {
+          name: adminName,
+          email: adminEmail,
+        },
         tenantId: signup.tenantId,
         paid: [WebsiteSignupStatus.PAID, WebsiteSignupStatus.PROVISIONED].includes(signup.status),
         provisioned: signup.status === WebsiteSignupStatus.PROVISIONED,

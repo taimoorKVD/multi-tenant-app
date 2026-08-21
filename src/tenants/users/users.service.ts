@@ -3,9 +3,11 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, In, Not, Repository } from 'typeorm';
+import * as nodemailer from 'nodemailer';
 import { TenantAbstractService } from '../../common/abstract';
 import { Role } from '../role/entities';
 import { SendUserCredentialsDto } from './dto';
@@ -16,6 +18,8 @@ import { JobPosition } from '../job-positions/entities';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
@@ -59,8 +63,192 @@ export class UsersService extends TenantAbstractService<User> {
     return 'http://localhost:4200';
   }
 
-  private getTenantLoginUrl(): string {
-    return `${this.getFrontendBaseUrl()}/tenant/login`;
+  private getPlatformHost(): string {
+    const explicit = this.getEnvValue('PLATFORM_DOMAIN');
+    if (explicit) return explicit.replace(/^\./, '').replace(/\/+$/, '');
+
+    try {
+      return new URL(this.getFrontendBaseUrl()).hostname.replace(/^(www|admin)\./, '');
+    } catch {
+      return 'eusocial.thebetawebsite.com';
+    }
+  }
+
+  private getTenantAppUrl(subdomain: string, customDomain?: string | null): string {
+    if (customDomain?.trim()) {
+      const host = customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      const protocol = host.includes('localhost') ? 'http' : 'https';
+      return `${protocol}://${host}`;
+    }
+
+    let protocol = 'https';
+    let port = '';
+    try {
+      const frontend = new URL(this.getFrontendBaseUrl());
+      protocol = frontend.protocol.replace(':', '') || 'https';
+      port = frontend.port ? `:${frontend.port}` : '';
+    } catch {
+      protocol = 'https';
+    }
+
+    return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
+  }
+
+  private getTenantLoginUrl(tenantSlug?: string | null, customDomain?: string | null): string {
+    const slug = String(tenantSlug || '').trim();
+    if (slug) {
+      return `${this.getTenantAppUrl(slug, customDomain)}/login`;
+    }
+    return `${this.getFrontendBaseUrl()}/login`;
+  }
+
+  private getEnvValue(...keys: string[]): string | null {
+    for (const key of keys) {
+      const value = process.env[key]?.trim();
+      if (value) return value;
+    }
+    return null;
+  }
+
+  private resolveSmtpConfig() {
+    const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
+    const smtpUsername = this.getEnvValue('SMTP_USER', 'MAIL_USER');
+    const fromEmail =
+      explicitFrom || (smtpUsername && smtpUsername.includes('@') ? smtpUsername : null);
+    return {
+      host: this.getEnvValue('SMTP_HOST', 'MAIL_HOST'),
+      port: Number(this.getEnvValue('SMTP_PORT', 'MAIL_PORT') || 587),
+      secure: String(this.getEnvValue('SMTP_SECURE') || '').toLowerCase() === 'true',
+      username: smtpUsername,
+      password: this.getEnvValue('SMTP_PASS', 'MAIL_PASS'),
+      fromEmail,
+      fromName: this.getEnvValue('SMTP_FROM_NAME') || 'EuSocial',
+      replyTo: this.getEnvValue('SMTP_REPLY_TO'),
+    };
+  }
+
+  private async loadLogoAttachment(logoUrl: string): Promise<{
+    filename: string;
+    content: Buffer;
+    contentType: string;
+  } | null> {
+    try {
+      const response = await fetch(logoUrl, { signal: AbortSignal.timeout(4000) });
+      if (!response.ok) return null;
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.startsWith('image/')) return null;
+      const content = Buffer.from(await response.arrayBuffer());
+      if (!content.length) return null;
+      const filename = logoUrl.split('/').pop()?.split('?')[0] || 'eusocial-logo.png';
+      return { filename, content, contentType };
+    } catch {
+      return null;
+    }
+  }
+
+  private async sendEmployeeAccountReadyEmail(payload: {
+    recipientEmail: string;
+    employeeName?: string | null;
+    loginEmail: string;
+    password: string;
+    tenantSlug?: string | null;
+    customDomain?: string | null;
+    roleName?: string | null;
+  }): Promise<void> {
+    const smtp = this.resolveSmtpConfig();
+    if (!smtp.host || !smtp.fromEmail) {
+      throw new BadRequestException(
+        'SMTP is not configured with a verified sender. Set SMTP_HOST/SMTP_USER/SMTP_PASS and a verified SMTP_FROM.',
+      );
+    }
+
+    const loginUrl = this.getTenantLoginUrl(payload.tenantSlug, payload.customDomain);
+    const remoteLogoUrl =
+      this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL') || `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
+    const logoAttachment = await this.loadLogoAttachment(remoteLogoUrl);
+    const logoSrc = logoAttachment ? 'cid:eusocial-logo' : remoteLogoUrl;
+    const displayName = payload.employeeName?.trim() || 'there';
+    const roleLine = payload.roleName
+      ? `<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">Role: <strong>${payload.roleName}</strong></p>`
+      : '';
+
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: smtp.username ? { user: smtp.username, pass: smtp.password || undefined } : undefined,
+    });
+
+    const subject = `Your EuSocial account is ready`;
+    const html = `
+      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
+          <tr>
+            <td align="center">
+              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
+                <tr>
+                  <td style="padding:24px 28px;background:#101820;">
+                    <img src="${logoSrc}" alt="EuSocial" width="160" height="50" style="height:50px;width:auto;display:block;border:0;outline:none;text-decoration:none;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:30px 28px 22px;color:#1f2d3d;">
+                    <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Your Account Is Ready</h2>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
+                      Hi ${displayName}, an employee account has been created for you. Use the credentials below to log in.
+                    </p>
+                    ${roleLine}
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
+                      <tr style="border-bottom:1px solid #e8edf3;">
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Email</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.loginEmail}</td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8edf3;">
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Password</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;font-family:monospace;background:#fafbfc;">${payload.password}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
+                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>
+                      </tr>
+                    </table>
+                    <div style="background:#fef3cd;border-left:4px solid #ffc107;padding:12px 14px;border-radius:4px;margin:16px 0;">
+                      <p style="margin:0;font-size:13px;color:#856404;"><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
+                    </div>
+                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
+                      © ${new Date().getFullYear()} EuSocial. All rights reserved.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
+        to: payload.recipientEmail,
+        replyTo: smtp.replyTo || undefined,
+        subject,
+        html,
+        attachments: logoAttachment
+          ? [
+              {
+                filename: logoAttachment.filename,
+                content: logoAttachment.content,
+                cid: 'eusocial-logo',
+                contentType: logoAttachment.contentType,
+              },
+            ]
+          : undefined,
+      });
+      this.logger.log(`Employee credentials email sent to ${payload.recipientEmail}`);
+    } finally {
+      transporter.close();
+    }
   }
 
   private getActorId(req: any): number | null {
@@ -387,61 +575,33 @@ export class UsersService extends TenantAbstractService<User> {
 
       const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, saved.id, context);
 
-      /*
-      const mailPayload = {
-        module: 'users',
-        action: 'create',
-        tenantId: req?.tenantId || null,
-        to: payload?.email || undefined,
-        data: {
-          user_id: payload?.id,
-          name: payload?.name,
-          first_name: payload?.name?.split(' ')?.[0] || payload?.name,
-          full_name: payload?.name,
-          email: payload?.email,
-          username: payload?.username,
-          password: staticPayload.password,
-          user_password: staticPayload.password,
-          tenant_slug: req?.tenantId || null,
-          tenant_login_url: this.getTenantLoginUrl(),
-          logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
-          role_name: payload?.role?.name || null,
-
-        },
-      };
-
-      const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
-      let emailNotification: any;
-      if (isDevelopment) {
+      const plaintextPassword = staticPayload.password || staticPayload.plain_password || null;
+      const recipientEmail = payload?.email || staticPayload.email || null;
+      let credentialsEmail: { sent: boolean; error: string | null } = { sent: false, error: null };
+      if (recipientEmail && plaintextPassword) {
         try {
-          const mailResult = await this.mailService.sendTemplateMail(req, mailPayload);
-          emailNotification = {
-            attempted: true,
-            success: true,
-            status: mailResult.status,
-            logId: mailResult.logId,
-            idempotencyKey: mailResult.idempotencyKey,
-          };
+          await this.sendEmployeeAccountReadyEmail({
+            recipientEmail,
+            employeeName: payload?.name || staticPayload.name,
+            loginEmail: recipientEmail,
+            password: plaintextPassword,
+            tenantSlug: req?.tenantId || null,
+            customDomain: req?.tenant?.customDomain || req?.customDomain || null,
+            roleName: payload?.role?.name || null,
+          });
+          credentialsEmail = { sent: true, error: null };
         } catch (mailError) {
           const mailErrorMessage = mailError instanceof Error ? mailError.message : 'Unknown email dispatch error';
-          console.error('Tenant user email trigger failed:', mailErrorMessage);
-          emailNotification = {
-            attempted: true,
-            success: false,
-            error: mailErrorMessage,
-          };
+          this.logger.warn(`Tenant user created but credentials email was not sent: ${mailErrorMessage}`);
+          credentialsEmail = { sent: false, error: mailErrorMessage };
         }
-      } else {
-        void this.mailService.sendTemplateMail(req, mailPayload).catch((mailError) => {
-          console.error('Tenant user email trigger failed:', mailError);
-        });
       }
-      */
 
       return {
         success: true,
         message: 'Tenant user created successfully',
         tenant: req.tenantConnection.options.database,
+        credentialsEmail,
         data: this.buildUserResponse(payload as User, dynamicData, context),
       };
     } catch (error) {
@@ -693,40 +853,30 @@ export class UsersService extends TenantAbstractService<User> {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      const recipientEmail = dto.recipient_email || user.email || undefined;
-      const payload = {
-        module: 'users',
-        action: 'credentials',
-        tenantId: req?.tenantId || null,
-        to: recipientEmail,
-        data: {
-          name: user.name,
-          email: user.email,
-          password: dto.password || user.plainPassword || user.password,
-          tenant_login_url: this.getTenantLoginUrl(),
-          logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
-        },
-      };
-
-      const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';
-      if (isDevelopment) {
-        const result = await this.mailService.sendTemplateMail(req, payload);
-        return {
-          success: true,
-          message: 'Credentials email sent successfully',
-          data: result,
-        };
+      const recipientEmail = dto.recipient_email || user.email;
+      const password = dto.password || user.plainPassword;
+      if (!recipientEmail) {
+        throw new BadRequestException('A recipient email is required to send credentials.');
+      }
+      if (!password) {
+        throw new BadRequestException('A password is required to send credentials.');
       }
 
-      void this.mailService.sendTemplateMail(req, payload).catch((error) => {
-        console.error('Failed to send credentials email:', error);
+      await this.sendEmployeeAccountReadyEmail({
+        recipientEmail,
+        employeeName: user.name,
+        loginEmail: user.email || recipientEmail,
+        password,
+        tenantSlug: req?.tenantId || null,
+        customDomain: req?.tenant?.customDomain || req?.customDomain || null,
       });
 
       return {
         success: true,
-        message: 'Credentials email queued successfully',
+        message: 'Credentials email sent successfully',
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to send credentials email');
     }
   }

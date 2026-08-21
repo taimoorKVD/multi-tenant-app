@@ -114,6 +114,9 @@ describe('PublicSignupService', () => {
       email: 'hello@acme.com',
       tenantId: null,
       errorMessage: null,
+      payload: {
+        admin: { name: 'Jane Doe', email: 'jane@acme.com' },
+      },
     });
 
     const result = await service.getStatus('cs_test_a1b2c3');
@@ -123,6 +126,8 @@ describe('PublicSignupService', () => {
     });
     expect(result.data.status).toBe('pending');
     expect(result.data.provisioned).toBe(false);
+    expect(result.data.email).toBe('hello@acme.com');
+    expect(result.data.admin).toEqual({ name: 'Jane Doe', email: 'jane@acme.com' });
   });
 
   it('marks expired and failed checkout sessions', async () => {

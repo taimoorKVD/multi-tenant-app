@@ -104,7 +104,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Create tenant user',
         description:
-          'Creates a new user in the current tenant database using the active form-builder schema. Custom fields are allowed and stored dynamically.',
+          'Creates a new user in the current tenant database using the active form-builder schema. Custom fields are allowed and stored dynamically. A login credentials email (same layout as Tenant account ready) is sent to the user email when a password is provided.',
       }),
       ApiBody({
         schema: {
@@ -355,7 +355,7 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Send tenant user credentials',
         description:
-          'Sends login credentials (email + provided password) to the specified recipient email. The user password in the database is NOT changed.',
+          'Sends login credentials (email + password) using the same Tenant account ready email layout. The user password in the database is NOT changed.',
       }),
       ApiParam({
         name: 'id',
