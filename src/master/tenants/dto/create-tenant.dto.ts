@@ -24,7 +24,7 @@ export class CreateTenantDto {
 
   @ApiProperty({
     example: 'acme.com',
-    description: 'Tenant domain. Used as subdomain, e.g. acme.eusocial.com',
+    description: 'Organization website domain (informational). The tenant login URL uses the tenant name as the subdomain, e.g. hostinger.eusocial.thebetawebsite.com',
   })
   @IsString()
   @IsNotEmpty()
