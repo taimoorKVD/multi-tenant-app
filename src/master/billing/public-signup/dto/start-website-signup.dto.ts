@@ -1,9 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  Allow,
   IsEmail,
   IsEnum,
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -11,11 +11,8 @@ import {
   MaxLength,
   Min,
   MinLength,
-  ValidateNested,
 } from 'class-validator';
 import { BillingCycle } from '../../entities';
-import { TENANT_INDUSTRIES } from '../../../tenants/tenant-industries';
-import { CreateTenantAdminDto } from '../../../tenants/dto/create-tenant-admin.dto';
 
 export class StartWebsiteSignupDto {
   @ApiProperty({ example: 'Acme Corporation' })
@@ -34,7 +31,10 @@ export class StartWebsiteSignupDto {
   @MaxLength(255)
   domain!: string;
 
-  @ApiProperty({ example: 'hello@acme.com' })
+  @ApiProperty({
+    example: 'hello@acme.com',
+    description: 'Business email. Used as the tenant admin login email.',
+  })
   @IsEmail()
   @IsNotEmpty()
   email!: string;
@@ -50,12 +50,6 @@ export class StartWebsiteSignupDto {
   @IsString()
   @MaxLength(30)
   phoneNumber?: string;
-
-  @ApiPropertyOptional({ example: 'Restaurant', enum: TENANT_INDUSTRIES })
-  @IsOptional()
-  @IsString()
-  @IsIn([...TENANT_INDUSTRIES])
-  industry?: string;
 
   @ApiPropertyOptional({ example: 'Multi-location restaurant group', maxLength: 500 })
   @IsOptional()
@@ -113,11 +107,6 @@ export class StartWebsiteSignupDto {
   @Min(0)
   trialDays?: number;
 
-  @ApiProperty({ type: CreateTenantAdminDto })
-  @ValidateNested()
-  @Type(() => CreateTenantAdminDto)
-  admin!: CreateTenantAdminDto;
-
   @ApiPropertyOptional({
     example: 'https://yoursite.com/signup/success?session_id={CHECKOUT_SESSION_ID}',
     description: 'Website URL Stripe redirects to after payment.',
@@ -135,4 +124,12 @@ export class StartWebsiteSignupDto {
   @IsString()
   @MaxLength(500)
   cancelUrl?: string;
+
+  @ApiHideProperty()
+  @Allow()
+  admin?: unknown;
+
+  @ApiHideProperty()
+  @Allow()
+  industry?: unknown;
 }

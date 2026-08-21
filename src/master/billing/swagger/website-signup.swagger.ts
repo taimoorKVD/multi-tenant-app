@@ -1,6 +1,5 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { StartWebsiteSignupDto } from '../public-signup/dto/start-website-signup.dto';
 
 const publicPlanExample = {
   id: 2,
@@ -33,7 +32,6 @@ const checkoutBodyExample = {
   email: 'hello@acme.com',
   phoneCountryCode: '+1',
   phoneNumber: '2025550147',
-  industry: 'Restaurant',
   description: 'Multi-location restaurant group',
   countryId: 1,
   stateId: 5,
@@ -43,12 +41,6 @@ const checkoutBodyExample = {
   planId: 2,
   billingCycle: 'monthly',
   trialDays: 14,
-  admin: {
-    name: 'Jane Doe',
-    email: 'jane@acme.com',
-    password: 'Admin@123',
-    confirmPassword: 'Admin@123',
-  },
   successUrl: 'https://yoursite.com/signup/success?session_id={CHECKOUT_SESSION_ID}',
   cancelUrl: 'https://yoursite.com/signup/cancel',
 };
@@ -79,9 +71,42 @@ export const WebsiteSignupSwagger = {
       ApiOperation({
         summary: 'Start Stripe Checkout for a new tenant',
         description:
-          'Public endpoint (no login). Collects tenant details, creates a Stripe Checkout session, and returns the payment URL. After payment, the tenant is created and a Tenant account ready email is sent.',
+          'Public endpoint (no login). Collects tenant details, creates a Stripe Checkout session, and returns the payment URL. After payment, the tenant is created. The first admin logs in with the business email and an auto-generated password (sent by email).',
       }),
-      ApiBody({ type: StartWebsiteSignupDto, examples: { default: { value: checkoutBodyExample } } }),
+      ApiBody({
+        description:
+          'Tenant organization details. Login uses business email; password is generated after payment.',
+        schema: {
+          type: 'object',
+          required: ['name', 'domain', 'email', 'planId'],
+          properties: {
+            name: { type: 'string', example: 'Acme Corporation' },
+            domain: { type: 'string', example: 'acme.com' },
+            email: {
+              type: 'string',
+              example: 'hello@acme.com',
+              description: 'Business email used as the tenant admin login.',
+            },
+            phoneCountryCode: { type: 'string', example: '+1' },
+            phoneNumber: { type: 'string', example: '2025550147' },
+            description: { type: 'string', example: 'Multi-location restaurant group' },
+            countryId: { type: 'number', example: 1 },
+            stateId: { type: 'number', example: 5 },
+            city: { type: 'string', example: 'Austin' },
+            address: { type: 'string', example: '123 Main Street' },
+            postalCode: { type: 'string', example: '78701' },
+            planId: { type: 'number', example: 2 },
+            billingCycle: { type: 'string', example: 'monthly' },
+            trialDays: { type: 'number', example: 14 },
+            successUrl: {
+              type: 'string',
+              example: 'https://yoursite.com/signup/success?session_id={CHECKOUT_SESSION_ID}',
+            },
+            cancelUrl: { type: 'string', example: 'https://yoursite.com/signup/cancel' },
+          },
+        },
+        examples: { default: { value: checkoutBodyExample } },
+      }),
       ApiResponse({
         status: 201,
         description: 'Stripe Checkout session created.',
@@ -116,7 +141,7 @@ export const WebsiteSignupSwagger = {
       ApiOperation({
         summary: 'Get website signup payment status',
         description:
-          'Public endpoint (no login). Call this on the website success page with the Stripe session_id query param.',
+          'Public endpoint (no login). Poll this on the website success page with Stripe session_id. When provisioned, password and loginUrl are returned so the user can be signed in automatically.',
       }),
       ApiQuery({
         name: 'session_id',
@@ -134,10 +159,8 @@ export const WebsiteSignupSwagger = {
               signupId: '8f3c1e2a-4b9d-4c11-9e77-2c1a0b8d4f21',
               status: 'provisioned',
               email: 'hello@acme.com',
-              admin: {
-                name: 'Jane Doe',
-                email: 'jane@acme.com',
-              },
+              password: 'K7m$pQ2nLx9w',
+              loginUrl: 'https://acme.eusocial.com/login',
               tenantId: 12,
               paid: true,
               provisioned: true,

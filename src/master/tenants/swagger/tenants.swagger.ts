@@ -1,6 +1,6 @@
 import {applyDecorators} from '@nestjs/common';
 import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse,} from '@nestjs/swagger';
-import {CreateTenantDto, SendTenantCredentialsDto} from '../dto';
+import {SendTenantCredentialsDto} from '../dto';
 
 const tenantExample = {
     id: 12,
@@ -136,40 +136,36 @@ export const TenantSwagger = {
             ApiOperation({
                 summary: 'Create a new tenant',
                 description:
-                    'Creates a tenant from the Super Admin Create Tenant form: organization details, address, plan/trial, and the first admin user. Provisions the tenant database and subscription.',
+                    'Creates a tenant from the Super Admin Create Tenant form: organization details, address, and plan/trial. The first admin logs in with the business email and an auto-generated password (sent by email). Provisions the tenant database and subscription.',
             }),
             ApiBody({
-                description: 'Payload matching the Create Tenant screen.',
-                type: CreateTenantDto,
-                examples: {
-                    create_tenant_form: {
-                        summary: 'Create Tenant form',
-                        value: {
-                            name: 'Acme Corporation',
-                            domain: 'acme.com',
-                            email: 'hello@acme.com',
-                            phoneCountryCode: '+1',
-                            phoneNumber: '2025550147',
-                            industry: 'Restaurant',
-                            description: 'Multi-location restaurant group',
-                            countryId: 1,
-                            stateId: 5,
-                            city: 'Austin',
-                            address: '123 Main Street',
-                            postalCode: '78701',
-                            planId: 2,
-                            billingCycle: 'monthly',
-                            trialDays: 14,
-                            admin: {
-                                name: 'Jane Doe',
-                                email: 'jane@acme.com',
-                                password: 'Admin@123',
-                                confirmPassword: 'Admin@123',
-                            },
+                description:
+                    'Payload matching the Create Tenant screen. Login uses business email; password is auto-generated.',
+                schema: {
+                    type: 'object',
+                    required: ['name', 'domain', 'email', 'planId'],
+                    properties: {
+                        name: { type: 'string', example: 'Acme Corporation' },
+                        domain: { type: 'string', example: 'acme.com' },
+                        email: {
+                            type: 'string',
+                            example: 'hello@acme.com',
+                            description: 'Business email used as the tenant admin login.',
                         },
+                        phoneCountryCode: { type: 'string', example: '+1' },
+                        phoneNumber: { type: 'string', example: '2025550147' },
+                        description: { type: 'string', example: 'Multi-location restaurant group' },
+                        countryId: { type: 'number', example: 1 },
+                        stateId: { type: 'number', example: 5 },
+                        city: { type: 'string', example: 'Austin' },
+                        address: { type: 'string', example: '123 Main Street' },
+                        postalCode: { type: 'string', example: '78701' },
+                        planId: { type: 'number', example: 2 },
+                        billingCycle: { type: 'string', example: 'monthly' },
+                        trialDays: { type: 'number', example: 14 },
                     },
                 },
-            } as any),
+            }),
             ApiResponse({
                 status: 201,
                 description: 'Tenant created successfully.',
@@ -180,16 +176,8 @@ export const TenantSwagger = {
                         data: {
                             ...tenantExample,
                             database: 'tenant_acme',
-                            admin: {
-                                name: 'Jane Doe',
-                                email: 'jane@acme.com',
-                                password: 'Admin@123',
-                                role: {
-                                    id: 1,
-                                    name: 'Admin',
-                                    permissions: [{ id: 1, name: 'create-user' }],
-                                },
-                            },
+                            password: 'K7m$pQ2nLx9w',
+                            loginUrl: 'https://acme.eusocial.com/login',
                         },
                     },
                 },
