@@ -134,6 +134,10 @@ export const WebsiteSignupSwagger = {
               signupId: '8f3c1e2a-4b9d-4c11-9e77-2c1a0b8d4f21',
               status: 'provisioned',
               email: 'hello@acme.com',
+              admin: {
+                name: 'Jane Doe',
+                email: 'jane@acme.com',
+              },
               tenantId: 12,
               paid: true,
               provisioned: true,
