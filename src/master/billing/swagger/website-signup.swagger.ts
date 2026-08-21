@@ -141,7 +141,7 @@ export const WebsiteSignupSwagger = {
       ApiOperation({
         summary: 'Get website signup payment status',
         description:
-          'Public endpoint (no login). Poll this on the website success page with Stripe session_id. When provisioned, password and loginUrl are returned so the user can be signed in automatically.',
+          'Public endpoint (no login). Poll this on the website success page with Stripe session_id. When provisioned, returns email, password, loginApiUrl (POST credentials here), and loginUrl (GET portal after auth).',
       }),
       ApiQuery({
         name: 'session_id',
@@ -161,6 +161,8 @@ export const WebsiteSignupSwagger = {
               email: 'hello@acme.com',
               password: 'K7m$pQ2nLx9w',
               loginUrl: 'https://acme.eusocial.com/login',
+              loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
+              tenantSlug: 'acme',
               tenantId: 12,
               paid: true,
               provisioned: true,

@@ -64,6 +64,24 @@ export class TenantsService {
     return 'http://localhost:4200';
   }
 
+  private getApiBaseUrl(): string {
+    const apiUrl = this.getEnvValue(
+      'API_BASE_URL',
+      'PUBLIC_API_URL',
+      'BACKEND_URL',
+      'APP_URL',
+    );
+    if (apiUrl) {
+      return apiUrl.replace(/\/+$/, '');
+    }
+
+    const port = this.getEnvValue('PORT') || '3000';
+    this.logger.warn(
+      `API_BASE_URL is not configured. Falling back to http://localhost:${port} for login API links.`,
+    );
+    return `http://localhost:${port}`;
+  }
+
   private getPlatformHost(): string {
     const explicit = this.getEnvValue('PLATFORM_DOMAIN');
     if (explicit) return explicit.replace(/^\./, '').replace(/\/+$/, '');
@@ -99,10 +117,29 @@ export class TenantsService {
     return `${this.getTenantAppUrl(subdomain, customDomain)}/login`;
   }
 
+  getTenantLoginApiUrl(subdomain: string): string {
+    const slug = String(subdomain || '').trim().toLowerCase();
+    return `${this.getApiBaseUrl()}/api/tenant/${encodeURIComponent(slug)}/login`;
+  }
+
   async getLoginUrlForTenant(id: number): Promise<string | null> {
     const tenant = await this.tenantRepo.findOneBy({ id });
     if (!tenant) return null;
     return this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain);
+  }
+
+  async getLoginApiUrlForTenant(id: number): Promise<{
+    loginUrl: string;
+    loginApiUrl: string;
+    tenantSlug: string;
+  } | null> {
+    const tenant = await this.tenantRepo.findOneBy({ id });
+    if (!tenant?.subdomain) return null;
+    return {
+      loginUrl: this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain),
+      loginApiUrl: this.getTenantLoginApiUrl(tenant.subdomain),
+      tenantSlug: tenant.subdomain,
+    };
   }
 
   private getLogoUrl(tenantAppUrl: string): string {
@@ -1124,6 +1161,8 @@ export class TenantsService {
         },
         password: adminSetup.plainPassword,
         loginUrl: this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain),
+        loginApiUrl: this.getTenantLoginApiUrl(tenant.subdomain),
+        tenantSlug: tenant.subdomain,
       },
     };
   }

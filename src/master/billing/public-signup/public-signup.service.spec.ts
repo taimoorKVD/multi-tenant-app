@@ -26,7 +26,13 @@ describe('PublicSignupService', () => {
   const tenantsService = {
     assertTenantAvailable: jest.fn().mockResolvedValue('acme'),
     getTenantLoginUrl: jest.fn().mockReturnValue('https://acme.eusocial.com/login'),
+    getTenantLoginApiUrl: jest.fn().mockReturnValue('https://api.eusocial.com/api/tenant/acme/login'),
     getLoginUrlForTenant: jest.fn().mockResolvedValue('https://acme.eusocial.com/login'),
+    getLoginApiUrlForTenant: jest.fn().mockResolvedValue({
+      loginUrl: 'https://acme.eusocial.com/login',
+      loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
+      tenantSlug: 'acme',
+    }),
     create: jest.fn().mockResolvedValue({
       data: { id: 42, credentialsEmail: { error: null } },
     }),
@@ -129,6 +135,8 @@ describe('PublicSignupService', () => {
     expect(result.data.email).toBe('hello@acme.com');
     expect(result.data.password).toBeNull();
     expect(result.data.loginUrl).toBeNull();
+    expect(result.data.loginApiUrl).toBeNull();
+    expect(result.data.tenantSlug).toBeNull();
   });
 
   it('returns password and loginUrl after the tenant is provisioned', async () => {
@@ -152,7 +160,9 @@ describe('PublicSignupService', () => {
     expect(result.data.email).toBe('hello@acme.com');
     expect(result.data.password).toBe('K7m$pQ2nLx9w');
     expect(result.data.loginUrl).toBe('https://acme.eusocial.com/login');
-    expect(tenantsService.getLoginUrlForTenant).toHaveBeenCalledWith(12);
+    expect(result.data.loginApiUrl).toBe('https://api.eusocial.com/api/tenant/acme/login');
+    expect(result.data.tenantSlug).toBe('acme');
+    expect(tenantsService.getLoginApiUrlForTenant).toHaveBeenCalledWith(12);
   });
 
   it('marks expired and failed checkout sessions', async () => {
