@@ -567,7 +567,6 @@ describe('UsersService dynamic fields', () => {
         loginEmail: 'john@kingdomvision.com',
         password: 'Secret123!',
         tenantSlug: 'kingdomvision',
-        roleName: 'Staff',
       }),
     );
     expect(result.credentialsEmail).toEqual({ sent: true, error: null });
