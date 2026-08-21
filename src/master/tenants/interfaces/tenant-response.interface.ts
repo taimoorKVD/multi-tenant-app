@@ -42,5 +42,7 @@ export interface ITenantResponse {
     };
     password: string;
     loginUrl: string;
+    loginApiUrl: string;
+    tenantSlug: string;
   };
 }

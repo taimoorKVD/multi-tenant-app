@@ -178,6 +178,8 @@ export const TenantSwagger = {
                             database: 'tenant_acme',
                             password: 'K7m$pQ2nLx9w',
                             loginUrl: 'https://acme.eusocial.com/login',
+                            loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
+                            tenantSlug: 'acme',
                         },
                     },
                 },

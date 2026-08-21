@@ -140,13 +140,24 @@ export class PublicSignupService {
       ? decryptMailSecret(signup.adminPasswordEncrypted) || null
       : null;
     let loginUrl: string | null = null;
+    let loginApiUrl: string | null = null;
+    let tenantSlug: string | null = null;
     if (provisioned) {
       if (signup.tenantId) {
-        loginUrl = await this.tenantsService.getLoginUrlForTenant(signup.tenantId);
+        const urls = await this.tenantsService.getLoginApiUrlForTenant(signup.tenantId);
+        if (urls) {
+          loginUrl = urls.loginUrl;
+          loginApiUrl = urls.loginApiUrl;
+          tenantSlug = urls.tenantSlug;
+        }
       }
-      if (!loginUrl) {
+      if (!loginUrl || !loginApiUrl) {
         const subdomain = toSubdomainSlug(String(payload.name || ''));
-        loginUrl = subdomain ? this.tenantsService.getTenantLoginUrl(subdomain) : null;
+        if (subdomain) {
+          tenantSlug = tenantSlug || subdomain;
+          loginUrl = loginUrl || this.tenantsService.getTenantLoginUrl(subdomain);
+          loginApiUrl = loginApiUrl || this.tenantsService.getTenantLoginApiUrl(subdomain);
+        }
       }
     }
 
@@ -158,6 +169,8 @@ export class PublicSignupService {
         email,
         password,
         loginUrl,
+        loginApiUrl,
+        tenantSlug,
         tenantId: signup.tenantId,
         paid: [WebsiteSignupStatus.PAID, WebsiteSignupStatus.PROVISIONED].includes(signup.status),
         provisioned,
