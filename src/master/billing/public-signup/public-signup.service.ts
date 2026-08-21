@@ -139,9 +139,16 @@ export class PublicSignupService {
     const password = provisioned
       ? decryptMailSecret(signup.adminPasswordEncrypted) || null
       : null;
-    const subdomain = this.domainToSubdomain(String(payload.domain || ''));
-    const loginUrl =
-      provisioned && subdomain ? this.tenantsService.getTenantLoginUrl(subdomain) : null;
+    let loginUrl: string | null = null;
+    if (provisioned) {
+      if (signup.tenantId) {
+        loginUrl = await this.tenantsService.getLoginUrlForTenant(signup.tenantId);
+      }
+      if (!loginUrl) {
+        const subdomain = toSubdomainSlug(String(payload.name || ''));
+        loginUrl = subdomain ? this.tenantsService.getTenantLoginUrl(subdomain) : null;
+      }
+    }
 
     return {
       success: true,
@@ -334,17 +341,6 @@ export class PublicSignupService {
       trialDays: payload.trialDays as number | undefined,
     };
     return dto as CreateTenantDto;
-  }
-
-  private domainToSubdomain(domain: string): string {
-    const host = String(domain || '')
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, '')
-      .split('/')[0]
-      .replace(/^www\./, '');
-    const firstLabel = host.split('.')[0] || host;
-    return firstLabel ? toSubdomainSlug(firstLabel) : '';
   }
 
   private asId(value: unknown): string | null {

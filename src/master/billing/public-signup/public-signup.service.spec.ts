@@ -26,6 +26,7 @@ describe('PublicSignupService', () => {
   const tenantsService = {
     assertTenantAvailable: jest.fn().mockResolvedValue('acme'),
     getTenantLoginUrl: jest.fn().mockReturnValue('https://acme.eusocial.com/login'),
+    getLoginUrlForTenant: jest.fn().mockResolvedValue('https://acme.eusocial.com/login'),
     create: jest.fn().mockResolvedValue({
       data: { id: 42, credentialsEmail: { error: null } },
     }),
@@ -151,7 +152,7 @@ describe('PublicSignupService', () => {
     expect(result.data.email).toBe('hello@acme.com');
     expect(result.data.password).toBe('K7m$pQ2nLx9w');
     expect(result.data.loginUrl).toBe('https://acme.eusocial.com/login');
-    expect(tenantsService.getTenantLoginUrl).toHaveBeenCalledWith('acme');
+    expect(tenantsService.getLoginUrlForTenant).toHaveBeenCalledWith(12);
   });
 
   it('marks expired and failed checkout sessions', async () => {

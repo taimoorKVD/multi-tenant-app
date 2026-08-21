@@ -24,7 +24,8 @@ export class StartWebsiteSignupDto {
 
   @ApiProperty({
     example: 'acme.com',
-    description: 'Tenant domain. Used as subdomain, e.g. acme.eusocial.com',
+    description:
+      'Organization website domain (informational). Login URL uses the tenant name as subdomain, e.g. hostinger.eusocial.thebetawebsite.com',
   })
   @IsString()
   @IsNotEmpty()

@@ -99,6 +99,12 @@ export class TenantsService {
     return `${this.getTenantAppUrl(subdomain, customDomain)}/login`;
   }
 
+  async getLoginUrlForTenant(id: number): Promise<string | null> {
+    const tenant = await this.tenantRepo.findOneBy({ id });
+    if (!tenant) return null;
+    return this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain);
+  }
+
   private getLogoUrl(tenantAppUrl: string): string {
     const configured = this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL');
     if (configured) return configured;
@@ -314,17 +320,6 @@ export class TenantsService {
       private dataSource: DataSource,
       private readonly billingService: BillingService,
   ) {}
-
-  private domainToSubdomain(domain: string): string {
-    const host = String(domain || '')
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, '')
-      .split('/')[0]
-      .replace(/^www\./, '');
-    const firstLabel = host.split('.')[0] || host;
-    return toSubdomainSlug(firstLabel);
-  }
 
   private phoneDisplay(tenant: Tenant): string | null {
     const code = tenant.phoneCountryCode?.trim();
@@ -752,10 +747,10 @@ export class TenantsService {
     }
   }
 
-  private async ensureUniqueTenant(name: string, domain: string): Promise<string> {
-    const subdomain = this.domainToSubdomain(domain);
+  private async ensureUniqueTenant(name: string, _domain: string): Promise<string> {
+    const subdomain = toSubdomainSlug(name);
     if (!subdomain) {
-      throw new BadRequestException('Domain is required');
+      throw new BadRequestException('Tenant name is required');
     }
 
     if (await this.tenantRepo.exists({ where: { name } })) {
@@ -763,7 +758,7 @@ export class TenantsService {
     }
 
     if (await this.tenantRepo.exists({ where: { subdomain } })) {
-      throw new ConflictException(`Domain "${domain}" is already in use`);
+      throw new ConflictException(`Tenant slug "${subdomain}" is already in use`);
     }
 
     return subdomain;
@@ -1239,13 +1234,10 @@ export class TenantsService {
           throw new ConflictException(`Tenant "${name}" already exists`);
         }
         tenant.name = name;
-      }
-
-      if (dto.domain !== undefined) {
-        const subdomain = this.domainToSubdomain(dto.domain);
-        const taken = await this.tenantRepo.exists({ where: { subdomain } });
-        if (taken && subdomain !== tenant.subdomain) {
-          throw new ConflictException(`Domain "${dto.domain}" is already in use`);
+        const subdomain = toSubdomainSlug(name);
+        const subdomainTaken = await this.tenantRepo.exists({ where: { subdomain } });
+        if (subdomainTaken && subdomain !== tenant.subdomain) {
+          throw new ConflictException(`Tenant slug "${subdomain}" is already in use`);
         }
         tenant.subdomain = subdomain;
       }
