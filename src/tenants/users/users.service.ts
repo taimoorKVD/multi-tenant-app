@@ -102,6 +102,12 @@ export class UsersService extends TenantAbstractService<User> {
     return `${this.getFrontendBaseUrl()}/login`;
   }
 
+  private getLogoUrl(tenantAppUrl: string): string {
+    const configured = this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL');
+    if (configured) return configured;
+    return `${tenantAppUrl}/assets/eusocial-logo.png`;
+  }
+
   private getEnvValue(...keys: string[]): string | null {
     for (const key of keys) {
       const value = process.env[key]?.trim();
@@ -153,7 +159,6 @@ export class UsersService extends TenantAbstractService<User> {
     password: string;
     tenantSlug?: string | null;
     customDomain?: string | null;
-    roleName?: string | null;
   }): Promise<void> {
     const smtp = this.resolveSmtpConfig();
     if (!smtp.host || !smtp.fromEmail) {
@@ -162,15 +167,14 @@ export class UsersService extends TenantAbstractService<User> {
       );
     }
 
+    const tenantAppUrl = payload.tenantSlug
+      ? this.getTenantAppUrl(payload.tenantSlug, payload.customDomain)
+      : this.getFrontendBaseUrl();
     const loginUrl = this.getTenantLoginUrl(payload.tenantSlug, payload.customDomain);
-    const remoteLogoUrl =
-      this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL') || `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
+    const remoteLogoUrl = this.getLogoUrl(tenantAppUrl);
     const logoAttachment = await this.loadLogoAttachment(remoteLogoUrl);
     const logoSrc = logoAttachment ? 'cid:eusocial-logo' : remoteLogoUrl;
     const displayName = payload.employeeName?.trim() || 'there';
-    const roleLine = payload.roleName
-      ? `<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">Role: <strong>${payload.roleName}</strong></p>`
-      : '';
 
     const transporter = nodemailer.createTransport({
       host: smtp.host,
@@ -197,7 +201,6 @@ export class UsersService extends TenantAbstractService<User> {
                     <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
                       Hi ${displayName}, an employee account has been created for you. Use the credentials below to log in.
                     </p>
-                    ${roleLine}
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
                       <tr style="border-bottom:1px solid #e8edf3;">
                         <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Email</strong></td>
@@ -587,7 +590,6 @@ export class UsersService extends TenantAbstractService<User> {
             password: plaintextPassword,
             tenantSlug: req?.tenantId || null,
             customDomain: req?.tenant?.customDomain || req?.customDomain || null,
-            roleName: payload?.role?.name || null,
           });
           credentialsEmail = { sent: true, error: null };
         } catch (mailError) {
