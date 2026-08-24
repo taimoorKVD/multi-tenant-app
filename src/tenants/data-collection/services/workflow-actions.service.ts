@@ -4,6 +4,11 @@ import * as nodemailer from 'nodemailer';
 import { User } from '../../users/entities';
 import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
 import { emailEscape, renderEmailLayout } from '../../../mail/utils/email-layout.util';
+import {
+  prepareEmailLogo,
+  toNodemailerLogoAttachments,
+  type PreparedEmailLogo,
+} from '../../../mail/utils/email-logo.util';
 
 export type DcMailRecipient = {
   id: number;
@@ -42,10 +47,6 @@ export class WorkflowActionsService {
     const configured = this.getEnvValue('FRONTEND_URL');
     if (configured) return configured.replace(/\/+$/, '');
     return 'http://localhost:4200';
-  }
-
-  private getLogoUrl(): string {
-    return `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
   }
 
   private getTenantLoginUrl(): string {
@@ -104,9 +105,15 @@ export class WorkflowActionsService {
     };
   }
 
-  private wrapHtml(title: string, intro: string, rows: Array<{ label: string; value: string }>, ctaLabel: string): string {
+  private wrapHtml(
+    title: string,
+    intro: string,
+    rows: Array<{ label: string; value: string }>,
+    ctaLabel: string,
+    logoSrc: string,
+  ): string {
     return renderEmailLayout({
-      logoUrl: this.getLogoUrl(),
+      logoUrl: logoSrc,
       title,
       preheader: title,
       introHtml: `<p style="margin:0;">${intro}</p>`,
@@ -123,6 +130,7 @@ export class WorkflowActionsService {
     to: string;
     subject: string;
     html: string;
+    logo?: PreparedEmailLogo;
   }): Promise<{ status: string; detail?: string }> {
     try {
       const smtp = this.resolveSmtpConfig();
@@ -134,6 +142,7 @@ export class WorkflowActionsService {
         };
       }
 
+      const preparedLogo = options.logo || (await prepareEmailLogo());
       const transporter = nodemailer.createTransport({
         host: smtp.host,
         port: smtp.port,
@@ -149,6 +158,7 @@ export class WorkflowActionsService {
         replyTo: smtp.replyTo || undefined,
         subject: options.subject,
         html: options.html,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
 
       this.logger.log(`DC email sent to ${options.to} messageId=${info.messageId}`);
@@ -198,10 +208,12 @@ export class WorkflowActionsService {
 
         let sent = 0;
         let failed = 0;
+        const preparedLogo = await prepareEmailLogo();
         for (const recipient of withEmail) {
           const result = await this.sendDirectSmtpMail({
             to: recipient.email!,
             subject: `New submission: ${templateName}`,
+            logo: preparedLogo,
             html: this.wrapHtml(
               'New Data Collection Submission',
               `Hi ${emailEscape(recipient.name || recipient.email || '')}, a form was submitted and you were listed as a report recipient.`,
@@ -216,6 +228,7 @@ export class WorkflowActionsService {
                 { label: 'Submission ID', value: String(context.submissionId) },
               ],
               'Open Workspace',
+              preparedLogo.logoSrc,
             ),
           });
           if (result.status === 'failed') failed += 1;
@@ -258,9 +271,11 @@ export class WorkflowActionsService {
       return { status: 'skipped', detail: 'Assignee has no email' };
     }
 
+    const preparedLogo = await prepareEmailLogo();
     return this.sendDirectSmtpMail({
       to: context.recipient.email,
       subject: `Reminder: ${context.templateName} is due ${this.formatDateTime(context.dueAt)}`,
+      logo: preparedLogo,
       html: this.wrapHtml(
         'Assignment Due Reminder',
         `Hi ${emailEscape(context.recipient.name || context.recipient.email || '')}, you have a data collection assignment that is due.`,
@@ -271,6 +286,7 @@ export class WorkflowActionsService {
           { label: 'Assignment ID', value: String(context.assignmentId) },
         ],
         'Complete Assignment',
+        preparedLogo.logoSrc,
       ),
     });
   }
@@ -307,6 +323,7 @@ export class WorkflowActionsService {
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    const preparedLogo = await prepareEmailLogo();
 
     for (const [userId, assignment] of byUser.entries()) {
       const recipient = recipientById.get(userId);
@@ -320,6 +337,7 @@ export class WorkflowActionsService {
       const result = await this.sendDirectSmtpMail({
         to: recipient.email,
         subject: `New assignment: ${templateName}`,
+        logo: preparedLogo,
         html: this.wrapHtml(
           'You Have a New Assignment',
           `Hi ${emailEscape(recipient.name || recipient.email || '')}, a data collection form was published and assigned to you.`,
@@ -330,6 +348,7 @@ export class WorkflowActionsService {
             { label: 'Assignment ID', value: String(assignment.id) },
           ],
           "Open Today's Work",
+          preparedLogo.logoSrc,
         ),
       });
 

@@ -2,13 +2,11 @@ import { ISeeder } from '../interfaces/seeder.interface';
 import { MasterDataSource } from '../datasource';
 import { BillingCycle, Plan, PlanStatus } from '../../master/billing/entities';
 import { ALL_PLAN_MODULE_KEYS, CORE_PLAN_MODULE_KEYS, PlanModuleKey } from '../../master/billing/plan-modules';
+import { resolveYearlyPriceCents } from '../../master/billing/plan-pricing';
 
-const PLAN_MODULES_WITHOUT_FORM_BUILDER: PlanModuleKey[] = ALL_PLAN_MODULE_KEYS.filter(
-  (key) => key !== 'form-builder',
-);
-
-function withoutFormBuilder(modules: string[]): PlanModuleKey[] {
-  return (modules as PlanModuleKey[]).filter((key) => key !== 'form-builder');
+function withFormBuilder(modules: string[]): PlanModuleKey[] {
+  const unique = new Set<PlanModuleKey>([...(modules as PlanModuleKey[]), 'form-builder']);
+  return ALL_PLAN_MODULE_KEYS.filter((key) => unique.has(key));
 }
 
 export class BillingPlansSeeder implements ISeeder {
@@ -23,6 +21,7 @@ export class BillingPlansSeeder implements ISeeder {
         slug: 'basic',
         description: 'For small teams getting started',
         priceCents: 25000,
+        yearlyPriceCents: 300000,
         usersLimit: 10,
         storageGb: 20,
         supportLevel: 'Email support',
@@ -35,6 +34,7 @@ export class BillingPlansSeeder implements ISeeder {
         slug: 'standard',
         description: 'For growing locations',
         priceCents: 50000,
+        yearlyPriceCents: 600000,
         usersLimit: 25,
         storageGb: 50,
         supportLevel: 'Chat support',
@@ -54,6 +54,7 @@ export class BillingPlansSeeder implements ISeeder {
         slug: 'professional',
         description: 'For multi-site operations',
         priceCents: 75000,
+        yearlyPriceCents: 900000,
         usersLimit: 50,
         storageGb: 100,
         supportLevel: 'Priority support',
@@ -74,11 +75,12 @@ export class BillingPlansSeeder implements ISeeder {
         slug: 'enterprise',
         description: 'Unlimited scale with dedicated support',
         priceCents: 150000,
+        yearlyPriceCents: 1800000,
         usersLimit: null,
         storageGb: 500,
         supportLevel: 'Dedicated support',
         features: ['Unlimited users', '500 GB storage', 'Dedicated support', 'Custom SLA'],
-        modules: [...PLAN_MODULES_WITHOUT_FORM_BUILDER],
+        modules: [...ALL_PLAN_MODULE_KEYS],
         sortOrder: 4,
       },
     ];
@@ -88,6 +90,7 @@ export class BillingPlansSeeder implements ISeeder {
         plans.map((plan) =>
           repo.create({
             ...plan,
+            yearlyPriceCents: resolveYearlyPriceCents(plan.priceCents, plan.yearlyPriceCents),
             currency: 'USD',
             billingCycle: BillingCycle.MONTHLY,
             trialDays: 14,
@@ -95,25 +98,34 @@ export class BillingPlansSeeder implements ISeeder {
           }),
         ),
       );
-      console.log(`✅ Seeded ${plans.length} subscription plans (form-builder excluded).`);
+      console.log(`✅ Seeded ${plans.length} subscription plans.`);
       return;
     }
 
+    const bySlug = new Map(plans.map((plan) => [plan.slug, plan]));
     const existing = await repo.find();
     let updated = 0;
     for (const plan of existing) {
-      const nextModules = withoutFormBuilder(plan.modules || []);
-      if (nextModules.length !== (plan.modules || []).length) {
-        plan.modules = nextModules;
-        await repo.save(plan);
-        updated += 1;
-      }
+      const desired = bySlug.get(plan.slug);
+      const nextModules = desired ? desired.modules : withFormBuilder(plan.modules || []);
+      const nextYearly = desired
+        ? resolveYearlyPriceCents(desired.priceCents, desired.yearlyPriceCents)
+        : resolveYearlyPriceCents(plan.priceCents, plan.yearlyPriceCents);
+      const modulesChanged = JSON.stringify(plan.modules || []) !== JSON.stringify(nextModules);
+      const yearlyChanged = Number(plan.yearlyPriceCents || 0) !== nextYearly;
+
+      if (!modulesChanged && !yearlyChanged) continue;
+
+      plan.modules = nextModules;
+      plan.yearlyPriceCents = nextYearly;
+      await repo.save(plan);
+      updated += 1;
     }
 
     if (updated) {
-      console.log(`✅ Removed form-builder from ${updated} existing plan(s).`);
+      console.log(`✅ Updated ${updated} existing plan(s) with form-builder and yearly pricing.`);
     } else {
-      console.log('ℹ️  Plans already exist and none included form-builder.');
+      console.log('ℹ️  Plans already include form-builder and yearly pricing.');
     }
   }
 }

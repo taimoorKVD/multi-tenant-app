@@ -78,6 +78,9 @@ describe('BillingService', () => {
     expect(result.data[0].name).toBe('Basic');
     expect(result.data[0].price).toBe(250);
     expect(result.data[0].formattedPrice).toBe('€250.00');
+    expect(result.data[0].yearlyPrice).toBe(3000);
+    expect(result.data[0].formattedYearlyPrice).toBe('€3000.00');
+    expect(result.data[0].prices.yearly.amountCents).toBe(300000);
   });
 
   it('creates a local plan when Stripe is not configured', async () => {
@@ -92,6 +95,56 @@ describe('BillingService', () => {
     expect(planRepo.save).toHaveBeenCalled();
     expect(stripeService.ensureProductAndPrice).not.toHaveBeenCalled();
     expect(result.data.allowedModules).toEqual(expect.arrayContaining(['dashboard', 'users']));
+    expect(result.data.yearlyPrice).toBe(9000);
+    expect(result.data.prices.monthly.amount).toBe(750);
+  });
+
+  it('stores the yearly amount when a subscription is created with yearly billing', async () => {
+    tenantRepo.findOne.mockResolvedValue({
+      id: 12,
+      name: 'Acme',
+      subdomain: 'acme',
+      email: 'hello@acme.com',
+      status: 'active',
+    });
+    planRepo.findOne.mockResolvedValue({
+      id: 1,
+      name: 'Basic',
+      slug: 'basic',
+      status: PlanStatus.ACTIVE,
+      priceCents: 25000,
+      yearlyPriceCents: 300000,
+      currency: 'EUR',
+      billingCycle: BillingCycle.MONTHLY,
+      trialDays: 0,
+    });
+    subscriptionRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 9,
+        tenantId: 12,
+        planId: 1,
+        status: SubscriptionStatus.ACTIVE,
+        billingCycle: BillingCycle.YEARLY,
+        amountCents: 300000,
+        currency: 'EUR',
+      });
+    subscriptionRepo.save.mockImplementation(async (value) => ({ id: 9, ...value }));
+    tenantRepo.save.mockImplementation(async (value) => value);
+
+    await service.createSubscription({
+      tenantId: 12,
+      planId: 1,
+      billingCycle: BillingCycle.YEARLY,
+      chargeNow: false,
+    } as any);
+
+    expect(subscriptionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountCents: 300000,
+        billingCycle: BillingCycle.YEARLY,
+      }),
+    );
   });
 
   it('returns plan modules for an active tenant subscription', async () => {

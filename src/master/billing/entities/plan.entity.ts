@@ -26,6 +26,9 @@ export class Plan {
   @Column({ type: 'int', name: 'price_cents' })
   priceCents!: number;
 
+  @Column({ type: 'int', name: 'yearly_price_cents', default: 0 })
+  yearlyPriceCents!: number;
+
   @Column({ type: 'varchar', length: 3, default: 'EUR' })
   currency!: string;
 
@@ -61,6 +64,9 @@ export class Plan {
 
   @Column({ type: 'varchar', name: 'stripe_price_id', length: 255, nullable: true })
   stripePriceId!: string | null;
+
+  @Column({ type: 'varchar', name: 'stripe_yearly_price_id', length: 255, nullable: true })
+  stripeYearlyPriceId!: string | null;
 
   @OneToMany(() => Subscription, (subscription) => subscription.plan)
   subscriptions!: Subscription[];

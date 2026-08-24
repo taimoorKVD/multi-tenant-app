@@ -1,5 +1,6 @@
 import {
   ALL_PLAN_MODULE_KEYS,
+  CORE_PLAN_MODULE_KEYS,
   normalizePlanModules,
   resolveModuleFromPath,
   serializePlanModules,
@@ -9,6 +10,11 @@ describe('plan-modules', () => {
   it('treats an empty list as all modules and always keeps dashboard', () => {
     expect(normalizePlanModules([])).toEqual(ALL_PLAN_MODULE_KEYS);
     expect(normalizePlanModules(['items'])).toEqual(['dashboard', 'items']);
+  });
+
+  it('includes form-builder in the core modules seeded on every plan', () => {
+    expect(CORE_PLAN_MODULE_KEYS).toContain('form-builder');
+    expect(ALL_PLAN_MODULE_KEYS).toContain('form-builder');
   });
 
   it('ignores unknown keys', () => {

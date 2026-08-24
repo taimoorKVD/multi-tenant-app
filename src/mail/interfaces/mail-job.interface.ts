@@ -1,3 +1,5 @@
+import type { EmailLogoJobAttachment } from '../utils/email-logo.util';
+
 export interface MailSmtpConfig {
   provider?: string | null;
   host: string;
@@ -24,4 +26,6 @@ export interface EmailJobPayload {
   subject: string;
   body: string;
   smtp: MailSmtpConfig;
+  /** Inline logo (base64) so queued jobs keep CID embedding after Redis JSON. */
+  logoAttachment?: EmailLogoJobAttachment | null;
 }

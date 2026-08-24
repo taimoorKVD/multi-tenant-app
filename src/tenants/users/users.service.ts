@@ -16,6 +16,10 @@ import { User } from './entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
 import { JobPosition } from '../job-positions/entities';
 import { emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
+import {
+  prepareEmailLogo,
+  toNodemailerLogoAttachments,
+} from '../../mail/utils/email-logo.util';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -134,25 +138,6 @@ export class UsersService extends TenantAbstractService<User> {
     };
   }
 
-  private async loadLogoAttachment(logoUrl: string): Promise<{
-    filename: string;
-    content: Buffer;
-    contentType: string;
-  } | null> {
-    try {
-      const response = await fetch(logoUrl, { signal: AbortSignal.timeout(4000) });
-      if (!response.ok) return null;
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.startsWith('image/')) return null;
-      const content = Buffer.from(await response.arrayBuffer());
-      if (!content.length) return null;
-      const filename = logoUrl.split('/').pop()?.split('?')[0] || 'eusocial-logo.png';
-      return { filename, content, contentType };
-    } catch {
-      return null;
-    }
-  }
-
   private async sendEmployeeAccountReadyEmail(payload: {
     recipientEmail: string;
     employeeName?: string | null;
@@ -172,9 +157,7 @@ export class UsersService extends TenantAbstractService<User> {
       ? this.getTenantAppUrl(payload.tenantSlug, payload.customDomain)
       : this.getFrontendBaseUrl();
     const loginUrl = this.getTenantLoginUrl(payload.tenantSlug, payload.customDomain);
-    const remoteLogoUrl = this.getLogoUrl(tenantAppUrl);
-    const logoAttachment = await this.loadLogoAttachment(remoteLogoUrl);
-    const logoSrc = logoAttachment ? 'cid:eusocial-logo' : remoteLogoUrl;
+    const preparedLogo = await prepareEmailLogo(this.getLogoUrl(tenantAppUrl));
     const displayName = payload.employeeName?.trim() || 'there';
 
     const transporter = nodemailer.createTransport({
@@ -186,7 +169,7 @@ export class UsersService extends TenantAbstractService<User> {
 
     const subject = `Your EuSocial account is ready`;
     const html = renderEmailLayout({
-      logoUrl: logoSrc,
+      logoUrl: preparedLogo.logoSrc,
       title: 'Your Account Is Ready',
       preheader: 'Your EuSocial employee account credentials are ready.',
       introHtml: `<p style="margin:0;">Hi ${emailEscape(displayName)}, an employee account has been created for you. Use the credentials below to log in.</p>`,
@@ -209,16 +192,7 @@ export class UsersService extends TenantAbstractService<User> {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
-        attachments: logoAttachment
-          ? [
-              {
-                filename: logoAttachment.filename,
-                content: logoAttachment.content,
-                cid: 'eusocial-logo',
-                contentType: logoAttachment.contentType,
-              },
-            ]
-          : undefined,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
       this.logger.log(`Employee credentials email sent to ${payload.recipientEmail}`);
     } finally {

@@ -15,7 +15,12 @@ describe('PublicSignupService', () => {
   };
   const stripeService = {
     isConfigured: jest.fn().mockReturnValue(true),
-    ensureProductAndPrice: jest.fn().mockResolvedValue({ productId: 'prod_1', priceId: 'price_1' }),
+    fromCents: jest.fn((value: number) => Number(value || 0) / 100),
+    ensureProductAndPrice: jest.fn().mockResolvedValue({
+      productId: 'prod_1',
+      priceId: 'price_month',
+      yearlyPriceId: 'price_year',
+    }),
     createCheckoutSession: jest.fn().mockResolvedValue({
       id: 'cs_test_1',
       url: 'https://checkout.stripe.com/c/pay/cs_test_1',
@@ -68,7 +73,11 @@ describe('PublicSignupService', () => {
       slug: 'pro',
       status: 'active',
       trialDays: 0,
-      stripePriceId: 'price_1',
+      currency: 'USD',
+      priceCents: 25000,
+      yearlyPriceCents: 300000,
+      stripePriceId: 'price_month',
+      stripeYearlyPriceId: 'price_year',
     });
 
     const result = await service.startCheckout({
@@ -79,10 +88,47 @@ describe('PublicSignupService', () => {
     } as any);
 
     expect(tenantsService.assertTenantAvailable).toHaveBeenCalledWith('Acme', 'acme.com');
-    expect(stripeService.createCheckoutSession).toHaveBeenCalled();
+    expect(stripeService.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ priceId: 'price_month' }),
+    );
     expect(result.success).toBe(true);
+    expect(result.data.plan.billingCycle).toBe('monthly');
+    expect(result.data.plan.formattedPrice).toBe('$250.00');
     expect(result.data.checkoutUrl).toContain('checkout.stripe.com');
     expect(signupRepo.save).toHaveBeenCalled();
+  });
+
+  it('uses the yearly Stripe price when billingCycle is yearly', async () => {
+    planRepo.findOne.mockResolvedValue({
+      id: 2,
+      name: 'Pro',
+      slug: 'pro',
+      status: 'active',
+      trialDays: 0,
+      currency: 'USD',
+      priceCents: 25000,
+      yearlyPriceCents: 300000,
+      stripePriceId: 'price_month',
+      stripeYearlyPriceId: 'price_year',
+    });
+
+    const result = await service.startCheckout({
+      name: 'Acme',
+      domain: 'acme.com',
+      email: 'hello@acme.com',
+      planId: 2,
+      billingCycle: 'yearly',
+    } as any);
+
+    expect(stripeService.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priceId: 'price_year',
+        metadata: expect.objectContaining({ billingCycle: 'yearly' }),
+      }),
+    );
+    expect(result.data.plan.billingCycle).toBe('yearly');
+    expect(result.data.plan.priceCents).toBe(300000);
+    expect(result.data.plan.formattedPrice).toBe('$3000.00');
   });
 
   it('provisions the tenant after Stripe Checkout is paid', async () => {

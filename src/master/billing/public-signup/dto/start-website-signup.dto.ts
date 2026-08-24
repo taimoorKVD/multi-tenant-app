@@ -96,7 +96,11 @@ export class StartWebsiteSignupDto {
   @Min(1)
   planId!: number;
 
-  @ApiPropertyOptional({ enum: BillingCycle, example: BillingCycle.MONTHLY })
+  @ApiPropertyOptional({
+    enum: BillingCycle,
+    example: BillingCycle.YEARLY,
+    description: 'Checkout uses the matching monthly or yearly Stripe price for the selected plan.',
+  })
   @IsOptional()
   @IsEnum(BillingCycle)
   billingCycle?: BillingCycle;

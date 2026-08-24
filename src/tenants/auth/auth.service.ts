@@ -28,6 +28,10 @@ import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
 import { BillingService } from '../../master/billing/billing.service';
 import { ALL_PLAN_MODULE_KEYS, serializePlanModules } from '../../master/billing/plan-modules';
 import { renderEmailLayout, emailEscape } from '../../mail/utils/email-layout.util';
+import {
+  prepareEmailLogo,
+  toNodemailerLogoAttachments,
+} from '../../mail/utils/email-logo.util';
 
 @Injectable()
 export class TenantAuthService {
@@ -432,7 +436,7 @@ export class TenantAuthService {
     }
 
     const resetUrl = this.getTenantResetUrl(req, email, token, scope);
-    const logoUrl = `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
+    const preparedLogo = await prepareEmailLogo();
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
@@ -442,7 +446,7 @@ export class TenantAuthService {
 
     const subject = 'Reset your tenant account password';
     const html = renderEmailLayout({
-      logoUrl,
+      logoUrl: preparedLogo.logoSrc,
       title: 'Password reset request',
       preheader: 'Reset your EuSocial tenant account password.',
       introHtml: `<p style="margin:0 0 12px;">Hello ${emailEscape(name || 'there')},</p>
@@ -462,6 +466,7 @@ export class TenantAuthService {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
     } finally {
       transporter.close();
@@ -481,7 +486,7 @@ export class TenantAuthService {
     }
 
     const verifyUrl = this.getTenantVerifyEmailUrl(req, email, token, scope);
-    const logoUrl = `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
+    const preparedLogo = await prepareEmailLogo();
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
@@ -491,7 +496,7 @@ export class TenantAuthService {
 
     const subject = 'Verify your tenant account email';
     const html = renderEmailLayout({
-      logoUrl,
+      logoUrl: preparedLogo.logoSrc,
       title: 'Verify your email',
       preheader: 'Confirm your email address to finish tenant account verification.',
       introHtml: `<p style="margin:0 0 12px;">Hello ${emailEscape(name || 'there')},</p>
@@ -511,6 +516,7 @@ export class TenantAuthService {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
     } finally {
       transporter.close();
