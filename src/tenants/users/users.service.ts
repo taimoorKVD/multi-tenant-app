@@ -15,6 +15,7 @@ import { MailService } from '../../mail/mail.service';
 import { User } from './entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
 import { JobPosition } from '../job-positions/entities';
+import { emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -184,51 +185,22 @@ export class UsersService extends TenantAbstractService<User> {
     });
 
     const subject = `Your EuSocial account is ready`;
-    const html = `
-      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-          <tr>
-            <td align="center">
-              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-                <tr>
-                  <td style="padding:24px 28px;background:#101820;">
-                    <img src="${logoSrc}" alt="EuSocial" width="160" height="50" style="height:50px;width:auto;display:block;border:0;outline:none;text-decoration:none;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:30px 28px 22px;color:#1f2d3d;">
-                    <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Your Account Is Ready</h2>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
-                      Hi ${displayName}, an employee account has been created for you. Use the credentials below to log in.
-                    </p>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
-                      <tr style="border-bottom:1px solid #e8edf3;">
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Email</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.loginEmail}</td>
-                      </tr>
-                      <tr style="border-bottom:1px solid #e8edf3;">
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Password</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;font-family:monospace;background:#fafbfc;">${payload.password}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>
-                      </tr>
-                    </table>
-                    <div style="background:#fef3cd;border-left:4px solid #ffc107;padding:12px 14px;border-radius:4px;margin:16px 0;">
-                      <p style="margin:0;font-size:13px;color:#856404;"><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
-                    </div>
-                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
-                      © ${new Date().getFullYear()} EuSocial. All rights reserved.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+    const html = renderEmailLayout({
+      logoUrl: logoSrc,
+      title: 'Your Account Is Ready',
+      preheader: 'Your EuSocial employee account credentials are ready.',
+      introHtml: `<p style="margin:0;">Hi ${emailEscape(displayName)}, an employee account has been created for you. Use the credentials below to log in.</p>`,
+      rows: [
+        { label: 'Email', value: payload.loginEmail },
+        { label: 'Password', value: payload.password, monospace: true },
+      ],
+      notice: {
+        title: 'Security notice',
+        text: 'Please change your password immediately after your first login.',
+        variant: 'warning',
+      },
+      cta: { label: 'Go to Portal', url: loginUrl },
+    });
 
     try {
       await transporter.sendMail({

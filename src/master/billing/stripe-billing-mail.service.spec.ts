@@ -17,6 +17,7 @@ describe('StripeBillingMailService', () => {
     jest.clearAllMocks();
     process.env.SMTP_HOST = 'smtp.test';
     process.env.SMTP_FROM = 'billing@eusocial.test';
+    delete process.env.BILLING_NOTIFY_EMAIL;
     (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail, close });
     service = new StripeBillingMailService(signupRepo as any);
   });
@@ -54,6 +55,36 @@ describe('StripeBillingMailService', () => {
     expect(sendMail.mock.calls[0][0].html).toContain('Payment failed');
     expect(sendMail.mock.calls[0][0].html).toContain('INV-2026-0001');
     expect(sendMail.mock.calls[0][0].html).toContain('View invoice');
+  });
+
+  it('keeps Stripe ids out of customer checkout email and includes them for ops', async () => {
+    process.env.BILLING_NOTIFY_EMAIL = 'ops@eusocial.test';
+
+    await service.notify('checkout.session.completed', {
+      tenant: { name: 'Acme', subdomain: 'acme', status: 'trial', email: 'hello@acme.com' } as any,
+      signup: { id: 'signup-123', email: 'hello@acme.com', status: 'provisioned' } as any,
+      details: { Amount: '29.00 USD', Reference: 'signup-123' },
+      internalDetails: {
+        'Stripe event': 'checkout.session.completed',
+        'Checkout session': 'cs_test_abc',
+      },
+    });
+
+    expect(sendMail).toHaveBeenCalledTimes(2);
+
+    const customerMail = sendMail.mock.calls.find((call) => call[0].to === 'hello@acme.com')?.[0];
+    const opsMail = sendMail.mock.calls.find((call) => call[0].to === 'ops@eusocial.test')?.[0];
+
+    expect(customerMail.subject).toBe('Payment confirmed for Acme');
+    expect(customerMail.html).toContain('Payment confirmed');
+    expect(customerMail.html).toContain('29.00 USD');
+    expect(customerMail.html).toContain('signup-123');
+    expect(customerMail.html).not.toContain('checkout.session.completed');
+    expect(customerMail.html).not.toContain('cs_test_abc');
+
+    expect(opsMail.subject).toBe('[Ops] Payment confirmed for Acme');
+    expect(opsMail.html).toContain('checkout.session.completed');
+    expect(opsMail.html).toContain('cs_test_abc');
   });
 
   it('skips unknown Stripe events', async () => {

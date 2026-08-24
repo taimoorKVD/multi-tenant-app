@@ -958,7 +958,7 @@ export class BillingService {
           await this.notifyStripeMail(event.type, {
             tenant: local?.tenant || (await this.tenantFromStripeCustomer(stripeSub)),
             subscription: local,
-            details: {
+            internalDetails: {
               'Stripe event': event.type,
             },
           });
@@ -982,7 +982,7 @@ export class BillingService {
             tenant: invoice?.tenant,
             subscription: invoice?.subscription,
             invoice,
-            details: { 'Stripe event': event.type },
+            internalDetails: { 'Stripe event': event.type },
           });
         }
         break;
@@ -1002,7 +1002,11 @@ export class BillingService {
         await this.notifyStripeMail(event.type, {
           tenant,
           signup,
-          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+          details: this.checkoutCustomerDetails(session, signup),
+          internalDetails: {
+            'Stripe event': event.type,
+            'Checkout session': session.id,
+          },
         });
         break;
       }
@@ -1012,7 +1016,11 @@ export class BillingService {
         const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
         await this.notifyStripeMail(event.type, {
           signup,
-          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+          details: this.checkoutCustomerDetails(session, signup),
+          internalDetails: {
+            'Stripe event': event.type,
+            'Checkout session': session.id,
+          },
         });
         break;
       }
@@ -1022,7 +1030,11 @@ export class BillingService {
         const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
         await this.notifyStripeMail(event.type, {
           signup,
-          details: { 'Stripe event': event.type, 'Checkout session': session.id },
+          details: this.checkoutCustomerDetails(session, signup),
+          internalDetails: {
+            'Stripe event': event.type,
+            'Checkout session': session.id,
+          },
         });
         break;
       }
@@ -1032,7 +1044,10 @@ export class BillingService {
         const tenant = await this.tenantRepo.findOne({ where: { stripeCustomerId: customer.id } });
         await this.notifyStripeMail(event.type, {
           tenant,
-          details: { 'Stripe event': event.type, 'Customer': customer.id },
+          internalDetails: {
+            'Stripe event': event.type,
+            'Stripe customer': customer.id,
+          },
         });
         break;
       }
@@ -1055,6 +1070,7 @@ export class BillingService {
     invoice?: Invoice | null;
     signup?: WebsiteSignup | null;
     details?: Record<string, string | null | undefined>;
+    internalDetails?: Record<string, string | null | undefined>;
   }) {
     try {
       await this.stripeBillingMail?.notify(eventType, context);
@@ -1063,6 +1079,20 @@ export class BillingService {
         `Stripe billing email failed for ${eventType}: ${error instanceof Error ? error.message : error}`,
       );
     }
+  }
+
+  private checkoutCustomerDetails(
+    session: Stripe.Checkout.Session,
+    signup?: WebsiteSignup | null,
+  ): Record<string, string | null | undefined> {
+    const amount =
+      session.amount_total != null
+        ? `${(Number(session.amount_total) / 100).toFixed(2)} ${(session.currency || '').toUpperCase()}`
+        : null;
+    return {
+      Amount: amount,
+      Reference: signup?.id || null,
+    };
   }
 
   async getDashboardBilling() {
