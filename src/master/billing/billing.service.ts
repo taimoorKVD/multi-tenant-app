@@ -40,6 +40,11 @@ import {
   PLAN_MODULES,
   serializePlanModules,
 } from './plan-modules';
+import {
+  amountCentsForBillingCycle,
+  resolveYearlyPriceCents,
+  stripePriceIdForBillingCycle,
+} from './plan-pricing';
 
 @Injectable()
 export class BillingService {
@@ -80,17 +85,36 @@ export class BillingService {
   }
 
   private serializePlan(plan: Plan) {
-    const money = this.money(plan.priceCents, plan.currency);
+    const monthly = this.money(plan.priceCents, plan.currency);
+    const yearlyCents = resolveYearlyPriceCents(plan.priceCents, plan.yearlyPriceCents);
+    const yearly = this.money(yearlyCents, plan.currency);
     return {
       id: plan.id,
       name: plan.name,
       slug: plan.slug,
       description: plan.description,
-      price: money.amount,
+      price: monthly.amount,
       priceCents: plan.priceCents,
-      formattedPrice: money.formatted,
+      formattedPrice: monthly.formatted,
+      yearlyPrice: yearly.amount,
+      yearlyPriceCents: yearlyCents,
+      formattedYearlyPrice: yearly.formatted,
       currency: plan.currency,
       billingCycle: plan.billingCycle,
+      prices: {
+        monthly: {
+          amount: monthly.amount,
+          amountCents: monthly.amountCents,
+          formatted: monthly.formatted,
+          interval: 'month' as const,
+        },
+        yearly: {
+          amount: yearly.amount,
+          amountCents: yearly.amountCents,
+          formatted: yearly.formatted,
+          interval: 'year' as const,
+        },
+      },
       usersLimit: plan.usersLimit,
       storageGb: plan.storageGb,
       storage: plan.storageGb != null ? `${plan.storageGb} GB` : null,
@@ -103,6 +127,7 @@ export class BillingService {
       status: plan.status,
       stripeProductId: plan.stripeProductId,
       stripePriceId: plan.stripePriceId,
+      stripeYearlyPriceId: plan.stripeYearlyPriceId,
       createdAt: plan.createdAt,
       updatedAt: plan.updatedAt,
     };
@@ -229,6 +254,7 @@ export class BillingService {
     const ids = await this.stripeService.ensureProductAndPrice(plan);
     plan.stripeProductId = ids.productId;
     plan.stripePriceId = ids.priceId;
+    plan.stripeYearlyPriceId = ids.yearlyPriceId;
     this.logger.log(`Plan ${plan.id} (${plan.slug}) synced to Stripe product ${ids.productId}`);
     return this.planRepo.save(plan);
   }
@@ -242,7 +268,7 @@ export class BillingService {
       success: true,
       data: plans.map((plan) => {
         const serialized = this.serializePlan(plan);
-        const { stripeProductId, stripePriceId, ...publicPlan } = serialized;
+        const { stripeProductId, stripePriceId, stripeYearlyPriceId, ...publicPlan } = serialized;
         return publicPlan;
       }),
       count: plans.length,
@@ -270,11 +296,16 @@ export class BillingService {
     if (existing) throw new BadRequestException('A plan with this name or slug already exists');
 
     const currency = (dto.currency || this.stripeService.getCurrency()).toUpperCase();
+    const priceCents = this.stripeService.toCents(dto.price);
     let plan = this.planRepo.create({
       name: dto.name.trim(),
       slug,
       description: dto.description?.trim() || null,
-      priceCents: this.stripeService.toCents(dto.price),
+      priceCents,
+      yearlyPriceCents:
+        dto.yearlyPrice != null
+          ? this.stripeService.toCents(dto.yearlyPrice)
+          : resolveYearlyPriceCents(priceCents),
       currency,
       billingCycle: dto.billingCycle || BillingCycle.MONTHLY,
       usersLimit: dto.usersLimit ?? null,
@@ -299,6 +330,11 @@ export class BillingService {
     if (dto.slug !== undefined) plan.slug = this.stripeService.slugify(dto.slug);
     if (dto.description !== undefined) plan.description = dto.description?.trim() || null;
     if (dto.price !== undefined) plan.priceCents = this.stripeService.toCents(dto.price);
+    if (dto.yearlyPrice !== undefined) {
+      plan.yearlyPriceCents = this.stripeService.toCents(dto.yearlyPrice);
+    } else if (dto.price !== undefined) {
+      plan.yearlyPriceCents = resolveYearlyPriceCents(plan.priceCents);
+    }
     if (dto.currency !== undefined) plan.currency = dto.currency.toUpperCase();
     if (dto.billingCycle !== undefined) plan.billingCycle = dto.billingCycle;
     if (dto.usersLimit !== undefined) plan.usersLimit = dto.usersLimit;
@@ -440,6 +476,7 @@ export class BillingService {
     }
 
     const billingCycle = dto.billingCycle || plan.billingCycle;
+    const amountCents = amountCentsForBillingCycle(plan, billingCycle);
     const trialDays = dto.trialDays ?? plan.trialDays;
     let stripeCustomerId = tenant.stripeCustomerId || null;
     let stripeSubscription: Stripe.Subscription | null = null;
@@ -459,18 +496,20 @@ export class BillingService {
       tenant.stripeCustomerId = stripeCustomerId;
       await this.tenantRepo.save(tenant);
 
-      if (!synced.stripePriceId) {
+      const priceId = stripePriceIdForBillingCycle(synced, billingCycle);
+      if (!priceId) {
         throw new InternalServerErrorException('Stripe price is missing for this plan');
       }
 
       stripeSubscription = await this.stripeService.createSubscription({
         customerId: stripeCustomerId,
-        priceId: synced.stripePriceId,
+        priceId,
         trialDays,
         paymentMethodId: dto.chargeNow === false ? undefined : dto.paymentMethodId,
         metadata: {
           tenantId: String(tenant.id),
           planId: String(plan.id),
+          billingCycle,
         },
       });
       this.logger.log(
@@ -502,7 +541,7 @@ export class BillingService {
         planId: plan.id,
         status,
         billingCycle,
-        amountCents: plan.priceCents,
+        amountCents,
         currency: plan.currency,
         trialEndsAt,
         currentPeriodStart: period.start,
@@ -572,6 +611,7 @@ export class BillingService {
     }
 
     const billingCycle = params.billingCycle || plan.billingCycle;
+    const amountCents = amountCentsForBillingCycle(plan, billingCycle);
     const trialDays = params.trialDays ?? plan.trialDays;
     const period = stripeSubscription ? this.periodFromStripe(stripeSubscription) : { start: new Date(), end: null };
     const status = stripeSubscription
@@ -592,7 +632,7 @@ export class BillingService {
         planId: plan.id,
         status,
         billingCycle,
-        amountCents: plan.priceCents,
+        amountCents,
         currency: plan.currency,
         trialEndsAt,
         currentPeriodStart: period.start,
@@ -637,14 +677,18 @@ export class BillingService {
       throw new BadRequestException('Target plan is not available');
     }
 
+    const billingCycle = dto.billingCycle || subscription.billingCycle;
+    const amountCents = amountCentsForBillingCycle(plan, billingCycle);
+
     if (subscription.stripeSubscriptionId && this.stripeService.isConfigured()) {
       const synced = await this.syncPlanToStripe(plan);
-      if (!synced.stripePriceId) {
+      const priceId = stripePriceIdForBillingCycle(synced, billingCycle);
+      if (!priceId) {
         throw new InternalServerErrorException('Stripe price is missing for this plan');
       }
       const updated = await this.stripeService.changeSubscriptionPrice(
         subscription.stripeSubscriptionId,
-        synced.stripePriceId,
+        priceId,
         dto.prorate !== false,
       );
       const period = this.periodFromStripe(updated);
@@ -655,9 +699,9 @@ export class BillingService {
 
     subscription.planId = plan.id;
     subscription.plan = plan;
-    subscription.amountCents = plan.priceCents;
+    subscription.amountCents = amountCents;
     subscription.currency = plan.currency;
-    subscription.billingCycle = plan.billingCycle;
+    subscription.billingCycle = billingCycle;
     const saved = await this.subscriptionRepo.save(subscription);
 
     return {

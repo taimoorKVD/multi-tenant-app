@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import Stripe from 'stripe';
-import { Plan, PlanStatus, WebsiteSignup, WebsiteSignupStatus } from '../entities';
+import { Plan, PlanStatus, WebsiteSignup, WebsiteSignupStatus, BillingCycle } from '../entities';
 import { StripeService } from '../stripe.service';
 import { BillingService } from '../billing.service';
 import { TenantsService } from '../../tenants/tenants.service';
@@ -23,6 +23,10 @@ import { getTenantDataSource } from '../../../database/datasource';
 import { User } from '../../../tenants/users/entities';
 import { RefreshToken } from '../../../tenants/auth/entities';
 import { serializePlanModules } from '../plan-modules';
+import {
+  amountCentsForBillingCycle,
+  stripePriceIdForBillingCycle,
+} from '../plan-pricing';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -64,13 +68,15 @@ export class PublicSignupService {
 
     await this.tenantsService.assertTenantAvailable(dto.name, dto.domain);
 
+    const billingCycle = dto.billingCycle || BillingCycle.MONTHLY;
     const synced = await this.syncPlanPrice(plan);
-    if (!synced.stripePriceId) {
+    const priceId = stripePriceIdForBillingCycle(synced, billingCycle);
+    if (!priceId) {
       throw new BadRequestException('This plan is not ready for payment. Contact support.');
     }
 
     const businessEmail = dto.email.trim().toLowerCase();
-    const payload = this.toStoredPayload(dto);
+    const payload = this.toStoredPayload({ ...dto, billingCycle });
     const signup = await this.signupRepo.save(
       this.signupRepo.create({
         planId: plan.id,
@@ -89,7 +95,7 @@ export class PublicSignupService {
     const trialDays = dto.trialDays ?? plan.trialDays;
 
     const session = await this.stripeService.createCheckoutSession({
-      priceId: synced.stripePriceId,
+      priceId,
       customerEmail: businessEmail,
       successUrl,
       cancelUrl,
@@ -98,11 +104,17 @@ export class PublicSignupService {
       metadata: {
         signupId: signup.id,
         planId: String(plan.id),
+        billingCycle,
       },
     });
 
     signup.stripeCheckoutSessionId = session.id;
     await this.signupRepo.save(signup);
+
+    const amountCents = amountCentsForBillingCycle(plan, billingCycle);
+    const amount = this.stripeService.fromCents(amountCents);
+    const currency = String(plan.currency || 'USD').toUpperCase();
+    const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : `${currency} `;
 
     return {
       success: true,
@@ -115,7 +127,9 @@ export class PublicSignupService {
           id: plan.id,
           name: plan.name,
           slug: plan.slug,
-          formattedPrice: undefined,
+          billingCycle,
+          priceCents: amountCents,
+          formattedPrice: `${symbol}${amount.toFixed(2)}`,
         },
       },
     };
@@ -467,6 +481,7 @@ export class PublicSignupService {
     const ids = await this.stripeService.ensureProductAndPrice(plan);
     plan.stripeProductId = ids.productId;
     plan.stripePriceId = ids.priceId;
+    plan.stripeYearlyPriceId = ids.yearlyPriceId;
     return this.planRepo.save(plan);
   }
 

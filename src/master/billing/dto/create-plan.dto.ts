@@ -28,10 +28,19 @@ export class CreatePlanDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ example: 750, description: 'Price in major currency units (EUR). Converted to cents internally.' })
+  @ApiProperty({ example: 750, description: 'Monthly price in major currency units. Converted to cents internally.' })
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @ApiPropertyOptional({
+    example: 9000,
+    description: 'Yearly price in major currency units. Defaults to monthly price × 12 when omitted.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  yearlyPrice?: number;
 
   @ApiPropertyOptional({ example: 'EUR' })
   @IsOptional()

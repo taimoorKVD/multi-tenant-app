@@ -41,6 +41,7 @@ export const CORE_PLAN_MODULE_KEYS: PlanModuleKey[] = [
   'roles',
   'jobpositions',
   'locations',
+  'form-builder',
 ];
 
 export function isPlanModuleKey(value: string): value is PlanModuleKey {

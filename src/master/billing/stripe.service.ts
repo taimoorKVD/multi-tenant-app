@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import type Stripe from 'stripe';
-import { BillingCycle, Plan } from './entities';
+import { Plan } from './entities';
 
 function resolveStripeConstructor(): new (secret: string) => Stripe {
   // Stripe v22 CJS exports the constructor as module.exports. Nest/ts-node
@@ -81,7 +81,11 @@ export class StripeService {
       .slice(0, 120);
   }
 
-  async ensureProductAndPrice(plan: Plan): Promise<{ productId: string; priceId: string }> {
+  async ensureProductAndPrice(plan: Plan): Promise<{
+    productId: string;
+    priceId: string;
+    yearlyPriceId: string;
+  }> {
     try {
       const stripe = this.getClient();
       let productId = plan.stripeProductId || undefined;
@@ -109,46 +113,86 @@ export class StripeService {
         productId = product.id;
       }
 
-      const interval = plan.billingCycle === BillingCycle.YEARLY ? 'year' : 'month';
-      const needsNewPrice =
-        !plan.stripePriceId ||
-        plan.currency.toLowerCase() !== this.getCurrency();
+      const yearlyCents =
+        plan.yearlyPriceCents && plan.yearlyPriceCents > 0
+          ? plan.yearlyPriceCents
+          : plan.priceCents * 12;
 
-      if (!needsNewPrice && plan.stripePriceId) {
-        try {
-          const existing = await stripe.prices.retrieve(plan.stripePriceId);
-          if (
-            existing.unit_amount === plan.priceCents &&
-            existing.recurring?.interval === interval &&
-            existing.currency === plan.currency.toLowerCase()
-          ) {
-            return { productId, priceId: existing.id };
-          }
-        } catch {
-          // Create a new price below.
-        }
-      }
-
-      const price = await stripe.prices.create({
-        product: productId,
-        unit_amount: plan.priceCents,
-        currency: plan.currency.toLowerCase(),
-        recurring: { interval },
-        metadata: { planId: String(plan.id), slug: plan.slug },
+      const priceId = await this.ensureRecurringPrice(stripe, {
+        productId,
+        existingPriceId: plan.stripePriceId,
+        unitAmount: plan.priceCents,
+        currency: plan.currency,
+        interval: 'month',
+        planId: plan.id,
+        slug: plan.slug,
+      });
+      const yearlyPriceId = await this.ensureRecurringPrice(stripe, {
+        productId,
+        existingPriceId: plan.stripeYearlyPriceId,
+        unitAmount: yearlyCents,
+        currency: plan.currency,
+        interval: 'year',
+        planId: plan.id,
+        slug: plan.slug,
       });
 
-      if (plan.stripePriceId) {
-        try {
-          await stripe.prices.update(plan.stripePriceId, { active: false });
-        } catch (error) {
-          this.logger.warn(`Failed to archive previous Stripe price ${plan.stripePriceId}: ${error}`);
-        }
-      }
-
-      return { productId, priceId: price.id };
+      return { productId, priceId, yearlyPriceId };
     } catch (error) {
       this.rethrow(error, 'Failed to sync plan to Stripe');
     }
+  }
+
+  private async ensureRecurringPrice(
+    stripe: Stripe,
+    params: {
+      productId: string;
+      existingPriceId?: string | null;
+      unitAmount: number;
+      currency: string;
+      interval: 'month' | 'year';
+      planId: number;
+      slug: string;
+    },
+  ): Promise<string> {
+    const currency = params.currency.toLowerCase();
+    if (params.existingPriceId) {
+      try {
+        const existing = await stripe.prices.retrieve(params.existingPriceId);
+        if (
+          existing.active &&
+          existing.unit_amount === params.unitAmount &&
+          existing.recurring?.interval === params.interval &&
+          existing.currency === currency
+        ) {
+          return existing.id;
+        }
+      } catch {
+        // Create a new price below.
+      }
+    }
+
+    const price = await stripe.prices.create({
+      product: params.productId,
+      unit_amount: params.unitAmount,
+      currency,
+      recurring: { interval: params.interval },
+      metadata: {
+        planId: String(params.planId),
+        slug: params.slug,
+        interval: params.interval,
+      },
+    });
+
+    if (params.existingPriceId) {
+      try {
+        await stripe.prices.update(params.existingPriceId, { active: false });
+      } catch (error) {
+        this.logger.warn(`Failed to archive previous Stripe price ${params.existingPriceId}: ${error}`);
+      }
+    }
+
+    return price.id;
   }
 
   async archiveProduct(plan: Plan): Promise<void> {
@@ -158,6 +202,9 @@ export class StripeService {
       await stripe.products.update(plan.stripeProductId, { active: false });
       if (plan.stripePriceId) {
         await stripe.prices.update(plan.stripePriceId, { active: false });
+      }
+      if (plan.stripeYearlyPriceId) {
+        await stripe.prices.update(plan.stripeYearlyPriceId, { active: false });
       }
     } catch (error) {
       this.logger.warn(`Failed to archive Stripe product ${plan.stripeProductId}: ${error}`);

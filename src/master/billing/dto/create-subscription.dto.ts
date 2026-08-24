@@ -13,7 +13,11 @@ export class CreateSubscriptionDto {
   @Min(1)
   planId!: number;
 
-  @ApiPropertyOptional({ enum: BillingCycle, example: BillingCycle.MONTHLY })
+  @ApiPropertyOptional({
+    enum: BillingCycle,
+    example: BillingCycle.YEARLY,
+    description: 'Monthly uses plan.price; yearly uses plan.yearlyPrice (defaults to monthly × 12).',
+  })
   @IsOptional()
   @IsEnum(BillingCycle)
   billingCycle?: BillingCycle;
