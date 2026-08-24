@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { User } from '../../tenants/users/entities';
+import { EMAIL_LOGO_PUBLIC_PATH } from '../utils/email-logo.util';
 import { BaseEmailResolver } from './base-email.resolver';
 import { EmailResolverContext } from './email-template-resolver.interface';
 
@@ -56,7 +57,7 @@ export class UserEmailResolver extends BaseEmailResolver {
     }
 
     if (!data.logo_url) {
-      data.logo_url = `${frontendBaseUrl}/assets/eusocial-logo.png`;
+      data.logo_url = `${frontendBaseUrl}${EMAIL_LOGO_PUBLIC_PATH}`;
     }
 
     if (!data.tenant_login_url) {

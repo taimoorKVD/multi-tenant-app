@@ -97,27 +97,45 @@ describe('StripeBillingMailService', () => {
     expect(opsMail.html).not.toContain('>Reference<');
   });
 
-  it('embeds the logo as a CID attachment when the image can be fetched', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      headers: { get: () => 'image/png' },
-      arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
-    } as any);
-
-    await service.notify('checkout.session.completed', {
-      tenant: { name: 'Acme', email: 'hello@acme.com' } as any,
-      details: { Amount: '29.00 USD' },
+  it('embeds the bundled logo as an inline CID attachment', async () => {
+    await service.notify('invoice.finalized', {
+      tenant: { name: 'beta', email: 'hello@acme.com' } as any,
+      invoice: {
+        invoiceNumber: 'INV-2026-0001',
+        amountCents: 25000,
+        currency: 'USD',
+        status: 'open',
+      } as any,
     });
 
     const mail = sendMail.mock.calls[0][0];
+    expect(mail.subject).toBe('Invoice issued for beta');
     expect(mail.html).toContain('cid:eusocial-logo');
     expect(mail.attachments).toEqual([
       expect.objectContaining({
         filename: 'eusocial-logo.png',
         cid: 'eusocial-logo',
         contentType: 'image/png',
+        contentDisposition: 'inline',
       }),
     ]);
+  });
+
+  it('embeds the bundled logo on subscription started emails', async () => {
+    await service.notify('customer.subscription.created', {
+      tenant: { name: 'beta', email: 'hello@acme.com' } as any,
+      subscription: { status: 'active', billingCycle: 'monthly', plan: { name: 'Basic' } } as any,
+    });
+
+    const mail = sendMail.mock.calls[0][0];
+    expect(mail.subject).toBe('Subscription started for beta');
+    expect(mail.html).toContain('cid:eusocial-logo');
+    expect(mail.attachments?.[0]).toEqual(
+      expect.objectContaining({
+        cid: 'eusocial-logo',
+        contentDisposition: 'inline',
+      }),
+    );
   });
 
   it('skips unknown Stripe events', async () => {

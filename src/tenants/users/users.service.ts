@@ -17,6 +17,7 @@ import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/serv
 import { JobPosition } from '../job-positions/entities';
 import { emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
 import {
+  EMAIL_LOGO_PUBLIC_PATH,
   prepareEmailLogo,
   toNodemailerLogoAttachments,
 } from '../../mail/utils/email-logo.util';
@@ -110,7 +111,7 @@ export class UsersService extends TenantAbstractService<User> {
   private getLogoUrl(tenantAppUrl: string): string {
     const configured = this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL');
     if (configured) return configured;
-    return `${tenantAppUrl}/assets/eusocial-logo.png`;
+    return `${tenantAppUrl}${EMAIL_LOGO_PUBLIC_PATH}`;
   }
 
   private getEnvValue(...keys: string[]): string | null {
@@ -636,7 +637,7 @@ export class UsersService extends TenantAbstractService<User> {
             user_password: staticPayload.password || 'Not changed',
             tenant_slug: req?.tenantId || null,
             tenant_login_url: this.getTenantLoginUrl(),
-            logo_url: `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`,
+            logo_url: `${this.getFrontendBaseUrl()}${EMAIL_LOGO_PUBLIC_PATH}`,
             role_name: payload?.role?.name || null,
 
           },
