@@ -2,9 +2,15 @@ import { MailService } from './mail.service';
 
 describe('MailService', () => {
   const originalEnv = process.env;
+  let fetchMock: jest.SpyInstance;
+
+  beforeEach(() => {
+    fetchMock = jest.spyOn(global, 'fetch' as any).mockRejectedValue(new Error('logo unavailable'));
+  });
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    fetchMock.mockRestore();
     jest.clearAllMocks();
     jest.restoreAllMocks();
   });

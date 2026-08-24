@@ -32,6 +32,10 @@ import {
 import { UnauthorizedException } from '@nestjs/common';
 import { BillingService } from '../billing/billing.service';
 import { emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
+import {
+  prepareEmailLogo,
+  toNodemailerLogoAttachments,
+} from '../../mail/utils/email-logo.util';
 
 @Injectable()
 export class TenantsService {
@@ -178,26 +182,6 @@ export class TenantsService {
     return `${tenantAppUrl}/assets/eusocial-logo.png`;
   }
 
-  private async loadLogoAttachment(logoUrl: string): Promise<{
-    filename: string;
-    content: Buffer;
-    contentType: string;
-  } | null> {
-    try {
-      const response = await fetch(logoUrl, { signal: AbortSignal.timeout(4000) });
-      if (!response.ok) return null;
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.startsWith('image/')) return null;
-      const content = Buffer.from(await response.arrayBuffer());
-      if (!content.length) return null;
-      const filename = logoUrl.split('/').pop()?.split('?')[0] || 'eusocial-logo.png';
-      return { filename, content, contentType };
-    } catch (error) {
-      this.logger.warn(`Could not embed email logo from ${logoUrl}: ${this.toError(error).message}`);
-      return null;
-    }
-  }
-
   private resolveSmtpConfig() {
     const explicitFrom = this.getEnvValue('SMTP_FROM', 'EMAIL_FROM', 'MAIL_FROM_EMAIL');
     const smtpUsername = this.getEnvValue('SMTP_USER', 'MAIL_USER');
@@ -244,9 +228,7 @@ export class TenantsService {
 
     const tenantAppUrl = this.getTenantAppUrl(payload.tenantSubdomain, payload.customDomain);
     const loginUrl = `${tenantAppUrl}/login`;
-    const remoteLogoUrl = this.getLogoUrl(tenantAppUrl);
-    const logoAttachment = await this.loadLogoAttachment(remoteLogoUrl);
-    const logoSrc = logoAttachment ? 'cid:eusocial-logo' : remoteLogoUrl;
+    const preparedLogo = await prepareEmailLogo(this.getLogoUrl(tenantAppUrl));
 
     const transporter = nodemailer.createTransport({
       host: smtp.host,
@@ -262,7 +244,7 @@ export class TenantsService {
 
     const subject = `Tenant account ready: ${payload.tenantName}`;
     const html = renderEmailLayout({
-      logoUrl: logoSrc,
+      logoUrl: preparedLogo.logoSrc,
       title: 'Tenant Ready to Launch',
       preheader: `${payload.tenantName} is active. Your login credentials are inside.`,
       introHtml: `<p style="margin:0;">Your tenant <strong>${emailEscape(payload.tenantName)}</strong> has been successfully created and is now active. Use the credentials below to log in.</p>`,
@@ -285,16 +267,7 @@ export class TenantsService {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
-        attachments: logoAttachment
-          ? [
-              {
-                filename: logoAttachment.filename,
-                content: logoAttachment.content,
-                cid: 'eusocial-logo',
-                contentType: logoAttachment.contentType,
-              },
-            ]
-          : undefined,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
 
       this.logger.log(`📧 Tenant credentials email sent to ${payload.recipientEmail}`);

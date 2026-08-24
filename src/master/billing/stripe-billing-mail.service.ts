@@ -5,6 +5,10 @@ import { Repository } from 'typeorm';
 import { Tenant } from '../tenants/entities';
 import { Invoice, Subscription, WebsiteSignup } from './entities';
 import { EMAIL_COLORS, emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
+import {
+  prepareEmailLogo,
+  toNodemailerLogoAttachments,
+} from '../../mail/utils/email-logo.util';
 
 export type StripeMailContext = {
   tenant?: Tenant | null;
@@ -53,8 +57,17 @@ export class StripeBillingMailService {
       return;
     }
 
-    const customerHtml = this.renderHtml(template, context, { includeInternal: false });
-    const opsHtml = this.renderHtml(template, context, { includeInternal: true });
+    const preparedLogo = await prepareEmailLogo();
+    const attachments = toNodemailerLogoAttachments(preparedLogo.attachment);
+
+    const customerHtml = this.renderHtml(template, context, {
+      includeInternal: false,
+      logoUrl: preparedLogo.logoSrc,
+    });
+    const opsHtml = this.renderHtml(template, context, {
+      includeInternal: true,
+      logoUrl: preparedLogo.logoSrc,
+    });
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
@@ -74,6 +87,7 @@ export class StripeBillingMailService {
           replyTo: smtp.replyTo || undefined,
           subject: template.subject,
           html: customerHtml,
+          attachments,
         });
         this.logger.log(`Stripe billing email (${eventType}) sent to ${to}`);
       }
@@ -85,6 +99,7 @@ export class StripeBillingMailService {
           replyTo: smtp.replyTo || undefined,
           subject: `[Ops] ${template.subject}`,
           html: opsHtml,
+          attachments,
         });
         this.logger.log(`Stripe billing ops email (${eventType}) sent to ${opsRecipient}`);
       }
@@ -281,11 +296,11 @@ export class StripeBillingMailService {
   private renderHtml(
     template: MailTemplate,
     context: StripeMailContext,
-    options: { includeInternal: boolean },
+    options: { includeInternal: boolean; logoUrl: string },
   ): string {
     const rows = this.detailRows(context, options);
     return renderEmailLayout({
-      logoUrl: this.getLogoUrl(),
+      logoUrl: options.logoUrl,
       brandTitle: 'EuSocial',
       title: template.heading,
       preheader: template.subject,
@@ -307,16 +322,6 @@ export class StripeBillingMailService {
     });
   }
 
-  private getLogoUrl(): string {
-    const configured = process.env.EMAIL_LOGO_URL?.trim() || process.env.MAIL_LOGO_URL?.trim();
-    if (configured) return configured;
-    const frontend =
-      process.env.FRONTEND_URL?.trim() ||
-      process.env.APP_FRONTEND_URL?.trim() ||
-      'http://localhost:4200';
-    return `${frontend.replace(/\/+$/, '')}/assets/eusocial-logo.png`;
-  }
-
   private detailRows(
     context: StripeMailContext,
     options: { includeInternal: boolean },
@@ -330,7 +335,6 @@ export class StripeBillingMailService {
 
     const rows: Array<[string, string | null | undefined]> = [
       ['Workspace', context.tenant?.name ? emailEscape(context.tenant.name) : null],
-      ['Domain', context.tenant?.subdomain ? emailEscape(context.tenant.subdomain) : null],
       ['Workspace status', context.tenant?.status ? emailEscape(context.tenant.status) : null],
       ['Plan', context.subscription?.plan?.name ? emailEscape(context.subscription.plan.name) : null],
       [
@@ -353,6 +357,7 @@ export class StripeBillingMailService {
     ];
 
     Object.entries(context.details || {}).forEach(([label, value]) => {
+      if (label === 'Domain' || label === 'Reference') return;
       rows.push([label, value != null ? emailEscape(String(value)) : null]);
     });
 

@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { EmailLog } from '../master/mail/entities';
 import { EMAIL_LOG_STATUS } from '../mail/constants/mail.constants';
 import { EmailJobPayload } from '../mail/interfaces/mail-job.interface';
+import { fromEmailLogoJobAttachment } from '../mail/utils/email-logo.util';
 
 @Injectable()
 export class EmailDispatchService {
@@ -26,6 +27,8 @@ export class EmailDispatchService {
         : undefined,
     });
 
+    const attachments = fromEmailLogoJobAttachment(payload.logoAttachment);
+
     const sendMessage = async (activeTransport: nodemailer.Transporter) =>
       activeTransport.sendMail({
         from: payload.smtp.fromName
@@ -37,6 +40,7 @@ export class EmailDispatchService {
         replyTo: payload.smtp.replyTo || undefined,
         subject: payload.subject,
         html: payload.body,
+        attachments,
       });
 
     const shouldUseEthereal =

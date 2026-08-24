@@ -30,6 +30,10 @@ import {
   renderTemplate,
 } from './utils/template-variable.util';
 import { decryptMailSecret } from './utils/mail-crypto.util';
+import {
+  prepareEmailLogo,
+  toEmailLogoJobAttachment,
+} from './utils/email-logo.util';
 import { TenantMailSetting } from '../tenants/mail/entities';
 import { User } from '../tenants/users/entities';
 
@@ -419,6 +423,11 @@ export class MailService {
       data: options.data || {},
     }));
 
+    const preferredLogo =
+      typeof resolvedData.logo_url === 'string' ? resolvedData.logo_url : null;
+    const preparedLogo = await prepareEmailLogo(preferredLogo);
+    resolvedData.logo_url = preparedLogo.logoSrc;
+
     const subjectMissing = assertTemplateVariables(template.subject, resolvedData);
     const bodyMissing = assertTemplateVariables(template.body, resolvedData);
     const missingVariables = Array.from(new Set([...subjectMissing, ...bodyMissing]));
@@ -432,6 +441,7 @@ export class MailService {
     const subject = renderTemplate(template.subject, resolvedData, { escape: false });
     const body = renderTemplate(template.body, resolvedData);
     const smtp = await this.loadSmtpConfig(tenantConnection);
+    const logoAttachment = toEmailLogoJobAttachment(preparedLogo.attachment);
     const idempotencyKey = this.buildIdempotencyKey({
       module: options.module,
       action: options.action,
@@ -497,6 +507,7 @@ export class MailService {
       subject,
       body,
       smtp,
+      logoAttachment,
     };
 
     const isDevelopment = (process.env.NODE_ENV || 'development').toLowerCase() === 'development';

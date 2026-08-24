@@ -28,6 +28,10 @@ import {
   RefreshToken,
 } from './entities';
 import { renderEmailLayout, emailEscape } from '../../mail/utils/email-layout.util';
+import {
+  prepareEmailLogo,
+  toNodemailerLogoAttachments,
+} from '../../mail/utils/email-logo.util';
 
 @Injectable()
 export class MasterAuthService {
@@ -281,7 +285,7 @@ export class MasterAuthService {
     }
 
     const verifyUrl = this.getMasterVerifyEmailUrl(email, token);
-    const logoUrl = `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
+    const preparedLogo = await prepareEmailLogo();
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
@@ -291,7 +295,7 @@ export class MasterAuthService {
 
     const subject = 'Verify your email address';
     const html = renderEmailLayout({
-      logoUrl,
+      logoUrl: preparedLogo.logoSrc,
       title: 'Verify your email',
       preheader: 'Confirm your email address to finish setting up your EuSocial account.',
       introHtml: `<p style="margin:0 0 12px;">Hello ${emailEscape(name || 'there')},</p>
@@ -311,6 +315,7 @@ export class MasterAuthService {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
     } finally {
       transporter.close();
@@ -324,7 +329,7 @@ export class MasterAuthService {
     }
 
     const resetUrl = this.getMasterResetUrl(email, token);
-    const logoUrl = `${this.getFrontendBaseUrl()}/assets/eusocial-logo.png`;
+    const preparedLogo = await prepareEmailLogo();
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
@@ -334,7 +339,7 @@ export class MasterAuthService {
 
     const subject = 'Reset your password';
     const html = renderEmailLayout({
-      logoUrl,
+      logoUrl: preparedLogo.logoSrc,
       title: 'Password reset request',
       preheader: 'Reset your EuSocial password using the secure link in this email.',
       introHtml: `<p style="margin:0 0 12px;">Hello ${emailEscape(name || 'there')},</p>
@@ -354,6 +359,7 @@ export class MasterAuthService {
         replyTo: smtp.replyTo || undefined,
         subject,
         html,
+        attachments: toNodemailerLogoAttachments(preparedLogo.attachment),
       });
     } finally {
       transporter.close();

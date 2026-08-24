@@ -12,6 +12,7 @@ describe('StripeBillingMailService', () => {
   const close = jest.fn();
 
   let service: StripeBillingMailService;
+  let fetchMock: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -19,7 +20,12 @@ describe('StripeBillingMailService', () => {
     process.env.SMTP_FROM = 'billing@eusocial.test';
     delete process.env.BILLING_NOTIFY_EMAIL;
     (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail, close });
+    fetchMock = jest.spyOn(global, 'fetch' as any).mockRejectedValue(new Error('logo unavailable'));
     service = new StripeBillingMailService(signupRepo as any);
+  });
+
+  afterEach(() => {
+    fetchMock.mockRestore();
   });
 
   it('sends a cancellation-styled email when a subscription is deleted', async () => {
@@ -78,13 +84,40 @@ describe('StripeBillingMailService', () => {
     expect(customerMail.subject).toBe('Payment confirmed for Acme');
     expect(customerMail.html).toContain('Payment confirmed');
     expect(customerMail.html).toContain('29.00 USD');
-    expect(customerMail.html).toContain('signup-123');
+    expect(customerMail.html).not.toContain('signup-123');
+    expect(customerMail.html).not.toContain('>Domain<');
+    expect(customerMail.html).not.toContain('>Reference<');
     expect(customerMail.html).not.toContain('checkout.session.completed');
     expect(customerMail.html).not.toContain('cs_test_abc');
 
     expect(opsMail.subject).toBe('[Ops] Payment confirmed for Acme');
     expect(opsMail.html).toContain('checkout.session.completed');
     expect(opsMail.html).toContain('cs_test_abc');
+    expect(opsMail.html).not.toContain('>Domain<');
+    expect(opsMail.html).not.toContain('>Reference<');
+  });
+
+  it('embeds the logo as a CID attachment when the image can be fetched', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+    } as any);
+
+    await service.notify('checkout.session.completed', {
+      tenant: { name: 'Acme', email: 'hello@acme.com' } as any,
+      details: { Amount: '29.00 USD' },
+    });
+
+    const mail = sendMail.mock.calls[0][0];
+    expect(mail.html).toContain('cid:eusocial-logo');
+    expect(mail.attachments).toEqual([
+      expect.objectContaining({
+        filename: 'eusocial-logo.png',
+        cid: 'eusocial-logo',
+        contentType: 'image/png',
+      }),
+    ]);
   });
 
   it('skips unknown Stripe events', async () => {

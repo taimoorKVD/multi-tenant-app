@@ -1002,10 +1002,11 @@ export class BillingService {
         await this.notifyStripeMail(event.type, {
           tenant,
           signup,
-          details: this.checkoutCustomerDetails(session, signup),
+          details: this.checkoutCustomerDetails(session),
           internalDetails: {
             'Stripe event': event.type,
             'Checkout session': session.id,
+            Signup: signup?.id || null,
           },
         });
         break;
@@ -1016,10 +1017,11 @@ export class BillingService {
         const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
         await this.notifyStripeMail(event.type, {
           signup,
-          details: this.checkoutCustomerDetails(session, signup),
+          details: this.checkoutCustomerDetails(session),
           internalDetails: {
             'Stripe event': event.type,
             'Checkout session': session.id,
+            Signup: signup?.id || null,
           },
         });
         break;
@@ -1030,10 +1032,11 @@ export class BillingService {
         const signup = await this.stripeBillingMail?.findSignupByCheckout(session);
         await this.notifyStripeMail(event.type, {
           signup,
-          details: this.checkoutCustomerDetails(session, signup),
+          details: this.checkoutCustomerDetails(session),
           internalDetails: {
             'Stripe event': event.type,
             'Checkout session': session.id,
+            Signup: signup?.id || null,
           },
         });
         break;
@@ -1083,7 +1086,6 @@ export class BillingService {
 
   private checkoutCustomerDetails(
     session: Stripe.Checkout.Session,
-    signup?: WebsiteSignup | null,
   ): Record<string, string | null | undefined> {
     const amount =
       session.amount_total != null
@@ -1091,7 +1093,6 @@ export class BillingService {
         : null;
     return {
       Amount: amount,
-      Reference: signup?.id || null,
     };
   }
 
