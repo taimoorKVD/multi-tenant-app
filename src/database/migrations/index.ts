@@ -19,3 +19,4 @@ export * from './1701010020000-CreateBillingTables';
 export * from './1701010021000-AddModulesToPlansTable';
 export * from './1701010022000-AddTenantProfileFields';
 export * from './1701010023000-CreateWebsiteSignupsTable';
+export * from './1701010024000-AddOneTimeLoginTokenToWebsiteSignups';

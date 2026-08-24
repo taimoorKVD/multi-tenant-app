@@ -118,15 +118,44 @@ export class TenantsService {
     return `${this.getTenantAppUrl(subdomain, customDomain)}/login`;
   }
 
+  getTenantHandoffLoginUrl(
+    subdomain: string,
+    oneTimeLoginToken: string,
+    customDomain?: string | null,
+  ): string {
+    const base = this.getTenantAppUrl(subdomain, customDomain);
+    return `${base}/auth/handoff?ott=${encodeURIComponent(oneTimeLoginToken)}`;
+  }
+
   getTenantLoginApiUrl(subdomain: string): string {
     const slug = String(subdomain || '').trim().toLowerCase();
     return `${this.getApiBaseUrl()}/api/tenant/${encodeURIComponent(slug)}/login`;
+  }
+
+  getPublicHandoffApiUrl(): string {
+    return `${this.getApiBaseUrl()}/api/public/signup/handoff`;
   }
 
   async getLoginUrlForTenant(id: number): Promise<string | null> {
     const tenant = await this.tenantRepo.findOneBy({ id });
     if (!tenant) return null;
     return this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain);
+  }
+
+  async getTenantPortalContext(id: number): Promise<{
+    subdomain: string;
+    customDomain: string | null;
+    dbName: string;
+    email: string | null;
+  } | null> {
+    const tenant = await this.tenantRepo.findOneBy({ id });
+    if (!tenant?.subdomain) return null;
+    return {
+      subdomain: tenant.subdomain,
+      customDomain: tenant.customDomain ?? null,
+      dbName: tenant.dbName,
+      email: tenant.email ?? null,
+    };
   }
 
   async getLoginApiUrlForTenant(id: number): Promise<{

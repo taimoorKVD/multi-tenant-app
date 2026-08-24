@@ -4,9 +4,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 import { Plan, PlanStatus, WebsiteSignup, WebsiteSignupStatus } from '../entities';
@@ -17,12 +19,19 @@ import { CreateTenantDto } from '../../tenants/dto';
 import { StartWebsiteSignupDto } from './dto/start-website-signup.dto';
 import { decryptMailSecret, encryptMailSecret } from '../../../mail/utils/mail-crypto.util';
 import { toSubdomainSlug } from '../../../utils';
+import { getTenantDataSource } from '../../../database/datasource';
+import { User } from '../../../tenants/users/entities';
+import { RefreshToken } from '../../../tenants/auth/entities';
+import { serializePlanModules } from '../plan-modules';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class PublicSignupService {
   private readonly logger = new Logger(PublicSignupService.name);
   private readonly provisioning = new Set<string>();
+  private readonly ottTtlMinutes = Number(process.env.SIGNUP_OTT_TTL_MINUTES || 15);
+  private readonly accessTokenTtl = process.env.JWT_ACCESS_TOKEN_TTL || '2h';
+  private readonly refreshTokenTtlDays = Number(process.env.JWT_REFRESH_TOKEN_TTL_DAYS || 7);
 
   constructor(
     @InjectRepository(WebsiteSignup)
@@ -34,6 +43,7 @@ export class PublicSignupService {
     private readonly billingService: BillingService,
     @Inject(forwardRef(() => TenantsService))
     private readonly tenantsService: TenantsService,
+    private readonly jwtService: JwtService,
   ) {}
 
   listPlans() {
@@ -129,35 +139,34 @@ export class PublicSignupService {
     const payload = (signup.payload || {}) as {
       name?: string;
       email?: string;
-      domain?: string;
     };
     const email =
       String(payload.email || signup.email || '')
         .trim()
         .toLowerCase() || null;
     const provisioned = signup.status === WebsiteSignupStatus.PROVISIONED;
-    const password = provisioned
-      ? decryptMailSecret(signup.adminPasswordEncrypted) || null
-      : null;
+
     let loginUrl: string | null = null;
-    let loginApiUrl: string | null = null;
+    let oneTimeLoginToken: string | null = null;
     let tenantSlug: string | null = null;
-    if (provisioned) {
-      if (signup.tenantId) {
-        const urls = await this.tenantsService.getLoginApiUrlForTenant(signup.tenantId);
-        if (urls) {
-          loginUrl = urls.loginUrl;
-          loginApiUrl = urls.loginApiUrl;
-          tenantSlug = urls.tenantSlug;
-        }
+
+    if (provisioned && signup.tenantId) {
+      const portal = await this.tenantsService.getTenantPortalContext(signup.tenantId);
+      if (portal) {
+        tenantSlug = portal.subdomain;
+        oneTimeLoginToken = await this.issueOneTimeLoginToken(signup);
+        loginUrl = this.tenantsService.getTenantHandoffLoginUrl(
+          portal.subdomain,
+          oneTimeLoginToken,
+          portal.customDomain,
+        );
       }
-      if (!loginUrl || !loginApiUrl) {
-        const subdomain = toSubdomainSlug(String(payload.name || ''));
-        if (subdomain) {
-          tenantSlug = tenantSlug || subdomain;
-          loginUrl = loginUrl || this.tenantsService.getTenantLoginUrl(subdomain);
-          loginApiUrl = loginApiUrl || this.tenantsService.getTenantLoginApiUrl(subdomain);
-        }
+    } else if (provisioned) {
+      const subdomain = toSubdomainSlug(String(payload.name || ''));
+      if (subdomain) {
+        tenantSlug = subdomain;
+        oneTimeLoginToken = await this.issueOneTimeLoginToken(signup);
+        loginUrl = this.tenantsService.getTenantHandoffLoginUrl(subdomain, oneTimeLoginToken);
       }
     }
 
@@ -167,14 +176,100 @@ export class PublicSignupService {
         signupId: signup.id,
         status: signup.status,
         email,
-        password,
         loginUrl,
-        loginApiUrl,
+        oneTimeLoginToken,
         tenantSlug,
         tenantId: signup.tenantId,
         paid: [WebsiteSignupStatus.PAID, WebsiteSignupStatus.PROVISIONED].includes(signup.status),
         provisioned,
         error: signup.status === WebsiteSignupStatus.FAILED ? signup.errorMessage : null,
+      },
+    };
+  }
+
+  async completeHandoff(token: string, req?: any) {
+    const raw = String(token || '').trim();
+    if (!raw) throw new BadRequestException('token is required');
+
+    const tokenHash = this.hashToken(raw);
+    const signup = await this.signupRepo.findOne({
+      where: { oneTimeLoginTokenHash: tokenHash },
+    });
+    if (!signup || signup.status !== WebsiteSignupStatus.PROVISIONED || !signup.tenantId) {
+      throw new UnauthorizedException('Invalid or expired one-time login token');
+    }
+    if (signup.oneTimeLoginTokenUsedAt) {
+      throw new UnauthorizedException('One-time login token has already been used');
+    }
+    if (
+      !signup.oneTimeLoginTokenExpiresAt ||
+      new Date(signup.oneTimeLoginTokenExpiresAt).getTime() < Date.now()
+    ) {
+      throw new UnauthorizedException('One-time login token has expired');
+    }
+
+    const portal = await this.tenantsService.getTenantPortalContext(signup.tenantId);
+    if (!portal) {
+      throw new UnauthorizedException('Tenant not found for this signup');
+    }
+
+    const email =
+      String((signup.payload as any)?.email || signup.email || '')
+        .trim()
+        .toLowerCase() || null;
+    if (!email) {
+      throw new UnauthorizedException('Signup email is missing');
+    }
+
+    signup.oneTimeLoginTokenUsedAt = new Date();
+    signup.oneTimeLoginTokenHash = null;
+    signup.oneTimeLoginTokenExpiresAt = null;
+    await this.signupRepo.save(signup);
+
+    const tenantConnection = await getTenantDataSource(portal.dbName);
+    const userRepo = tenantConnection.getRepository(User);
+    const user = await userRepo.findOne({
+      where: { email },
+      relations: ['role', 'role.permissions', 'jobPosition'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Tenant admin user not found');
+    }
+
+    const permissionNames = (user.role?.permissions || []).map((p) => p.name);
+    const accountType = this.resolveAccountType(user.role?.name, permissionNames);
+    const authReq = { ...(req || {}), tenantId: portal.subdomain, tenantConnection };
+    const tokens = await this.issueAuthTokens(
+      tenantConnection,
+      authReq,
+      user,
+      permissionNames,
+      accountType,
+    );
+    const entitlements = await this.billingService.getTenantEntitlements(portal.subdomain);
+
+    return {
+      success: true,
+      message: 'Login successful',
+      user_type: 'tenant',
+      account_type: accountType,
+      tenant_slug: portal.subdomain,
+      tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: serializePlanModules(entitlements.allowedModules),
+      redirectTo: '/user-dashboard',
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        account_type: accountType,
+        role: {
+          id: user.role?.id,
+          name: user.role?.name,
+          permissions: user.role?.permissions || [],
+        },
       },
     };
   }
@@ -253,6 +348,107 @@ export class PublicSignupService {
     signup.status = WebsiteSignupStatus.FAILED;
     signup.errorMessage = 'Stripe Checkout payment failed';
     await this.signupRepo.save(signup);
+  }
+
+  private async issueOneTimeLoginToken(signup: WebsiteSignup): Promise<string> {
+    const raw = crypto.randomBytes(32).toString('base64url');
+    signup.oneTimeLoginTokenHash = this.hashToken(raw);
+    signup.oneTimeLoginTokenExpiresAt = new Date(Date.now() + this.ottTtlMinutes * 60 * 1000);
+    signup.oneTimeLoginTokenUsedAt = null;
+    await this.signupRepo.save(signup);
+    return raw;
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private resolveAccountType(
+    roleName: string | undefined,
+    permissionNames: string[],
+  ): 'tenant_admin' | 'tenant_user' {
+    const name = String(roleName || '').trim().toLowerCase();
+    if (name === 'admin' || name.includes('admin') || name.includes('manager') || name.includes('owner')) {
+      return 'tenant_admin';
+    }
+    const adminHints = [
+      'create-user',
+      'edit-user',
+      'create-role',
+      'create-dc-template',
+      'edit-dc-template',
+      'activate-dc-template',
+      'archive-dc-template',
+      'review-dc-submission',
+    ];
+    if (adminHints.some((hint) => permissionNames.includes(hint))) {
+      return 'tenant_admin';
+    }
+    return 'tenant_user';
+  }
+
+  private getRefreshTokenSecret(): string {
+    return process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'tenant_default_secret';
+  }
+
+  private async issueAuthTokens(
+    tenantConnection: any,
+    req: any,
+    user: User,
+    permissionNames: string[],
+    accountType: 'tenant_admin' | 'tenant_user',
+  ) {
+    const payload = {
+      sub: user.id,
+      userType: 'tenant',
+      accountType,
+      tenantId: req?.tenantId || null,
+      tenantDb: tenantConnection?.options?.database,
+      email: user.email,
+      role: user.role?.name,
+      jobPositionId: user.jobPosition?.id ?? null,
+      permissions: permissionNames,
+      emailVerified: true,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: this.accessTokenTtl as any,
+    });
+
+    const refreshToken = this.jwtService.sign(
+      { ...payload, type: 'refresh' },
+      {
+        secret: this.getRefreshTokenSecret(),
+        expiresIn: `${this.refreshTokenTtlDays}d` as any,
+      },
+    );
+
+    const refreshRepo = tenantConnection.getRepository(RefreshToken);
+    await refreshRepo
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ revokedAt: new Date() })
+      .where('user_id = :userId', { userId: user.id })
+      .andWhere('revoked_at IS NULL')
+      .execute();
+
+    await refreshRepo.save({
+      user,
+      tokenHash: this.hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + this.refreshTokenTtlDays * 24 * 60 * 60 * 1000),
+      revokedAt: null,
+      deviceName: null,
+      ipAddress: null,
+      userAgent: null,
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      expires_in: this.accessTokenTtl,
+      refresh_expires_in_days: this.refreshTokenTtlDays,
+    };
   }
 
   private async findSignupFromSession(session: Stripe.Checkout.Session) {
