@@ -33,6 +33,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { BillingService } from '../billing/billing.service';
 import { emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
 import {
+  EMAIL_LOGO_PUBLIC_PATH,
   prepareEmailLogo,
   toNodemailerLogoAttachments,
 } from '../../mail/utils/email-logo.util';
@@ -179,7 +180,7 @@ export class TenantsService {
   private getLogoUrl(tenantAppUrl: string): string {
     const configured = this.getEnvValue('MAIL_LOGO_URL', 'LOGO_URL');
     if (configured) return configured;
-    return `${tenantAppUrl}/assets/eusocial-logo.png`;
+    return `${tenantAppUrl}${EMAIL_LOGO_PUBLIC_PATH}`;
   }
 
   private resolveSmtpConfig() {

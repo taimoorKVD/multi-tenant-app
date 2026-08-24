@@ -35,6 +35,8 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/views ./dist/src/views
+COPY --from=builder /app/src/mail/assets ./dist/mail/assets
+COPY --from=builder /app/src/mail/assets ./dist/src/mail/assets
 
 EXPOSE 3333
 

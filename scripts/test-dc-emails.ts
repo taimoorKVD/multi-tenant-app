@@ -48,7 +48,7 @@ async function main() {
   try {
     const mailService = app.get(MailService);
     const frontend = (process.env.FRONTEND_URL || 'http://localhost:4200').replace(/\/+$/, '');
-    const logoUrl = `${frontend}/assets/eusocial-logo.png`;
+    const logoUrl = `${frontend}/images/eusocial-logo.png`;
     const loginUrl = `${frontend}/tenant/login`;
     const req = { tenantId: null, tenantConnection: null };
 
