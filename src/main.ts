@@ -1,10 +1,10 @@
 import 'ejs';
-import {NestFactory} from '@nestjs/core';
-import {AppModule} from './app.module';
-import {NestExpressApplication} from '@nestjs/platform-express';
-import {join} from 'path';
-import {RequestMethod, ValidationPipe} from '@nestjs/common';
-import {setupSwagger} from './config/swagger.config';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { setupSwagger } from './config/swagger.config';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -16,8 +16,8 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api', {
     exclude: [
-      {path: '/', method: RequestMethod.GET},
-      {path: 'health', method: RequestMethod.GET},
+      { path: '/', method: RequestMethod.GET },
+      { path: 'health', method: RequestMethod.GET },
     ],
   });
 
@@ -33,54 +33,49 @@ async function bootstrap() {
 
   const configuredOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
-    .map((item) => item.trim())
+    .map((item) => item.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
   const allowedOrigins = new Set<string>([
     'http://localhost:4200',
+    'http://localhost:3001',
     'https://eusocial.thebetawebsite.com',
     'https://admin.eusocial.thebetawebsite.com',
-    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
-    ...(process.env.PUBLIC_WEBSITE_URL ? [process.env.PUBLIC_WEBSITE_URL.trim()] : []),
+    'https://api.eusocial.thebetawebsite.com',
+    ...(process.env.FRONTEND_URL
+      ? [process.env.FRONTEND_URL.trim().replace(/\/+$/, '')]
+      : []),
+    ...(process.env.PUBLIC_WEBSITE_URL
+      ? [process.env.PUBLIC_WEBSITE_URL.trim().replace(/\/+$/, '')]
+      : []),
     ...configuredOrigins,
   ]);
 
-app.enableCors({
-  origin: (origin, callback) => {
-    if (!origin) {
-      return callback(null, true);
-    }
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Non-browser clients (curl, server-to-server, same-origin) send no Origin.
+      if (!origin) {
+        return callback(null, true);
+      }
 
-    const isAllowed =
-      allowedOrigins.has(origin) ||
-      /^https:\/\/[a-z0-9-]+.eusocial.thebetawebsite.com$/i.test(origin) || /^http:\/\/[a-z0-9-]+.eusocial.localhost:4200$/i.test(origin);
-    if (isAllowed) {
-      return callback(null, true);
-    }
+      const normalized = origin.replace(/\/+$/, '');
+      const isAllowed =
+        allowedOrigins.has(normalized) ||
+        /^https:\/\/[a-z0-9-]+\.eusocial\.thebetawebsite\.com$/i.test(normalized) ||
+        /^http:\/\/[a-z0-9-]+\.eusocial\.localhost:4200$/i.test(normalized);
 
-    return callback(new Error(`CORS blocked origin: ${origin}`));
-  },
+      if (isAllowed) {
+        return callback(null, true);
+      }
 
-  credentials: true,
-
-  methods: [
-    'GET',
-    'HEAD',
-    'POST',
-    'PUT',
-    'PATCH',
-    'DELETE',
-    'OPTIONS',
-  ],
-
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Tenant',
-    'X-Tenant-Slug',
-  ],
-});
-    
+      // Do NOT throw — throwing becomes Nest 500 "Internal server error".
+      console.warn(`CORS blocked origin: ${origin}`);
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant', 'X-Tenant-Slug'],
+  });
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(`✅ App running on port ${process.env.PORT ?? 3000}`, '0.0.0.0');

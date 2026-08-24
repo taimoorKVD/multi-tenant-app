@@ -42,6 +42,7 @@ import {
     AddModulesToPlansTable1701010021000,
     AddTenantProfileFields1701010022000,
     CreateWebsiteSignupsTable1701010023000,
+    AddOneTimeLoginTokenToWebsiteSignups1701010024000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -108,6 +109,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
                 AddModulesToPlansTable1701010021000,
                 AddTenantProfileFields1701010022000,
                 CreateWebsiteSignupsTable1701010023000,
+                AddOneTimeLoginTokenToWebsiteSignups1701010024000,
         ],
     synchronize: false,
     // migrationsRun: true,
