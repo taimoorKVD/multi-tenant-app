@@ -27,6 +27,7 @@ import {
   PasswordResetToken,
   RefreshToken,
 } from './entities';
+import { renderEmailLayout, emailEscape } from '../../mail/utils/email-layout.util';
 
 @Injectable()
 export class MasterAuthService {
@@ -289,35 +290,19 @@ export class MasterAuthService {
     });
 
     const subject = 'Verify your email address';
-    const html = `
-      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-          <tr>
-            <td align="center">
-              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-                <tr>
-                  <td style="padding:24px 28px;background:#101820;">
-                    <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:30px 28px 22px;color:#1f2d3d;line-height:1.5;">
-                    <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Verify your email</h2>
-                    <p style="margin:0 0 16px;">Hello ${name || 'there'},</p>
-                    <p style="margin:0 0 16px;">Please confirm your email address to complete account verification.</p>
-                    <p style="margin:24px 0;">
-                      <a href="${verifyUrl}" style="background:#ff9900;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Verify Email</a>
-                    </p>
-                    <p style="margin:0 0 12px;">This link expires in ${this.emailVerificationTokenTtlMinutes} minutes.</p>
-                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">© 2026 EuSocial. All rights reserved.</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+    const html = renderEmailLayout({
+      logoUrl,
+      title: 'Verify your email',
+      preheader: 'Confirm your email address to finish setting up your EuSocial account.',
+      introHtml: `<p style="margin:0 0 12px;">Hello ${emailEscape(name || 'there')},</p>
+        <p style="margin:0;">Please confirm your email address to complete account verification.</p>`,
+      notice: {
+        title: 'Link expiry',
+        text: `This verification link expires in ${this.emailVerificationTokenTtlMinutes} minutes.`,
+        variant: 'info',
+      },
+      cta: { label: 'Verify Email', url: verifyUrl },
+    });
 
     try {
       await transporter.sendMail({
@@ -348,36 +333,19 @@ export class MasterAuthService {
     });
 
     const subject = 'Reset your password';
-    const html = `
-      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-          <tr>
-            <td align="center">
-              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-                <tr>
-                  <td style="padding:24px 28px;background:#101820;">
-                    <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:30px 28px 22px;color:#1f2d3d;line-height:1.5;">
-                    <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Password reset request</h2>
-                    <p style="margin:0 0 16px;">Hello ${name || 'there'},</p>
-                    <p style="margin:0 0 16px;">We received a request to reset your password. Click the button below to continue.</p>
-                    <p style="margin:24px 0;">
-                      <a href="${resetUrl}" style="background:#ff9900;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Reset password</a>
-                    </p>
-                    <p style="margin:0 0 12px;">This link expires in ${this.resetTokenTtlMinutes} minutes and can be used only once.</p>
-                    <p style="margin:0;">If you did not request a password reset, you can ignore this email.</p>
-                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">© 2026 EuSocial. All rights reserved.</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+    const html = renderEmailLayout({
+      logoUrl,
+      title: 'Password reset request',
+      preheader: 'Reset your EuSocial password using the secure link in this email.',
+      introHtml: `<p style="margin:0 0 12px;">Hello ${emailEscape(name || 'there')},</p>
+        <p style="margin:0;">We received a request to reset your password. Click the button below to continue.</p>`,
+      notice: {
+        title: 'Security note',
+        text: `This link expires in ${this.resetTokenTtlMinutes} minutes and can be used only once. If you did not request a password reset, you can ignore this email.`,
+        variant: 'warning',
+      },
+      cta: { label: 'Reset password', url: resetUrl },
+    });
 
     try {
       await transporter.sendMail({

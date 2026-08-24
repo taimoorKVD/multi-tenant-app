@@ -1,3 +1,4 @@
+import { JwtService } from '@nestjs/jwt';
 import { encryptMailSecret } from '../../../mail/utils/mail-crypto.util';
 import { WebsiteSignupStatus } from '../entities';
 import { PublicSignupService } from './public-signup.service';
@@ -22,21 +23,29 @@ describe('PublicSignupService', () => {
   };
   const billingService = {
     listPublicPlans: jest.fn().mockResolvedValue({ success: true, data: [], count: 0 }),
+    getTenantEntitlements: jest.fn().mockResolvedValue({
+      plan: { id: 2, name: 'Standard', slug: 'standard' },
+      allowedModules: ['dashboard', 'users'],
+    }),
   };
   const tenantsService = {
     assertTenantAvailable: jest.fn().mockResolvedValue('acme'),
-    getTenantLoginUrl: jest.fn().mockReturnValue('https://acme.eusocial.com/login'),
-    getTenantLoginApiUrl: jest.fn().mockReturnValue('https://api.eusocial.com/api/tenant/acme/login'),
-    getLoginUrlForTenant: jest.fn().mockResolvedValue('https://acme.eusocial.com/login'),
-    getLoginApiUrlForTenant: jest.fn().mockResolvedValue({
-      loginUrl: 'https://acme.eusocial.com/login',
-      loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
-      tenantSlug: 'acme',
+    getTenantHandoffLoginUrl: jest
+      .fn()
+      .mockImplementation((slug: string, ott: string) => `https://${slug}.eusocial.com/auth/handoff?ott=${ott}`),
+    getTenantPortalContext: jest.fn().mockResolvedValue({
+      subdomain: 'acme',
+      customDomain: null,
+      dbName: 'tenant_acme',
+      email: 'hello@acme.com',
     }),
     create: jest.fn().mockResolvedValue({
       data: { id: 42, credentialsEmail: { error: null } },
     }),
   };
+  const jwtService = {
+    sign: jest.fn().mockReturnValue('signed-jwt'),
+  } as unknown as JwtService;
 
   let service: PublicSignupService;
 
@@ -48,6 +57,7 @@ describe('PublicSignupService', () => {
       stripeService as any,
       billingService as any,
       tenantsService as any,
+      jwtService,
     );
   });
 
@@ -133,36 +143,42 @@ describe('PublicSignupService', () => {
     expect(result.data.status).toBe('pending');
     expect(result.data.provisioned).toBe(false);
     expect(result.data.email).toBe('hello@acme.com');
-    expect(result.data.password).toBeNull();
     expect(result.data.loginUrl).toBeNull();
-    expect(result.data.loginApiUrl).toBeNull();
-    expect(result.data.tenantSlug).toBeNull();
+    expect(result.data.oneTimeLoginToken).toBeNull();
+    expect((result.data as any).password).toBeUndefined();
   });
 
-  it('returns password and loginUrl after the tenant is provisioned', async () => {
-    signupRepo.findOne.mockResolvedValue({
+  it('returns one-time login handoff after the tenant is provisioned', async () => {
+    const signup = {
       id: '11111111-1111-4111-8111-111111111111',
       status: WebsiteSignupStatus.PROVISIONED,
       email: 'hello@acme.com',
       tenantId: 12,
       errorMessage: null,
       adminPasswordEncrypted: encryptMailSecret('K7m$pQ2nLx9w'),
+      oneTimeLoginTokenHash: null,
+      oneTimeLoginTokenExpiresAt: null,
+      oneTimeLoginTokenUsedAt: null,
       payload: {
         name: 'Acme Corporation',
         domain: 'acme.com',
         email: 'hello@acme.com',
       },
-    });
+    };
+    signupRepo.findOne.mockResolvedValue(signup);
+    signupRepo.save.mockImplementation(async (value) => value);
 
     const result = await service.getStatus('cs_test_a1b2c3');
 
     expect(result.data.provisioned).toBe(true);
     expect(result.data.email).toBe('hello@acme.com');
-    expect(result.data.password).toBe('K7m$pQ2nLx9w');
-    expect(result.data.loginUrl).toBe('https://acme.eusocial.com/login');
-    expect(result.data.loginApiUrl).toBe('https://api.eusocial.com/api/tenant/acme/login');
-    expect(result.data.tenantSlug).toBe('acme');
-    expect(tenantsService.getLoginApiUrlForTenant).toHaveBeenCalledWith(12);
+    expect(result.data.oneTimeLoginToken).toEqual(expect.any(String));
+    expect(result.data.oneTimeLoginToken!.length).toBeGreaterThan(16);
+    expect(result.data.loginUrl).toContain('/auth/handoff?ott=');
+    expect(result.data.loginUrl).toContain(result.data.oneTimeLoginToken!);
+    expect((result.data as any).password).toBeUndefined();
+    expect(tenantsService.getTenantPortalContext).toHaveBeenCalledWith(12);
+    expect(tenantsService.getTenantHandoffLoginUrl).toHaveBeenCalled();
   });
 
   it('marks expired and failed checkout sessions', async () => {

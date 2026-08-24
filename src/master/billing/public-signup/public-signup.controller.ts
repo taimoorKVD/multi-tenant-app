@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PublicSignupService } from './public-signup.service';
 import { StartWebsiteSignupDto } from './dto/start-website-signup.dto';
+import { SignupHandoffDto } from './dto/signup-handoff.dto';
 import { createRateLimitGuard } from '../../../common/guards/rate-limit.guard';
 import { WebsiteSignupSwagger } from '../swagger';
 
@@ -30,5 +31,13 @@ export class PublicSignupController {
   @WebsiteSignupSwagger.SignupStatus()
   getStatus(@Query('session_id') sessionId: string) {
     return this.publicSignupService.getStatus(sessionId);
+  }
+
+  @Post('signup/handoff')
+  @HttpCode(200)
+  @UseGuards(WebsiteSignupRateLimitGuard)
+  @WebsiteSignupSwagger.Handoff()
+  handoff(@Body() dto: SignupHandoffDto, @Req() req: any) {
+    return this.publicSignupService.completeHandoff(dto.token, req);
   }
 }

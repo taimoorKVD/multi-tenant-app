@@ -4,13 +4,17 @@ import * as nodemailer from 'nodemailer';
 import { Repository } from 'typeorm';
 import { Tenant } from '../tenants/entities';
 import { Invoice, Subscription, WebsiteSignup } from './entities';
+import { EMAIL_COLORS, emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
 
 export type StripeMailContext = {
   tenant?: Tenant | null;
   subscription?: Subscription | null;
   invoice?: Invoice | null;
   signup?: WebsiteSignup | null;
+  /** Customer-facing detail rows (plan, amount, etc.). */
   details?: Record<string, string | null | undefined>;
+  /** Ops-only rows (Stripe event ids). Sent only to BILLING_NOTIFY_EMAIL. */
+  internalDetails?: Record<string, string | null | undefined>;
 };
 
 type MailTemplate = {
@@ -36,8 +40,9 @@ export class StripeBillingMailService {
     const template = this.templateFor(eventType, context);
     if (!template) return;
 
-    const recipients = this.recipients(context);
-    if (!recipients.length) {
+    const customerRecipients = this.customerRecipients(context);
+    const opsRecipient = this.opsRecipient();
+    if (!customerRecipients.length && !opsRecipient) {
       this.logger.warn(`No billing email recipient for Stripe event ${eventType}`);
       return;
     }
@@ -48,7 +53,8 @@ export class StripeBillingMailService {
       return;
     }
 
-    const html = this.renderHtml(template, context);
+    const customerHtml = this.renderHtml(template, context, { includeInternal: false });
+    const opsHtml = this.renderHtml(template, context, { includeInternal: true });
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
@@ -59,15 +65,28 @@ export class StripeBillingMailService {
     });
 
     try {
-      for (const to of recipients) {
+      for (const to of customerRecipients) {
+        // Avoid duplicating the customer email when ops address matches a customer.
+        if (opsRecipient && to === opsRecipient) continue;
         await transporter.sendMail({
           from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
           to,
           replyTo: smtp.replyTo || undefined,
           subject: template.subject,
-          html,
+          html: customerHtml,
         });
         this.logger.log(`Stripe billing email (${eventType}) sent to ${to}`);
+      }
+
+      if (opsRecipient) {
+        await transporter.sendMail({
+          from: smtp.fromName ? `"${smtp.fromName}" <${smtp.fromEmail}>` : smtp.fromEmail,
+          to: opsRecipient,
+          replyTo: smtp.replyTo || undefined,
+          subject: `[Ops] ${template.subject}`,
+          html: opsHtml,
+        });
+        this.logger.log(`Stripe billing ops email (${eventType}) sent to ${opsRecipient}`);
       }
     } finally {
       transporter.close();
@@ -86,15 +105,16 @@ export class StripeBillingMailService {
     return null;
   }
 
-  private recipients(context: StripeMailContext): string[] {
-    const list = [
-      context.tenant?.email,
-      context.signup?.email,
-      process.env.BILLING_NOTIFY_EMAIL,
-    ]
+  private customerRecipients(context: StripeMailContext): string[] {
+    const list = [context.tenant?.email, context.signup?.email]
       .map((value) => String(value || '').trim().toLowerCase())
       .filter(Boolean);
     return [...new Set(list)];
+  }
+
+  private opsRecipient(): string | null {
+    const value = process.env.BILLING_NOTIFY_EMAIL?.trim().toLowerCase();
+    return value || null;
   }
 
   private templateFor(eventType: string, context: StripeMailContext): MailTemplate | null {
@@ -112,7 +132,7 @@ export class StripeBillingMailService {
       'customer.subscription.updated': {
         subject: `Subscription updated for ${tenantName}`,
         heading: 'Subscription updated',
-        intro: `Billing details for <strong>${this.escape(tenantName)}</strong> were updated in Stripe. Review the summary below.`,
+        intro: `Billing details for <strong>${this.escape(tenantName)}</strong> were updated. Review the summary below.`,
         accent: '#0b73e6',
         badge: 'Updated',
         badgeBg: '#e8f1fb',
@@ -139,7 +159,7 @@ export class StripeBillingMailService {
       'customer.subscription.deleted': {
         subject: `Subscription cancelled for ${tenantName}`,
         heading: 'Subscription cancelled',
-        intro: `The Stripe subscription for <strong>${this.escape(tenantName)}</strong> was cancelled or deleted. The workspace has been suspended until a new plan is started.`,
+        intro: `The subscription for <strong>${this.escape(tenantName)}</strong> was cancelled. The workspace has been suspended until a new plan is started.`,
         accent: '#c0392b',
         badge: 'Cancelled',
         badgeBg: '#fdecea',
@@ -184,7 +204,7 @@ export class StripeBillingMailService {
       'invoice.payment_action_required': {
         subject: `Payment action required for ${tenantName}`,
         heading: 'Payment action required',
-        intro: `Stripe needs an extra step (for example 3D Secure) to complete payment for <strong>${this.escape(tenantName)}</strong>. Open the invoice link below to finish.`,
+        intro: `An extra verification step is needed to complete payment for <strong>${this.escape(tenantName)}</strong>. Open the invoice link below to finish.`,
         accent: '#d97706',
         badge: 'Action required',
         badgeBg: '#fef3cd',
@@ -209,18 +229,18 @@ export class StripeBillingMailService {
         badgeColor: '#c0392b',
       },
       'checkout.session.completed': {
-        subject: `Checkout payment confirmed for ${tenantName}`,
-        heading: 'Checkout payment confirmed',
-        intro: `Stripe Checkout completed successfully for <strong>${this.escape(tenantName)}</strong>. Your workspace will be provisioned if it is not already ready.`,
+        subject: `Payment confirmed for ${tenantName}`,
+        heading: 'Payment confirmed',
+        intro: `Payment for <strong>${this.escape(tenantName)}</strong> was successful. Your workspace will be provisioned if it is not already ready.`,
         accent: '#1b7f4e',
         badge: 'Paid',
         badgeBg: '#e8f5ee',
         badgeColor: '#1b7f4e',
       },
       'checkout.session.async_payment_succeeded': {
-        subject: `Checkout payment confirmed for ${tenantName}`,
-        heading: 'Delayed payment succeeded',
-        intro: `A delayed Checkout payment succeeded for <strong>${this.escape(tenantName)}</strong>. Provisioning will continue if needed.`,
+        subject: `Payment confirmed for ${tenantName}`,
+        heading: 'Payment confirmed',
+        intro: `Your delayed payment for <strong>${this.escape(tenantName)}</strong> succeeded. Workspace provisioning will continue if needed.`,
         accent: '#1b7f4e',
         badge: 'Paid',
         badgeBg: '#e8f5ee',
@@ -229,25 +249,25 @@ export class StripeBillingMailService {
       'checkout.session.expired': {
         subject: `Checkout expired for ${tenantName}`,
         heading: 'Checkout expired',
-        intro: `The Stripe Checkout session for <strong>${this.escape(tenantName)}</strong> expired before payment. Start checkout again to complete signup.`,
+        intro: `The checkout for <strong>${this.escape(tenantName)}</strong> expired before payment was completed. Start checkout again to finish signup.`,
         accent: '#d97706',
         badge: 'Expired',
         badgeBg: '#fef3cd',
         badgeColor: '#856404',
       },
       'checkout.session.async_payment_failed': {
-        subject: `Checkout payment failed for ${tenantName}`,
-        heading: 'Checkout payment failed',
-        intro: `A delayed Checkout payment failed for <strong>${this.escape(tenantName)}</strong>. No workspace was activated for this attempt.`,
+        subject: `Payment failed for ${tenantName}`,
+        heading: 'Payment failed',
+        intro: `A delayed payment for <strong>${this.escape(tenantName)}</strong> failed. No workspace was activated for this attempt.`,
         accent: '#c0392b',
         badge: 'Failed',
         badgeBg: '#fdecea',
         badgeColor: '#c0392b',
       },
       'customer.deleted': {
-        subject: `Billing customer removed for ${tenantName}`,
-        heading: 'Billing customer removed',
-        intro: `The Stripe customer record for <strong>${this.escape(tenantName)}</strong> was deleted. The workspace has been suspended.`,
+        subject: `Billing account removed for ${tenantName}`,
+        heading: 'Billing account removed',
+        intro: `The billing account for <strong>${this.escape(tenantName)}</strong> was removed. The workspace has been suspended.`,
         accent: '#c0392b',
         badge: 'Suspended',
         badgeBg: '#fdecea',
@@ -258,79 +278,89 @@ export class StripeBillingMailService {
     return templates[eventType] || null;
   }
 
-  private renderHtml(template: MailTemplate, context: StripeMailContext): string {
-    const rows = this.detailRows(context);
-    const rowHtml = rows
-      .map(
-        ([label, value]) => `
-          <tr style="border-bottom:1px solid #e8edf3;">
-            <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;width:40%;"><strong>${this.escape(label)}</strong></td>
-            <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${value}</td>
-          </tr>`,
-      )
-      .join('');
-
-    return `
-      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-          <tr>
-            <td align="center">
-              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-                <tr>
-                  <td style="padding:22px 28px;background:#101820;color:#ffffff;">
-                    <div style="font-size:18px;font-weight:bold;letter-spacing:0.3px;">EuSocial Billing</div>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="height:6px;background:${template.accent};font-size:0;line-height:0;">&nbsp;</td>
-                </tr>
-                <tr>
-                  <td style="padding:30px 28px 22px;color:#1f2d3d;">
-                    <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:${template.badgeBg};color:${template.badgeColor};font-size:12px;font-weight:bold;margin-bottom:12px;">${this.escape(template.badge)}</span>
-                    <h2 style="margin:12px 0 10px;font-size:24px;line-height:30px;color:#0b2948;">${this.escape(template.heading)}</h2>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">${template.intro}</p>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 8px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;overflow:hidden;">
-                      ${rowHtml}
-                    </table>
-                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
-                      This message was sent because a Stripe billing event was received by EuSocial. © ${new Date().getFullYear()} EuSocial.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+  private renderHtml(
+    template: MailTemplate,
+    context: StripeMailContext,
+    options: { includeInternal: boolean },
+  ): string {
+    const rows = this.detailRows(context, options);
+    return renderEmailLayout({
+      logoUrl: this.getLogoUrl(),
+      brandTitle: 'EuSocial',
+      title: template.heading,
+      preheader: template.subject,
+      accent: template.accent,
+      badge: {
+        label: template.badge,
+        bg: template.badgeBg,
+        color: template.badgeColor,
+      },
+      introHtml: `<p style="margin:0;">${template.intro}</p>`,
+      rows: rows.map(([label, value]) => ({
+        label,
+        value,
+        html: true,
+      })),
+      footerNote: options.includeInternal
+        ? `Internal billing notification from EuSocial. © ${new Date().getFullYear()} EuSocial.`
+        : `This is a billing update from EuSocial. © ${new Date().getFullYear()} EuSocial.`,
+    });
   }
 
-  private detailRows(context: StripeMailContext): Array<[string, string]> {
+  private getLogoUrl(): string {
+    const configured = process.env.EMAIL_LOGO_URL?.trim() || process.env.MAIL_LOGO_URL?.trim();
+    if (configured) return configured;
+    const frontend =
+      process.env.FRONTEND_URL?.trim() ||
+      process.env.APP_FRONTEND_URL?.trim() ||
+      'http://localhost:4200';
+    return `${frontend.replace(/\/+$/, '')}/assets/eusocial-logo.png`;
+  }
+
+  private detailRows(
+    context: StripeMailContext,
+    options: { includeInternal: boolean },
+  ): Array<[string, string]> {
     const invoiceMoney = context.invoice
       ? `${(Number(context.invoice.amountCents || 0) / 100).toFixed(2)} ${(context.invoice.currency || '').toUpperCase()}`
       : null;
     const invoiceLink = context.invoice?.hostedInvoiceUrl
-      ? `<a href="${this.escape(context.invoice.hostedInvoiceUrl)}" style="color:#0b73e6;text-decoration:none;">View invoice</a>`
+      ? `<a href="${emailEscape(context.invoice.hostedInvoiceUrl)}" style="color:${EMAIL_COLORS.link};text-decoration:none;">View invoice</a>`
       : null;
 
     const rows: Array<[string, string | null | undefined]> = [
-      ['Workspace', context.tenant?.name],
-      ['Domain', context.tenant?.subdomain],
-      ['Workspace status', context.tenant?.status],
-      ['Plan', context.subscription?.plan?.name],
-      ['Subscription status', context.subscription?.status],
-      ['Billing cycle', context.subscription?.billingCycle],
-      ['Invoice number', context.invoice?.invoiceNumber],
-      ['Amount', invoiceMoney],
-      ['Invoice status', context.invoice?.status],
+      ['Workspace', context.tenant?.name ? emailEscape(context.tenant.name) : null],
+      ['Domain', context.tenant?.subdomain ? emailEscape(context.tenant.subdomain) : null],
+      ['Workspace status', context.tenant?.status ? emailEscape(context.tenant.status) : null],
+      ['Plan', context.subscription?.plan?.name ? emailEscape(context.subscription.plan.name) : null],
+      [
+        'Subscription status',
+        context.subscription?.status ? emailEscape(context.subscription.status) : null,
+      ],
+      [
+        'Billing cycle',
+        context.subscription?.billingCycle ? emailEscape(context.subscription.billingCycle) : null,
+      ],
+      [
+        'Invoice number',
+        context.invoice?.invoiceNumber ? emailEscape(context.invoice.invoiceNumber) : null,
+      ],
+      ['Amount', invoiceMoney ? emailEscape(invoiceMoney) : null],
+      ['Invoice status', context.invoice?.status ? emailEscape(context.invoice.status) : null],
       ['Invoice', invoiceLink],
-      ['Signup email', context.signup?.email],
-      ['Signup status', context.signup?.status],
+      ['Email', context.signup?.email ? emailEscape(context.signup.email) : null],
+      ['Signup status', context.signup?.status ? emailEscape(context.signup.status) : null],
     ];
 
     Object.entries(context.details || {}).forEach(([label, value]) => {
-      rows.push([label, value]);
+      rows.push([label, value != null ? emailEscape(String(value)) : null]);
     });
+
+    if (options.includeInternal) {
+      Object.entries(context.internalDetails || {}).forEach(([label, value]) => {
+        rows.push([label, value != null ? emailEscape(String(value)) : null]);
+      });
+    }
 
     return rows
       .filter(([, value]) => Boolean(value))
@@ -338,11 +368,7 @@ export class StripeBillingMailService {
   }
 
   private escape(value: string) {
-    return String(value || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    return emailEscape(value);
   }
 
   private resolveSmtpConfig() {

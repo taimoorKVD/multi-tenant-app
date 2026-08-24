@@ -1,5 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { SignupHandoffDto } from '../public-signup/dto/signup-handoff.dto';
 
 const publicPlanExample = {
   id: 2,
@@ -71,11 +72,11 @@ export const WebsiteSignupSwagger = {
       ApiOperation({
         summary: 'Start Stripe Checkout for a new tenant',
         description:
-          'Public endpoint (no login). Collects tenant details, creates a Stripe Checkout session, and returns the payment URL. After payment, the tenant is created. The first admin logs in with the business email and an auto-generated password (sent by email).',
+          'Public endpoint (no login). Collects tenant details, creates a Stripe Checkout session, and returns the payment URL. After payment, the tenant is provisioned and status returns a one-time login handoff URL.',
       }),
       ApiBody({
         description:
-          'Tenant organization details. Login uses business email; password is generated after payment.',
+          'Tenant organization details. Login uses business email; password is generated after payment (sent by email only).',
         schema: {
           type: 'object',
           required: ['name', 'domain', 'email', 'planId'],
@@ -141,7 +142,7 @@ export const WebsiteSignupSwagger = {
       ApiOperation({
         summary: 'Get website signup payment status',
         description:
-          'Public endpoint (no login). Poll this on the website success page with Stripe session_id. When provisioned, returns email, password, loginApiUrl (POST credentials here), and loginUrl (GET portal after auth).',
+          'Public endpoint (no login). Poll with Stripe session_id. When provisioned, returns a one-time login token and handoff loginUrl. Do not use password for auto-login — redirect to loginUrl, then exchange the OTT via POST /api/public/signup/handoff.',
       }),
       ApiQuery({
         name: 'session_id',
@@ -159,9 +160,8 @@ export const WebsiteSignupSwagger = {
               signupId: '8f3c1e2a-4b9d-4c11-9e77-2c1a0b8d4f21',
               status: 'provisioned',
               email: 'hello@acme.com',
-              password: 'K7m$pQ2nLx9w',
-              loginUrl: 'https://acme.eusocial.com/login',
-              loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
+              loginUrl: 'https://acme.eusocial.com/auth/handoff?ott=abc123xyz',
+              oneTimeLoginToken: 'abc123xyz',
               tenantSlug: 'acme',
               tenantId: 12,
               paid: true,
@@ -179,6 +179,49 @@ export const WebsiteSignupSwagger = {
             statusCode: 404,
             message: 'Signup session not found',
             error: 'Not Found',
+          },
+        },
+      }),
+    ),
+
+  Handoff: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Exchange one-time login token for a tenant session',
+        description:
+          'Public endpoint (no login). Consumes the one-time token from signup status / auth handoff URL and returns tenant JWT tokens. Token can be used only once and expires quickly.',
+      }),
+      ApiBody({ type: SignupHandoffDto }),
+      ApiResponse({
+        status: 200,
+        description: 'Tenant session issued successfully.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Login successful',
+            user_type: 'tenant',
+            account_type: 'tenant_admin',
+            tenant_slug: 'acme',
+            accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            redirectTo: '/user-dashboard',
+            user: {
+              id: 1,
+              email: 'hello@acme.com',
+              name: 'Acme Corporation',
+              account_type: 'tenant_admin',
+            },
+          },
+        },
+      }),
+      ApiResponse({
+        status: 401,
+        description: 'Invalid, expired, or already used one-time token.',
+        schema: {
+          example: {
+            statusCode: 401,
+            message: 'Invalid or expired one-time login token',
+            error: 'Unauthorized',
           },
         },
       }),

@@ -3,6 +3,7 @@ import { In } from 'typeorm';
 import * as nodemailer from 'nodemailer';
 import { User } from '../../users/entities';
 import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
+import { emailEscape, renderEmailLayout } from '../../../mail/utils/email-layout.util';
 
 export type DcMailRecipient = {
   id: number;
@@ -103,38 +104,19 @@ export class WorkflowActionsService {
     };
   }
 
-  private wrapHtml(title: string, intro: string, rowsHtml: string, ctaLabel: string): string {
-    const logoUrl = this.getLogoUrl();
-    const loginUrl = this.getTenantLoginUrl();
-    return `
-  <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-      <tr>
-        <td align="center">
-          <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-            <tr>
-              <td style="padding:24px 28px;background:#101820;">
-                <img src="${logoUrl}" alt="EuSocial" style="height:50px;display:block;" />
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:30px 28px 22px;color:#1f2d3d;">
-                <h2 style="margin:0 0 10px;font-size:22px;line-height:30px;color:#0b2948;">${title}</h2>
-                <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">${intro}</p>
-                <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 18px;border:1px solid #e8edf3;border-radius:10px;">
-                  ${rowsHtml}
-                </table>
-                <a href="${loginUrl}" style="display:inline-block;padding:10px 20px;border-radius:8px;background:#ff9900;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">${ctaLabel}</a>
-                <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
-                  © 2026 EuSocial. All rights reserved.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </div>`;
+  private wrapHtml(title: string, intro: string, rows: Array<{ label: string; value: string }>, ctaLabel: string): string {
+    return renderEmailLayout({
+      logoUrl: this.getLogoUrl(),
+      title,
+      preheader: title,
+      introHtml: `<p style="margin:0;">${intro}</p>`,
+      rows: rows.map((row) => ({
+        label: row.label,
+        value: row.value,
+      })),
+      stackedRows: true,
+      cta: { label: ctaLabel, url: this.getTenantLoginUrl() },
+    });
   }
 
   private async sendDirectSmtpMail(options: {
@@ -222,14 +204,17 @@ export class WorkflowActionsService {
             subject: `New submission: ${templateName}`,
             html: this.wrapHtml(
               'New Data Collection Submission',
-              `Hi ${recipient.name || recipient.email}, a form was submitted and you were listed as a report recipient.`,
-              `
-                <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${templateName}</td></tr>
-                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Submitted by:</strong> ${submitter?.name || submitter?.email || 'Unknown'}</td></tr>
-                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Submitted at:</strong> ${submittedAt}</td></tr>
-                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${context.assignmentId}</td></tr>
-                <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Submission ID:</strong> ${context.submissionId}</td></tr>
-              `,
+              `Hi ${emailEscape(recipient.name || recipient.email || '')}, a form was submitted and you were listed as a report recipient.`,
+              [
+                { label: 'Form', value: templateName },
+                {
+                  label: 'Submitted by',
+                  value: submitter?.name || submitter?.email || 'Unknown',
+                },
+                { label: 'Submitted at', value: submittedAt },
+                { label: 'Assignment ID', value: String(context.assignmentId) },
+                { label: 'Submission ID', value: String(context.submissionId) },
+              ],
               'Open Workspace',
             ),
           });
@@ -278,13 +263,13 @@ export class WorkflowActionsService {
       subject: `Reminder: ${context.templateName} is due ${this.formatDateTime(context.dueAt)}`,
       html: this.wrapHtml(
         'Assignment Due Reminder',
-        `Hi ${context.recipient.name || context.recipient.email}, you have a data collection assignment that is due.`,
-        `
-          <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${context.templateName}</td></tr>
-          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Due:</strong> ${this.formatDateTime(context.dueAt)}</td></tr>
-          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Status:</strong> ${context.status}</td></tr>
-          <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${context.assignmentId}</td></tr>
-        `,
+        `Hi ${emailEscape(context.recipient.name || context.recipient.email || '')}, you have a data collection assignment that is due.`,
+        [
+          { label: 'Form', value: context.templateName },
+          { label: 'Due', value: this.formatDateTime(context.dueAt) },
+          { label: 'Status', value: context.status },
+          { label: 'Assignment ID', value: String(context.assignmentId) },
+        ],
         'Complete Assignment',
       ),
     });
@@ -337,13 +322,13 @@ export class WorkflowActionsService {
         subject: `New assignment: ${templateName}`,
         html: this.wrapHtml(
           'You Have a New Assignment',
-          `Hi ${recipient.name || recipient.email}, a data collection form was published and assigned to you.`,
-          `
-            <tr><td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><strong>Form:</strong> ${templateName}</td></tr>
-            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>First due:</strong> ${this.formatDateTime(assignment.dueAt)}</td></tr>
-            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Occurrences:</strong> ${assignmentCount}</td></tr>
-            <tr><td style="padding:0 16px 14px;font-size:14px;color:#1f2d3d;"><strong>Assignment ID:</strong> ${assignment.id}</td></tr>
-          `,
+          `Hi ${emailEscape(recipient.name || recipient.email || '')}, a data collection form was published and assigned to you.`,
+          [
+            { label: 'Form', value: templateName },
+            { label: 'First due', value: this.formatDateTime(assignment.dueAt) },
+            { label: 'Occurrences', value: String(assignmentCount) },
+            { label: 'Assignment ID', value: String(assignment.id) },
+          ],
           "Open Today's Work",
         ),
       });

@@ -31,6 +31,7 @@ import {
 } from '../../tenants/form-builder/entities';
 import { UnauthorizedException } from '@nestjs/common';
 import { BillingService } from '../billing/billing.service';
+import { emailEscape, renderEmailLayout } from '../../mail/utils/email-layout.util';
 
 @Injectable()
 export class TenantsService {
@@ -117,15 +118,44 @@ export class TenantsService {
     return `${this.getTenantAppUrl(subdomain, customDomain)}/login`;
   }
 
+  getTenantHandoffLoginUrl(
+    subdomain: string,
+    oneTimeLoginToken: string,
+    customDomain?: string | null,
+  ): string {
+    const base = this.getTenantAppUrl(subdomain, customDomain);
+    return `${base}/auth/handoff?ott=${encodeURIComponent(oneTimeLoginToken)}`;
+  }
+
   getTenantLoginApiUrl(subdomain: string): string {
     const slug = String(subdomain || '').trim().toLowerCase();
     return `${this.getApiBaseUrl()}/api/tenant/${encodeURIComponent(slug)}/login`;
+  }
+
+  getPublicHandoffApiUrl(): string {
+    return `${this.getApiBaseUrl()}/api/public/signup/handoff`;
   }
 
   async getLoginUrlForTenant(id: number): Promise<string | null> {
     const tenant = await this.tenantRepo.findOneBy({ id });
     if (!tenant) return null;
     return this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain);
+  }
+
+  async getTenantPortalContext(id: number): Promise<{
+    subdomain: string;
+    customDomain: string | null;
+    dbName: string;
+    email: string | null;
+  } | null> {
+    const tenant = await this.tenantRepo.findOneBy({ id });
+    if (!tenant?.subdomain) return null;
+    return {
+      subdomain: tenant.subdomain,
+      customDomain: tenant.customDomain ?? null,
+      dbName: tenant.dbName,
+      email: tenant.email ?? null,
+    };
   }
 
   async getLoginApiUrlForTenant(id: number): Promise<{
@@ -231,51 +261,22 @@ export class TenantsService {
     });
 
     const subject = `Tenant account ready: ${payload.tenantName}`;
-    const html = `
-      <div style="margin:0;padding:0;background:#f5f8fb;font-family:Arial,Helvetica,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f8fb;padding:24px 0;">
-          <tr>
-            <td align="center">
-              <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5eaf1;">
-                <tr>
-                  <td style="padding:24px 28px;background:#101820;">
-                    <img src="${logoSrc}" alt="EuSocial" width="160" height="50" style="height:50px;width:auto;display:block;border:0;outline:none;text-decoration:none;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:30px 28px 22px;color:#1f2d3d;">
-                    <h2 style="margin:0 0 10px;font-size:24px;line-height:30px;color:#0b2948;">Tenant Ready to Launch</h2>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#334e68;">
-                      Your tenant <strong>${payload.tenantName}</strong> has been successfully created and is now active. Use the credentials below to log in.
-                    </p>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 22px;border:1px solid #e8edf3;border-radius:10px;background:#f9fafb;">
-                      <tr style="border-bottom:1px solid #e8edf3;">
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Business Email</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;">${payload.loginEmail}</td>
-                      </tr>
-                      <tr style="border-bottom:1px solid #e8edf3;">
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Password</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;font-family:monospace;background:#fafbfc;">${payload.adminPassword}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding:14px 16px;font-size:13px;color:#7b8794;background:#f5f8fb;"><strong>Login URL</strong></td>
-                        <td style="padding:14px 16px;font-size:14px;color:#1f2d3d;"><a href="${loginUrl}" style="color:#0b73e6;text-decoration:none;">${loginUrl}</a></td>
-                      </tr>
-                    </table>
-                    <div style="background:#fef3cd;border-left:4px solid #ffc107;padding:12px 14px;border-radius:4px;margin:16px 0;">
-                      <p style="margin:0;font-size:13px;color:#856404;"><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
-                    </div>
-                    <p style="margin:16px 0 0;font-size:13px;line-height:20px;color:#7b8794;">
-                      © 2026 EuSocial. All rights reserved.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+    const html = renderEmailLayout({
+      logoUrl: logoSrc,
+      title: 'Tenant Ready to Launch',
+      preheader: `${payload.tenantName} is active. Your login credentials are inside.`,
+      introHtml: `<p style="margin:0;">Your tenant <strong>${emailEscape(payload.tenantName)}</strong> has been successfully created and is now active. Use the credentials below to log in.</p>`,
+      rows: [
+        { label: 'Business Email', value: payload.loginEmail },
+        { label: 'Password', value: payload.adminPassword, monospace: true },
+      ],
+      notice: {
+        title: 'Security notice',
+        text: 'Please change your password immediately after your first login.',
+        variant: 'warning',
+      },
+      cta: { label: 'Go to Portal', url: loginUrl },
+    });
 
     try {
       await transporter.sendMail({

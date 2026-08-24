@@ -26,6 +26,15 @@ export class WebsiteSignup {
   @Column({ type: 'text', name: 'admin_password_encrypted' })
   adminPasswordEncrypted!: string;
 
+  @Column({ type: 'varchar', name: 'one_time_login_token_hash', length: 128, nullable: true })
+  oneTimeLoginTokenHash!: string | null;
+
+  @Column({ type: 'timestamptz', name: 'one_time_login_token_expires_at', nullable: true })
+  oneTimeLoginTokenExpiresAt!: Date | null;
+
+  @Column({ type: 'timestamptz', name: 'one_time_login_token_used_at', nullable: true })
+  oneTimeLoginTokenUsedAt!: Date | null;
+
   @Column({ type: 'varchar', name: 'stripe_checkout_session_id', length: 255, nullable: true })
   stripeCheckoutSessionId!: string | null;
 
