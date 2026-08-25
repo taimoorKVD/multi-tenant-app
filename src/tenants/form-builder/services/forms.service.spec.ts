@@ -68,7 +68,17 @@ describe('FormsService', () => {
       normalizeFieldAlias: jest.fn().mockImplementation((v: string) => v?.toLowerCase().replace(/[^a-z0-9]+/g, '_')),
       migrateDynamicDataKeysOnSchemaChange: jest.fn().mockResolvedValue(undefined),
     } as any;
-    service = new FormsService(null as any, auditLogService, dynamicFieldsService);
+    service = new FormsService(null as any, auditLogService, dynamicFieldsService, {
+      ensureBundledLogoReference: jest.fn().mockReturnValue({
+        url: 'http://localhost:3000/uploads/local/reference/eusocial-logo.png',
+        path: '/uploads/local/reference/eusocial-logo.png',
+        key: 'local/reference/eusocial-logo.png',
+        fileName: 'eusocial-logo.png',
+        mimeType: 'image/png',
+        size: 1024,
+        purpose: 'reference',
+      }),
+    } as any);
   });
 
   describe('findAll', () => {

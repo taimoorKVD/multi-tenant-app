@@ -10,8 +10,10 @@ import {
   FormsService,
   VersionsService,
 } from './services';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
+  imports: [UploadsModule],
   controllers: [
     FormsController,
     VersionsController,

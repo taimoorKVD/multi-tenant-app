@@ -285,6 +285,21 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
       },
     },
   },
+  {
+    id: 'fld_image_upload_seed',
+    key: 'image_upload',
+    label: 'Upload Images',
+    name: 'image_upload',
+    type: 'image',
+    isEditable: true,
+    isRequired: false,
+    isShow: true,
+    multiple: true,
+    minFiles: 1,
+    maxFiles: 5,
+    helpText: 'Local test field — reference uses the bundled eusocial logo.',
+    referenceImages: [],
+  },
 ];
 
 const vendorDefaultFields: readonly FormBuilderFieldSeed[] = [
