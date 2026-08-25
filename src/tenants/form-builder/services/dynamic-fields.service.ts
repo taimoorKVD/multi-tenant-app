@@ -67,6 +67,13 @@ export class DynamicFieldsService {
     if (value === undefined || value === null) return false;
     if (typeof value === 'string') return value.trim() !== '';
     if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if ('url' in record || 'path' in record || 'key' in record) {
+        return this.hasPresentValue(record.url ?? record.path ?? record.key);
+      }
+      return Object.keys(record).length > 0;
+    }
     return true;
   }
 

@@ -56,8 +56,18 @@ describe('DynamicFieldsService', () => {
       expect(service.hasPresentValue(0)).toBe(true);
     });
 
-    it('returns true for objects', () => {
-      expect(service.hasPresentValue({})).toBe(true);
+    it('returns false for empty objects', () => {
+      expect(service.hasPresentValue({})).toBe(false);
+    });
+
+    it('returns true for non-empty non-image objects', () => {
+      expect(service.hasPresentValue({ label: 'x' })).toBe(true);
+    });
+
+    it('treats image upload meta without url/path/key as empty', () => {
+      expect(service.hasPresentValue({ url: null })).toBe(false);
+      expect(service.hasPresentValue({ url: '' })).toBe(false);
+      expect(service.hasPresentValue({ url: '/uploads/a.png' })).toBe(true);
     });
   });
 

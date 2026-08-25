@@ -13,6 +13,7 @@ import { ItemsModule } from './items/items.module';
 import { FormBuilderModule } from './form-builder';
 import { DataCollectionModule } from './data-collection/data-collection.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { UploadsModule } from './uploads';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     FormBuilderModule,
     DataCollectionModule,
     DashboardModule,
+    UploadsModule,
   ],
 })
 export class TenantsModule {

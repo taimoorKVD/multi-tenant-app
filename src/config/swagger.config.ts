@@ -28,6 +28,7 @@ import { DataCollectionModule as TenantDataCollectionModule } from '../tenants/d
 import { BillingModule as MasterBillingModule } from '../master/billing/billing.module';
 import { PublicSignupModule as MasterPublicSignupModule } from '../master/billing/public-signup/public-signup.module';
 import { DashboardModule as MasterDashboardModule } from '../master/dashboard/dashboard.module';
+import { UploadsModule as TenantUploadsModule } from '../tenants/uploads/uploads.module';
 
 export function setupSwagger(app: INestApplication) {
 
@@ -92,6 +93,7 @@ export function setupSwagger(app: INestApplication) {
             TenantItemsModule,
             TenantFormBuilderModule,
             TenantDataCollectionModule,
+            TenantUploadsModule,
             MailModule,
             TenantMailAdminModule,
         ],
@@ -167,6 +169,7 @@ export function setupSwagger(app: INestApplication) {
                     'Item Management',
                     'Form Builder Management - Forms',
                     'Form Builder Management - Versions',
+                    'Uploads',
                     'Email Management',
                     'Email Testing',
                     'Data Collection - Templates',

@@ -46,6 +46,10 @@ lerna-debug.log*
 .temp
 .tmp
 
+# User-uploaded form images (local disk storage at repo root only —
+# do NOT use a bare "uploads/" rule; that also ignores src/tenants/uploads)
+/uploads/
+
 # Runtime data
 pids
 *.pid

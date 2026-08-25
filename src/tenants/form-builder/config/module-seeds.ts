@@ -29,6 +29,16 @@ export type FormBuilderFieldSeed = {
   systemMappingKey?: string | null;
   placeholder?: string | null;
   helpText?: string | null;
+  /** Builder reference images for image fields (upload meta array). */
+  referenceImages?: unknown[];
+  /** @deprecated Prefer `referenceImages`. */
+  referenceImage?: unknown;
+  /** @deprecated Prefer `referenceImages`. */
+  defaultValue?: unknown;
+  /** When true, allow multiple user uploads (see minFiles/maxFiles). */
+  multiple?: boolean;
+  minFiles?: number | null;
+  maxFiles?: number | null;
   optionSource?: FieldOptionSourceSeed;
   options?: FieldOptionSeed[];
 };
@@ -274,6 +284,21 @@ const itemsDefaultFields: readonly FormBuilderFieldSeed[] = [
         valueKey: 'id',
       },
     },
+  },
+  {
+    id: 'fld_image_upload_seed',
+    key: 'image_upload',
+    label: 'Upload Images',
+    name: 'image_upload',
+    type: 'image',
+    isEditable: true,
+    isRequired: false,
+    isShow: true,
+    multiple: true,
+    minFiles: 1,
+    maxFiles: 5,
+    helpText: 'Local test field — reference uses the bundled eusocial logo.',
+    referenceImages: [],
   },
 ];
 

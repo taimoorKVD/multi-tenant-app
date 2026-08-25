@@ -23,6 +23,7 @@ import {
 } from '../config/module-seeds';
 import { AuditLogService } from './audit-log.service';
 import { DynamicFieldsService } from './dynamic-fields.service';
+import { UploadsService } from '../../uploads/uploads.service';
 
 @Injectable()
 export class FormsService {
@@ -30,6 +31,7 @@ export class FormsService {
     private readonly dataSource: DataSource,
     private readonly auditLogService: AuditLogService,
     private readonly dynamicFieldsService: DynamicFieldsService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   private getActorId(req: any, fallback?: number | null): number | null {
@@ -140,12 +142,113 @@ export class FormsService {
     const rawFields = form.autosaveSchema?.fields || [];
     const { fields: withIds, changed: idsChanged } =
       this.dynamicFieldsService.backfillMissingFieldIds(rawFields, slug);
-    const { fields, changed: readonlyChanged } = this.repairIdentityFieldsReadonly(withIds);
+    const { fields: withReadonly, changed: readonlyChanged } =
+      this.repairIdentityFieldsReadonly(withIds);
+    const { fields, changed: imageChanged } = this.ensureImageSeedField(
+      req,
+      withReadonly,
+      slug,
+    );
 
-    if (!idsChanged && !readonlyChanged) return form;
+    if (!idsChanged && !readonlyChanged && !imageChanged) return form;
 
     form.autosaveSchema = { ...(form.autosaveSchema || {}), fields };
     return formRepo.save(form);
+  }
+
+  private ensureImageSeedField(
+    req: any,
+    fields: any[],
+    slug: string,
+  ): { fields: any[]; changed: boolean } {
+    const seed = this.moduleSeedBySlug.get(slug);
+    const imageSeed = (seed?.defaultFields || []).find((item) => item.type === 'image');
+    if (!imageSeed) {
+      return { fields, changed: false };
+    }
+
+    const list = Array.isArray(fields) ? [...fields] : [];
+    const key = String(imageSeed.key || imageSeed.name || '').trim().toLowerCase();
+    const index = list.findIndex((field) => {
+      const fieldKey = String(field?.fieldKey || field?.name || '')
+        .trim()
+        .toLowerCase();
+      return fieldKey === key || String(field?.id || '').trim() === String(imageSeed.id || '');
+    });
+
+    const logo = this.resolveLogoReference(req);
+    let changed = false;
+
+    if (index < 0) {
+      list.push(this.mapImageSeedToSchema(imageSeed, list.length, logo));
+      changed = true;
+    } else {
+      const current = { ...list[index] };
+      const refs = Array.isArray(current.referenceImages) ? current.referenceImages : [];
+      if (!refs.length && logo) {
+        current.referenceImages = [logo];
+        current.type = 'image';
+        current.fieldTypeName = 'image';
+        if (typeof current.multiple !== 'boolean') {
+          current.multiple = imageSeed.multiple ?? true;
+        }
+        if (current.minFiles == null) current.minFiles = imageSeed.minFiles ?? 1;
+        if (current.maxFiles == null) current.maxFiles = imageSeed.maxFiles ?? 5;
+        list[index] = current;
+        changed = true;
+      }
+    }
+
+    return { fields: list, changed };
+  }
+
+  private resolveLogoReference(req: any) {
+    try {
+      const origin =
+        `${req?.protocol || 'http'}://${req?.get?.('host') || req?.headers?.host || `localhost:${process.env.PORT || 3000}`}`.replace(
+          /\/+$/,
+          '',
+        );
+      return this.uploadsService.ensureBundledLogoReference(
+        String(req?.tenantId || 'local'),
+        origin,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  private mapImageSeedToSchema(
+    item: FormBuilderFieldSeed,
+    index: number,
+    logo: ReturnType<UploadsService['ensureBundledLogoReference']> | null,
+  ) {
+    return {
+      id: item.id,
+      fieldKey: item.key,
+      label: item.label,
+      name: item.name,
+      type: 'image',
+      fieldTypeName: 'image',
+      placeholder: item.placeholder ?? 'Placeholder text',
+      helpText: item.helpText ?? null,
+      isRequired: item.isRequired ?? false,
+      isUnique: item.isUnique ?? false,
+      isReadonly: !(item.isEditable ?? true),
+      isSystemField: false,
+      systemMappingKey: null,
+      isShow: item.isShow ?? true,
+      order: index,
+      referenceImages:
+        item.referenceImages?.length
+          ? item.referenceImages
+          : logo
+            ? [logo]
+            : [],
+      multiple: item.multiple ?? true,
+      minFiles: item.minFiles ?? 1,
+      maxFiles: item.maxFiles ?? 5,
+    };
   }
 
   private preserveFieldMetadata(oldFields: any[], newFields: any[]): any[] {
@@ -255,8 +358,77 @@ export class FormsService {
       if (!Object.prototype.hasOwnProperty.call(rest, 'isShow')) {
         rest.isShow = true;
       }
+
+      this.normalizeImageField(rest);
       return rest;
     });
+  }
+
+  /**
+   * Image fields store builder reference/examples on `referenceImages` (array of
+   * upload meta from purpose=reference). Supports `multiple` / `minFiles` /
+   * `maxFiles`. User answers are an array (or single object migrated to array
+   * by FE) under the field id in entity_dynamic_data — never compared.
+   */
+  private normalizeImageField(field: Record<string, any>): void {
+    const type = String(field.fieldTypeName || field.type || '')
+      .trim()
+      .toLowerCase();
+    if (type !== 'image') return;
+
+    field.type = 'image';
+    field.fieldTypeName = 'image';
+
+    field.referenceImages = this.normalizeReferenceImages(field);
+
+    if (typeof field.multiple !== 'boolean') {
+      field.multiple =
+        Array.isArray(field.referenceImages) && field.referenceImages.length > 1
+          ? true
+          : false;
+    }
+
+    if (field.minFiles === undefined || field.minFiles === null || field.minFiles === '') {
+      field.minFiles = field.multiple ? 1 : null;
+    } else {
+      field.minFiles = Math.max(0, Number(field.minFiles) || 0);
+    }
+
+    if (field.maxFiles === undefined || field.maxFiles === null || field.maxFiles === '') {
+      field.maxFiles = field.multiple ? 5 : 1;
+    } else {
+      field.maxFiles = Math.max(1, Number(field.maxFiles) || 1);
+    }
+
+    if (!field.multiple) {
+      field.maxFiles = 1;
+    } else if (field.minFiles != null && field.maxFiles < field.minFiles) {
+      field.maxFiles = field.minFiles;
+    }
+  }
+
+  private normalizeReferenceImages(field: Record<string, any>): any[] {
+    if (Array.isArray(field.referenceImages)) {
+      return field.referenceImages.filter(
+        (item) => item !== undefined && item !== null && item !== '',
+      );
+    }
+
+    if (field.referenceImage !== undefined && field.referenceImage !== null && field.referenceImage !== '') {
+      return Array.isArray(field.referenceImage)
+        ? field.referenceImage.filter((item) => item !== undefined && item !== null && item !== '')
+        : [field.referenceImage];
+    }
+
+    const legacy =
+      field.defaultValue !== undefined && field.defaultValue !== null
+        ? field.defaultValue
+        : field.value !== undefined && field.value !== null
+          ? field.value
+          : null;
+
+    if (legacy === null || legacy === '') return [];
+    return Array.isArray(legacy) ? legacy.filter(Boolean) : [legacy];
   }
 
   private sanitizeSchemaSnapshot(schema?: Record<string, any> | null): Record<string, any> {
@@ -338,32 +510,38 @@ export class FormsService {
     const formRepo = req.tenantConnection.getRepository(Form);
     const existing = form.autosaveSchema || {};
 
-    const fields = defaultFields.map((item, index) => ({
-      id: item.id,
-      fieldKey: item.key,
-      label: item.label,
-      name: item.name,
-      fieldTypeName: item.type,
-      placeholder: item.placeholder ?? 'Placeholder text',
-      helpText: item.helpText ?? null,
-      isRequired: item.isRequired ?? false,
-      isUnique: item.isUnique ?? false,
-      isReadonly: !(item.isEditable ?? true),
-      isSystemField: item.isSystemField ?? false,
-      systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
-      isShow: item.isShow ?? true,
-      ...(item.optionSource ? { optionSource: item.optionSource } : {}),
-      ...(item.type === 'dropdown' || item.options?.length
-        ? {
-            options: (item.options ?? []).map((option, sortOrder) => ({
-              label: option.label,
-              value: option.value,
-              isDefault: option.isDefault ?? false,
-              sortOrder,
-            })),
-          }
-        : {}),
-    }));
+    const logo = this.resolveLogoReference(req);
+    const fields = defaultFields.map((item, index) => {
+      if (item.type === 'image') {
+        return this.mapImageSeedToSchema(item, index, logo);
+      }
+      return {
+        id: item.id,
+        fieldKey: item.key,
+        label: item.label,
+        name: item.name,
+        fieldTypeName: item.type,
+        placeholder: item.placeholder ?? 'Placeholder text',
+        helpText: item.helpText ?? null,
+        isRequired: item.isRequired ?? false,
+        isUnique: item.isUnique ?? false,
+        isReadonly: !(item.isEditable ?? true),
+        isSystemField: item.isSystemField ?? false,
+        systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
+        isShow: item.isShow ?? true,
+        ...(item.optionSource ? { optionSource: item.optionSource } : {}),
+        ...(item.type === 'dropdown' || item.options?.length
+          ? {
+              options: (item.options ?? []).map((option, sortOrder) => ({
+                label: option.label,
+                value: option.value,
+                isDefault: option.isDefault ?? false,
+                sortOrder,
+              })),
+            }
+          : {}),
+      };
+    });
 
     const newSchema = {
       ...existing,
@@ -542,9 +720,13 @@ export class FormsService {
 
   async findOne(req: any, id: number) {
     const repo = req.tenantConnection.getRepository(Form);
-    const data = await repo.findOne({ where: { id }, relations: ['module'] });
+    let data = await repo.findOne({ where: { id }, relations: ['module'] });
     if (!data) {
       throw new NotFoundException('Form not found');
+    }
+
+    if (data.module?.slug) {
+      data = await this.ensureFormFieldIds(req, data, data.module.slug);
     }
 
     return { success: true, data: this.withFormType(data) };
