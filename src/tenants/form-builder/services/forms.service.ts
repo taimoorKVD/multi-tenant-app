@@ -15,7 +15,12 @@ import {
   FormStatus,
   FormVersion,
 } from '../entities';
-import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../config/module-seeds';
+import {
+  FORM_BUILDER_MODULE_SEEDS,
+  FormBuilderFieldSeed,
+  FormBuilderModuleType,
+  resolveFormBuilderModuleType,
+} from '../config/module-seeds';
 import { AuditLogService } from './audit-log.service';
 import { DynamicFieldsService } from './dynamic-fields.service';
 
@@ -58,6 +63,20 @@ export class FormsService {
       this.editableIdentityFieldKeys.has(fieldKey) ||
       this.editableIdentityFieldKeys.has(mappingKey)
     );
+  }
+
+  private withFormType<T extends Form>(form: T): T & { type: FormBuilderModuleType } {
+    const type = resolveFormBuilderModuleType(form.module?.slug);
+    if (form.module) {
+      this.withModuleType(form.module);
+    }
+    return Object.assign(form, { type });
+  }
+
+  private withModuleType<T extends DynamicModule>(module: T): T & { type: FormBuilderModuleType } {
+    return Object.assign(module, {
+      type: resolveFormBuilderModuleType(module.slug),
+    });
   }
 
   private repairIdentityFieldsReadonly(fields: any[]): { fields: any[]; changed: boolean } {
@@ -262,6 +281,7 @@ export class FormsService {
         moduleSlug: form.module?.slug,
         name: form.name,
         status: form.status,
+        type: resolveFormBuilderModuleType(form.module?.slug),
       },
       fields,
     };
@@ -357,10 +377,10 @@ export class FormsService {
   async getModules(req: any) {
     await this.ensureCoreModules(req);
     const repo = req.tenantConnection.getRepository(DynamicModule);
-    const data = await repo.find({
+    const data = (await repo.find({
       where: { isActive: true },
       order: { name: 'ASC' },
-    });
+    })).map((module) => this.withModuleType(module));
 
     return { success: true, count: data.length, data };
   }
@@ -498,6 +518,7 @@ export class FormsService {
         updatedBy: actor,
       }),
     );
+    data.module = moduleEntity;
 
     await this.auditLogService.log(req, {
       entityType: 'form',
@@ -507,15 +528,15 @@ export class FormsService {
       createdBy: actor,
     });
 
-    return { success: true, message: 'Form created successfully', data };
+    return { success: true, message: 'Form created successfully', data: this.withFormType(data) };
   }
 
   async findAll(req: any) {
     const repo = req.tenantConnection.getRepository(Form);
-    const data = await repo.find({
+    const data = (await repo.find({
       relations: ['module'],
       order: { createdAt: 'DESC' },
-    });
+    })).map((form) => this.withFormType(form));
     return { success: true, count: data.length, data };
   }
 
@@ -526,12 +547,12 @@ export class FormsService {
       throw new NotFoundException('Form not found');
     }
 
-    return { success: true, data };
+    return { success: true, data: this.withFormType(data) };
   }
 
   async update(req: any, id: number, dto: UpdateFormDto) {
     const repo = req.tenantConnection.getRepository(Form);
-    const entity = await repo.findOne({ where: { id } });
+    const entity = await repo.findOne({ where: { id }, relations: ['module'] });
     if (!entity) {
       throw new NotFoundException('Form not found');
     }
@@ -550,7 +571,7 @@ export class FormsService {
       createdBy: this.getActorId(req),
     });
 
-    return { success: true, message: 'Form updated successfully', data };
+    return { success: true, message: 'Form updated successfully', data: this.withFormType(data) };
   }
 
   async remove(req: any, id: number) {

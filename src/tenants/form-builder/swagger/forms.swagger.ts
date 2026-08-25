@@ -19,7 +19,11 @@ export const TenantFormBuilderFormsSwagger = {
 
   GetModules: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List available core modules' }),
+      ApiOperation({
+        summary: 'List available core modules',
+        description:
+          'Each module includes `type`: `dynamic` (form-builder) or `static` (lookup/reference).',
+      }),
       ApiResponse({ status: 200, description: 'Modules returned successfully.' }),
     ),
 
@@ -39,7 +43,11 @@ export const TenantFormBuilderFormsSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List forms for active tenant' }),
+      ApiOperation({
+        summary: 'List forms for active tenant',
+        description:
+          'Each form includes `type`: `dynamic` when the module is designed in form builder (users, items, vendors), or `static` for lookup modules (countries, states, cities, and similar).',
+      }),
       ApiResponse({ status: 200, description: 'Forms returned successfully.' }),
     ),
 

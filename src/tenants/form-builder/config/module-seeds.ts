@@ -33,9 +33,13 @@ export type FormBuilderFieldSeed = {
   options?: FieldOptionSeed[];
 };
 
+export type FormBuilderModuleType = 'dynamic' | 'static';
+
 export type FormBuilderModuleSeed = {
   slug: string;
   name: string;
+  /** dynamic = designed in form builder; static = lookup/reference module. */
+  type: FormBuilderModuleType;
   defaultFields?: readonly FormBuilderFieldSeed[];
 };
 
@@ -575,13 +579,25 @@ const locationDefaultFields: readonly FormBuilderFieldSeed[] = [
 ];
 
 export const FORM_BUILDER_MODULE_SEEDS: readonly FormBuilderModuleSeed[] = [
-  { slug: 'users', name: 'Users', defaultFields: userDefaultFields },
-  { slug: 'items', name: 'Items', defaultFields: itemsDefaultFields },
-  { slug: 'vendors', name: 'Vendors', defaultFields: vendorDefaultFields },
-  { slug: 'jobpositions', name: 'Job Positions' },
-  { slug: 'locations', name: 'Locations' },
-  { slug: 'reporting-groups', name: 'Reporting Groups' },
-  { slug: 'countries', name: 'Countries' },
-  { slug: 'states', name: 'States' },
-  { slug: 'cities', name: 'Cities' },
+  { slug: 'users', name: 'Users', type: 'dynamic', defaultFields: userDefaultFields },
+  { slug: 'items', name: 'Items', type: 'dynamic', defaultFields: itemsDefaultFields },
+  { slug: 'vendors', name: 'Vendors', type: 'dynamic', defaultFields: vendorDefaultFields },
+  { slug: 'jobpositions', name: 'Job Positions', type: 'static' },
+  { slug: 'locations', name: 'Locations', type: 'static' },
+  { slug: 'reporting-groups', name: 'Reporting Groups', type: 'static' },
+  { slug: 'countries', name: 'Countries', type: 'static' },
+  { slug: 'states', name: 'States', type: 'static' },
+  { slug: 'cities', name: 'Cities', type: 'static' },
 ];
+
+const moduleTypeBySlug = new Map(
+  FORM_BUILDER_MODULE_SEEDS.map((seed) => [seed.slug, seed.type]),
+);
+
+/** Custom / unknown modules default to dynamic (they are form-builder forms). */
+export function resolveFormBuilderModuleType(slug?: string | null): FormBuilderModuleType {
+  if (!slug) {
+    return 'static';
+  }
+  return moduleTypeBySlug.get(slug) ?? 'dynamic';
+}
