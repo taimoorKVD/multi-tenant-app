@@ -81,22 +81,42 @@ describe('FormsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(1);
+      expect(result.data[0].type).toBe('static');
       expect(r.formRepo.find).toHaveBeenCalledWith({
         relations: ['module'],
         order: { createdAt: 'DESC' },
       });
+    });
+
+    it('marks form-builder modules as dynamic and lookup modules as static', async () => {
+      const r = repos();
+      r.formRepo.find.mockResolvedValue([
+        { id: 3, name: 'Vendors Form', module: { slug: 'vendors' } },
+        { id: 7, name: 'Countries Form', module: { slug: 'countries' } },
+        { id: 9, name: 'Cities Form', module: { slug: 'cities' } },
+      ]);
+      const req = createReq(r);
+
+      const result = await service.findAll(req);
+
+      expect(result.data.map((form: any) => ({ slug: form.module.slug, type: form.type }))).toEqual([
+        { slug: 'vendors', type: 'dynamic' },
+        { slug: 'countries', type: 'static' },
+        { slug: 'cities', type: 'static' },
+      ]);
     });
   });
 
   describe('findOne', () => {
     it('returns a form by id', async () => {
       const r = repos();
-      r.formRepo.findOne.mockResolvedValue({ id: 1, name: 'Test' });
+      r.formRepo.findOne.mockResolvedValue({ id: 1, name: 'Test', module: { slug: 'users' } });
       const req = createReq(r);
 
       const result = await service.findOne(req, 1);
       expect(result.success).toBe(true);
       expect(result.data.id).toBe(1);
+      expect(result.data.type).toBe('dynamic');
     });
 
     it('throws NotFoundException when form not found', async () => {
@@ -111,7 +131,7 @@ describe('FormsService', () => {
   describe('create', () => {
     it('creates a form under a module', async () => {
       const r = repos();
-      r.moduleRepo.findOne.mockResolvedValue({ id: 1, name: 'Users' });
+      r.moduleRepo.findOne.mockResolvedValue({ id: 1, name: 'Users', slug: 'users' });
       r.formRepo.save.mockResolvedValue({ id: 10, moduleId: 1, name: 'Users Form', status: FormStatus.DRAFT });
       const req = createReq(r);
 
@@ -119,6 +139,7 @@ describe('FormsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.message).toBe('Form created successfully');
+      expect(result.data.type).toBe('dynamic');
       expect(auditLogService.log).toHaveBeenCalled();
     });
 
@@ -369,6 +390,7 @@ describe('FormsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.count).toBe(1);
+      expect(result.data[0].type).toBe('dynamic');
     });
   });
 
