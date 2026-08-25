@@ -1071,6 +1071,7 @@ export class TenantsService {
           label: item.label,
           name: item.name,
           fieldTypeName: item.type,
+          ...(item.type === 'image' ? { type: 'image' } : {}),
           placeholder: item.placeholder ?? 'Placeholder text',
           helpText: item.helpText ?? null,
           isRequired: item.isRequired ?? false,
@@ -1080,6 +1081,24 @@ export class TenantsService {
           isSystemField: item.isSystemField ?? false,
           systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
           isShow: item.isShow ?? true,
+          ...(item.type === 'image'
+            ? {
+                referenceImages:
+                  item.referenceImages ??
+                  (item.referenceImage != null
+                    ? Array.isArray(item.referenceImage)
+                      ? item.referenceImage
+                      : [item.referenceImage]
+                    : item.defaultValue != null
+                      ? Array.isArray(item.defaultValue)
+                        ? item.defaultValue
+                        : [item.defaultValue]
+                      : []),
+                multiple: item.multiple ?? false,
+                minFiles: item.minFiles ?? null,
+                maxFiles: item.maxFiles ?? (item.multiple ? 5 : 1),
+              }
+            : {}),
           ...(item.optionSource ? { optionSource: item.optionSource } : {}),
           sortOrder: index,
           ...(item.type === 'dropdown' || item.options?.length

@@ -29,6 +29,16 @@ export type FormBuilderFieldSeed = {
   systemMappingKey?: string | null;
   placeholder?: string | null;
   helpText?: string | null;
+  /** Builder reference images for image fields (upload meta array). */
+  referenceImages?: unknown[];
+  /** @deprecated Prefer `referenceImages`. */
+  referenceImage?: unknown;
+  /** @deprecated Prefer `referenceImages`. */
+  defaultValue?: unknown;
+  /** When true, allow multiple user uploads (see minFiles/maxFiles). */
+  multiple?: boolean;
+  minFiles?: number | null;
+  maxFiles?: number | null;
   optionSource?: FieldOptionSourceSeed;
   options?: FieldOptionSeed[];
 };

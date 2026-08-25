@@ -255,8 +255,77 @@ export class FormsService {
       if (!Object.prototype.hasOwnProperty.call(rest, 'isShow')) {
         rest.isShow = true;
       }
+
+      this.normalizeImageField(rest);
       return rest;
     });
+  }
+
+  /**
+   * Image fields store builder reference/examples on `referenceImages` (array of
+   * upload meta from purpose=reference). Supports `multiple` / `minFiles` /
+   * `maxFiles`. User answers are an array (or single object migrated to array
+   * by FE) under the field id in entity_dynamic_data — never compared.
+   */
+  private normalizeImageField(field: Record<string, any>): void {
+    const type = String(field.fieldTypeName || field.type || '')
+      .trim()
+      .toLowerCase();
+    if (type !== 'image') return;
+
+    field.type = 'image';
+    field.fieldTypeName = 'image';
+
+    field.referenceImages = this.normalizeReferenceImages(field);
+
+    if (typeof field.multiple !== 'boolean') {
+      field.multiple =
+        Array.isArray(field.referenceImages) && field.referenceImages.length > 1
+          ? true
+          : false;
+    }
+
+    if (field.minFiles === undefined || field.minFiles === null || field.minFiles === '') {
+      field.minFiles = field.multiple ? 1 : null;
+    } else {
+      field.minFiles = Math.max(0, Number(field.minFiles) || 0);
+    }
+
+    if (field.maxFiles === undefined || field.maxFiles === null || field.maxFiles === '') {
+      field.maxFiles = field.multiple ? 5 : 1;
+    } else {
+      field.maxFiles = Math.max(1, Number(field.maxFiles) || 1);
+    }
+
+    if (!field.multiple) {
+      field.maxFiles = 1;
+    } else if (field.minFiles != null && field.maxFiles < field.minFiles) {
+      field.maxFiles = field.minFiles;
+    }
+  }
+
+  private normalizeReferenceImages(field: Record<string, any>): any[] {
+    if (Array.isArray(field.referenceImages)) {
+      return field.referenceImages.filter(
+        (item) => item !== undefined && item !== null && item !== '',
+      );
+    }
+
+    if (field.referenceImage !== undefined && field.referenceImage !== null && field.referenceImage !== '') {
+      return Array.isArray(field.referenceImage)
+        ? field.referenceImage.filter((item) => item !== undefined && item !== null && item !== '')
+        : [field.referenceImage];
+    }
+
+    const legacy =
+      field.defaultValue !== undefined && field.defaultValue !== null
+        ? field.defaultValue
+        : field.value !== undefined && field.value !== null
+          ? field.value
+          : null;
+
+    if (legacy === null || legacy === '') return [];
+    return Array.isArray(legacy) ? legacy.filter(Boolean) : [legacy];
   }
 
   private sanitizeSchemaSnapshot(schema?: Record<string, any> | null): Record<string, any> {
@@ -344,6 +413,7 @@ export class FormsService {
       label: item.label,
       name: item.name,
       fieldTypeName: item.type,
+      ...(item.type === 'image' ? { type: 'image' } : {}),
       placeholder: item.placeholder ?? 'Placeholder text',
       helpText: item.helpText ?? null,
       isRequired: item.isRequired ?? false,
@@ -352,6 +422,24 @@ export class FormsService {
       isSystemField: item.isSystemField ?? false,
       systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
       isShow: item.isShow ?? true,
+      ...(item.type === 'image'
+        ? {
+            referenceImages:
+              item.referenceImages ??
+              (item.referenceImage != null
+                ? Array.isArray(item.referenceImage)
+                  ? item.referenceImage
+                  : [item.referenceImage]
+                : item.defaultValue != null
+                  ? Array.isArray(item.defaultValue)
+                    ? item.defaultValue
+                    : [item.defaultValue]
+                  : []),
+            multiple: item.multiple ?? false,
+            minFiles: item.minFiles ?? null,
+            maxFiles: item.maxFiles ?? (item.multiple ? 5 : 1),
+          }
+        : {}),
       ...(item.optionSource ? { optionSource: item.optionSource } : {}),
       ...(item.type === 'dropdown' || item.options?.length
         ? {

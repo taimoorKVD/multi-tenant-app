@@ -2,6 +2,7 @@ import 'ejs';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { setupSwagger } from './config/swagger.config';
@@ -14,10 +15,17 @@ async function bootstrap() {
   app.setBaseViewsDir(join(__dirname, '..', 'src/views'));
   app.setViewEngine('ejs');
 
+  const uploadsRoot = process.env.UPLOAD_DIR?.trim() || join(process.cwd(), 'uploads');
+  if (!existsSync(uploadsRoot)) {
+    mkdirSync(uploadsRoot, { recursive: true });
+  }
+  app.useStaticAssets(uploadsRoot, { prefix: '/uploads' });
+
   app.setGlobalPrefix('api', {
     exclude: [
       { path: '/', method: RequestMethod.GET },
       { path: 'health', method: RequestMethod.GET },
+      { path: 'uploads/(.*)', method: RequestMethod.GET },
     ],
   });
 

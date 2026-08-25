@@ -78,7 +78,11 @@ export const TenantFormBuilderFormsSwagger = {
 
   SaveSchema: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Save complete builder schema from frontend' }),
+      ApiOperation({
+        summary: 'Save complete builder schema from frontend',
+        description:
+          'Supports image fields (`type` / `fieldTypeName`: `image`). Store builder references on `referenceImages` (array) after POST /api/uploads/images?purpose=reference. Use `multiple`, `minFiles`, `maxFiles` for multi-upload. End-user answers are an array under the field id (purpose=answer) — images are not compared.',
+      }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiBody({ type: SaveSchemaDto }),
       ApiResponse({ status: 200, description: 'Schema saved successfully.' }),
