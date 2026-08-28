@@ -44,13 +44,56 @@ export class WorkflowActionsService {
   }
 
   private getFrontendBaseUrl(): string {
-    const configured = this.getEnvValue('FRONTEND_URL');
+    const configured = this.getEnvValue('FRONTEND_URL', 'APP_FRONTEND_URL');
     if (configured) return configured.replace(/\/+$/, '');
     return 'http://localhost:4200';
   }
 
-  private getTenantLoginUrl(): string {
-    return `${this.getFrontendBaseUrl()}/tenant/login`;
+  private getPlatformHost(): string {
+    const explicit = this.getEnvValue('PLATFORM_DOMAIN');
+    if (explicit) return explicit.replace(/^\./, '').replace(/\/+$/, '');
+
+    try {
+      return new URL(this.getFrontendBaseUrl()).hostname.replace(/^(www|admin)\./, '');
+    } catch {
+      return 'eusocial.thebetawebsite.com';
+    }
+  }
+
+  private getTenantAppUrl(subdomain: string, customDomain?: string | null): string {
+    if (customDomain?.trim()) {
+      const host = customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      const protocol = host.includes('localhost') ? 'http' : 'https';
+      return `${protocol}://${host}`;
+    }
+
+    let protocol = 'https';
+    let port = '';
+    try {
+      const frontend = new URL(this.getFrontendBaseUrl());
+      protocol = frontend.protocol.replace(':', '') || 'https';
+      port = frontend.port ? `:${frontend.port}` : '';
+    } catch {
+      protocol = 'https';
+    }
+
+    return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
+  }
+
+  /** Tenant workspace URL, e.g. https://folio3.eusocial.thebetawebsite.com/ */
+  private getTenantLoginUrl(req?: any): string {
+    const slug = String(
+      req?.tenant?.subdomain || req?.tenantId || req?.tenantSlug || '',
+    )
+      .trim()
+      .toLowerCase();
+    const customDomain = req?.tenant?.customDomain || req?.customDomain || null;
+
+    if (slug && !/^\d+$/.test(slug)) {
+      return `${this.getTenantAppUrl(slug, customDomain)}/`;
+    }
+
+    return `${this.getFrontendBaseUrl()}/`;
   }
 
   /** Display as `06-Aug-2026 10:02` (local server time). */
@@ -111,6 +154,7 @@ export class WorkflowActionsService {
     rows: Array<{ label: string; value: string }>,
     ctaLabel: string,
     logoSrc: string,
+    ctaUrl: string,
   ): string {
     return renderEmailLayout({
       logoUrl: logoSrc,
@@ -122,7 +166,7 @@ export class WorkflowActionsService {
         value: row.value,
       })),
       stackedRows: true,
-      cta: { label: ctaLabel, url: this.getTenantLoginUrl() },
+      cta: { label: ctaLabel, url: ctaUrl },
     });
   }
 
@@ -209,6 +253,7 @@ export class WorkflowActionsService {
         let sent = 0;
         let failed = 0;
         const preparedLogo = await prepareEmailLogo();
+        const workspaceUrl = this.getTenantLoginUrl(req);
         for (const recipient of withEmail) {
           const result = await this.sendDirectSmtpMail({
             to: recipient.email!,
@@ -229,6 +274,7 @@ export class WorkflowActionsService {
               ],
               'Open Workspace',
               preparedLogo.logoSrc,
+              workspaceUrl,
             ),
           });
           if (result.status === 'failed') failed += 1;
@@ -287,6 +333,7 @@ export class WorkflowActionsService {
         ],
         'Complete Assignment',
         preparedLogo.logoSrc,
+        this.getTenantLoginUrl(req),
       ),
     });
   }
@@ -324,6 +371,7 @@ export class WorkflowActionsService {
     let failed = 0;
     let skipped = 0;
     const preparedLogo = await prepareEmailLogo();
+    const workspaceUrl = this.getTenantLoginUrl(req);
 
     for (const [userId, assignment] of byUser.entries()) {
       const recipient = recipientById.get(userId);
@@ -349,6 +397,7 @@ export class WorkflowActionsService {
           ],
           "Open Today's Work",
           preparedLogo.logoSrc,
+          workspaceUrl,
         ),
       });
 

@@ -51,8 +51,8 @@ export class UserEmailTemplateSeeder implements ISeeder {
   async run() {
     const templateRepo = MasterDataSource.getRepository(EmailTemplate);
     const recipientRepo = MasterDataSource.getRepository(EmailTemplateRecipient);
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:4200').replace(/\/+$/, '');
-    const loginUrl = `${frontendUrl}/tenant/login`;
+    // Resolved at send-time to the tenant subdomain URL (e.g. https://folio3.eusocial.thebetawebsite.com/)
+    const loginUrl = '{tenant_login_url}';
 
     const existingCreate = await templateRepo.findOne({
       where: { module: 'users', action: 'create', role: IsNull(), tenantId: IsNull() },

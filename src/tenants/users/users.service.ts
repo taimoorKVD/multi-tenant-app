@@ -636,7 +636,10 @@ export class UsersService extends TenantAbstractService<User> {
             password: staticPayload.password || 'Not changed',
             user_password: staticPayload.password || 'Not changed',
             tenant_slug: req?.tenantId || null,
-            tenant_login_url: this.getTenantLoginUrl(),
+            tenant_login_url: this.getTenantLoginUrl(
+              req?.tenantId || null,
+              req?.tenant?.customDomain || req?.customDomain || null,
+            ),
             logo_url: `${this.getFrontendBaseUrl()}${EMAIL_LOGO_PUBLIC_PATH}`,
             role_name: payload?.role?.name || null,
 
