@@ -127,6 +127,45 @@ describe('TemplatesService', () => {
         expect.objectContaining({ createdBy: 99 }),
       );
     });
+
+    it('rejects create before save when atOnce has no date', async () => {
+      const req = createReq();
+      const schema = {
+        assign: { users: [1], jobPosition: [] },
+        frequency: { type: 'atOnce', date: null, recurring: null },
+        sections: [],
+      };
+
+      await expect(service.create(req, { name: 'No Date', schema: schema as any })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(req.templateRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('creates and publishes recurring without date', async () => {
+      const req = createReq();
+      const schema = {
+        assign: { users: [1], jobPosition: [] },
+        report: { users: [], jobPosition: [] },
+        frequency: {
+          type: 'recurring',
+          date: null,
+          recurring: { interval: 1, unit: 'month', repeat: 2 },
+        },
+        sections: [],
+      };
+      const draft = { id: 1, name: 'Recurring', schema, status: TemplateStatus.DRAFT };
+      req.templateRepo.save
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.create(req, { name: 'Recurring', schema: schema as any });
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('published');
+      expect(schema.frequency.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
   });
 
   describe('findAll', () => {
@@ -253,6 +292,32 @@ describe('TemplatesService', () => {
       });
 
       await expect(service.publish(req, 1)).rejects.toThrow(BadRequestException);
+    });
+
+    it('publishes recurring without date by defaulting to today', async () => {
+      const req = createReq();
+      const schema = {
+        assign: { users: [1], jobPosition: [] },
+        report: { users: [], jobPosition: [] },
+        frequency: {
+          type: 'recurring',
+          date: null,
+          jobPosition: null,
+          recurring: { interval: 1, unit: 'month', repeat: 1, monthlyRule: { type: 'dayOfMonth', day: 1 } },
+        },
+        sections: [],
+      };
+      const template = { id: 1, name: 'Recurring', schema, status: TemplateStatus.DRAFT };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.save.mockResolvedValue({ ...template, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.publish(req, 1);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('published');
+      expect(schema.frequency.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
     });
   });
 

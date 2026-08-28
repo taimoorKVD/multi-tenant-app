@@ -72,4 +72,28 @@ describe('FrequencyService', () => {
     expect(dates).toHaveLength(1);
     expect(dates[0].getUTCDay()).toBe(1);
   });
+
+  it('defaults missing date to today for recurring payloads', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const dates = service.expandOccurrences({
+      type: FrequencyType.RECURRING,
+      date: null as any,
+      recurring: {
+        interval: 1,
+        unit: FrequencyUnit.DAY,
+        repeat: 2,
+      },
+    });
+    expect(dates).toHaveLength(2);
+    expect(dates[0].toISOString().startsWith(today)).toBe(true);
+  });
+
+  it('returns empty when atOnce has no date', () => {
+    const dates = service.expandOccurrences({
+      type: 'atOnce',
+      date: null as any,
+      recurring: null,
+    });
+    expect(dates).toHaveLength(0);
+  });
 });
