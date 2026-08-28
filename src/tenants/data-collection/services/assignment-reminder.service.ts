@@ -79,7 +79,7 @@ export class AssignmentReminderService {
   async runForTenant(tenant: Tenant): Promise<{ remindersSent: number; overdueMarked: number }> {
     const connection = await this.tenantsService.getTenantConnection(tenant.subdomain);
     const req = {
-      tenantId: String(tenant.id),
+      tenantId: tenant.subdomain,
       tenantConnection: connection,
       tenant,
     };

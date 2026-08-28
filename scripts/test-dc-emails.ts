@@ -49,8 +49,18 @@ async function main() {
     const mailService = app.get(MailService);
     const frontend = (process.env.FRONTEND_URL || 'http://localhost:4200').replace(/\/+$/, '');
     const logoUrl = `${frontend}/images/eusocial-logo.png`;
-    const loginUrl = `${frontend}/tenant/login`;
-    const req = { tenantId: null, tenantConnection: null };
+    const tenantSlug = process.env.TEST_TENANT_SLUG || 'folio3';
+    const platformHost = (() => {
+      const explicit = process.env.PLATFORM_DOMAIN?.trim();
+      if (explicit) return explicit.replace(/^\./, '').replace(/\/+$/, '');
+      try {
+        return new URL(frontend).hostname.replace(/^(www|admin)\./, '');
+      } catch {
+        return 'eusocial.thebetawebsite.com';
+      }
+    })();
+    const loginUrl = `https://${tenantSlug}.${platformHost}/`;
+    const req = { tenantId: tenantSlug, tenantConnection: null };
 
     const results: Array<Record<string, unknown>> = [];
 

@@ -9,20 +9,17 @@ import { EmailResolverContext } from './email-template-resolver.interface';
 export class UserEmailResolver extends BaseEmailResolver {
   readonly module = 'users';
 
-  private getFrontendBaseUrl(): string {
-    const frontendUrl = process.env.FRONTEND_URL?.trim() || process.env.APP_FRONTEND_URL?.trim();
-    if (frontendUrl) {
-      return frontendUrl.replace(/\/+$/, '');
-    }
-
-    return 'http://localhost:4200';
-  }
-
   override async resolve(context: EmailResolverContext): Promise<Record<string, unknown>> {
     const resolved = await super.resolve(context);
     const data = { ...resolved, ...context.data };
     const frontendBaseUrl = this.getFrontendBaseUrl();
     const tenantSlug = String(data.tenant_slug ?? context.tenantId ?? '').trim();
+    const customDomain =
+      (data.custom_domain as string | null | undefined) ??
+      (data.customDomain as string | null | undefined) ??
+      context.req?.tenant?.customDomain ??
+      context.req?.customDomain ??
+      null;
     const userId = Number(data.user_id ?? data.userId ?? 0);
 
     if (context.tenantConnection && userId > 0) {
@@ -60,8 +57,15 @@ export class UserEmailResolver extends BaseEmailResolver {
       data.logo_url = `${frontendBaseUrl}${EMAIL_LOGO_PUBLIC_PATH}`;
     }
 
-    if (!data.tenant_login_url) {
-      data.tenant_login_url = `${frontendBaseUrl}/tenant/login`;
+    // Prefer subdomain workspace URL; overwrite legacy /tenant/login if present.
+    const resolvedLoginUrl = this.getTenantLoginUrl(tenantSlug, customDomain);
+    const existingLoginUrl = String(data.tenant_login_url || '');
+    if (
+      !existingLoginUrl ||
+      existingLoginUrl.includes('/tenant/login') ||
+      (tenantSlug && !existingLoginUrl.includes(`${tenantSlug}.`))
+    ) {
+      data.tenant_login_url = resolvedLoginUrl;
     }
 
     return data;
