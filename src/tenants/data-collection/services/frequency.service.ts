@@ -60,20 +60,24 @@ const MONTH_INDEX: Record<string, number> = {
 
 @Injectable()
 export class FrequencyService {
+  /** UTC today as YYYY-MM-DD when Recurring UI omits `date`. */
+  private todayUtcDateOnly(): string {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(now.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   /**
    * Expand frequency into due dates.
    * Supports frontend payload:
    * `{ type: "atOnce", date: "2026-08-21", recurring: null }`
    * and legacy `{ type: "one_time"|"recurring", startDate, schedule }`.
+   * Recurring without `date`/`startDate` anchors to today (UTC).
    */
   expandOccurrences(frequency: FrequencyInput | null | undefined, maxOccurrences = 100): Date[] {
     if (!frequency) return [];
-
-    const startRaw = frequency.date || frequency.startDate;
-    if (!startRaw) return [];
-
-    const start = this.parseDateOnly(startRaw);
-    if (!start) return [];
 
     const end = frequency.endDate ? this.parseDateOnly(frequency.endDate) : null;
     const type = String(frequency.type || FrequencyType.AT_ONCE).toLowerCase();
@@ -84,6 +88,16 @@ export class FrequencyService {
       type === 'one-time' ||
       type === 'atonce' ||
       type === 'at_once';
+
+    let startRaw = frequency.date || frequency.startDate;
+    // Recurring Frequency card has no Date field — anchor schedule to today when omitted.
+    if ((!startRaw || String(startRaw).trim() === '') && !isAtOnce) {
+      startRaw = this.todayUtcDateOnly();
+    }
+    if (!startRaw) return [];
+
+    const start = this.parseDateOnly(startRaw);
+    if (!start) return [];
 
     if (isAtOnce) {
       return end && start > end ? [] : [start];

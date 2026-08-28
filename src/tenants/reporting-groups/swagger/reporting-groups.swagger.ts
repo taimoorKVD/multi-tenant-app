@@ -86,6 +86,7 @@ export const TenantReportingGroupsSwagger = {
       ApiOperation({ summary: 'Delete reporting group', description: 'Deletes a reporting group by ID.' }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Reporting group deleted successfully.' }),
+      ApiResponse({ status: 400, description: 'Group has categories or assigned items and cannot be deleted.' }),
       ApiResponse({ status: 404, description: 'Reporting group not found.' }),
     ),
 };

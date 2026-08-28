@@ -352,4 +352,60 @@ describe('ReportingCategoriesService', () => {
       expect(result.data[0].items).toHaveLength(1);
     });
   });
+
+  describe('delete', () => {
+    it('deletes a category with no assigned items', async () => {
+      const categoryRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 10, name: 'Produce', items: [] }),
+        findOneBy: jest.fn().mockResolvedValue({ id: 10, name: 'Produce' }),
+        delete: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingCategory, categoryRepo]]));
+
+      const result = await service.delete(req, 10);
+
+      expect(categoryRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 10 },
+        relations: ['items'],
+      });
+      expect(categoryRepo.delete).toHaveBeenCalledWith(10);
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects delete when category has assigned items', async () => {
+      const categoryRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 10,
+          name: 'Produce',
+          items: [{ id: 3, itemName: 'Item 3' }],
+        }),
+        delete: jest.fn(),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingCategory, categoryRepo]]));
+
+      await expect(service.delete(req, 10)).rejects.toThrow(
+        'Cannot delete reporting category "Produce" because it has 1 assigned item(s). Remove all items from the category first.',
+      );
+      expect(categoryRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('rejects bulk delete when any category has assigned items', async () => {
+      const categoryRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 10, name: 'Produce', items: [{ id: 3, itemName: 'Item 3' }] },
+          { id: 11, name: 'Dairy', items: [] },
+        ]),
+        delete: jest.fn(),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingCategory, categoryRepo]]));
+
+      await expect(service.bulkDelete(req, [10, 11])).rejects.toThrow(
+        'Cannot delete reporting category with assigned items: "Produce" (1 item(s)). Remove all items first.',
+      );
+      expect(categoryRepo.delete).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -227,4 +227,91 @@ describe('ReportingGroupsService', () => {
       await expect(service.update(req, 999, { name: 'X' })).rejects.toBeInstanceOf(NotFoundException);
     });
   });
+
+  describe('delete', () => {
+    it('deletes a group with no categories', async () => {
+      const groupRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 1,
+          name: 'Product Specific',
+          reportingCategories: [],
+        }),
+        findOneBy: jest.fn().mockResolvedValue({ id: 1, name: 'Product Specific' }),
+        delete: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingGroup, groupRepo]]));
+
+      const result = await service.delete(req, 1);
+
+      expect(groupRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        relations: ['reportingCategories', 'reportingCategories.items'],
+      });
+      expect(groupRepo.delete).toHaveBeenCalledWith(1);
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects delete when group has categories with assigned items', async () => {
+      const groupRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 1,
+          name: 'Product Specific',
+          reportingCategories: [
+            {
+              id: 10,
+              name: 'Produce',
+              items: [{ id: 3, itemName: 'Item 3' }],
+            },
+          ],
+        }),
+        delete: jest.fn(),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingGroup, groupRepo]]));
+
+      await expect(service.delete(req, 1)).rejects.toThrow(
+        'Cannot delete reporting group "Product Specific" because the following category has assigned items: "Produce" (1 item(s)). Remove all items from categories first.',
+      );
+      expect(groupRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('rejects delete when group has categories without items', async () => {
+      const groupRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 1,
+          name: 'Product Specific',
+          reportingCategories: [{ id: 10, name: 'Produce', items: [] }],
+        }),
+        delete: jest.fn(),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingGroup, groupRepo]]));
+
+      await expect(service.delete(req, 1)).rejects.toThrow(
+        'Cannot delete reporting group "Product Specific" because it has 1 reporting category. Delete all categories first.',
+      );
+      expect(groupRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('rejects bulk delete when any group has linked categories or items', async () => {
+      const groupRepo = {
+        find: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            name: 'Product Specific',
+            reportingCategories: [{ id: 10, name: 'Produce', items: [] }],
+          },
+        ]),
+        delete: jest.fn(),
+      };
+
+      const req = buildReq(new Map<any, any>([[ReportingGroup, groupRepo]]));
+
+      await expect(service.bulkDelete(req, [1])).rejects.toThrow(
+        'Cannot delete reporting group "Product Specific" because it has 1 reporting category. Delete all categories first.',
+      );
+      expect(groupRepo.delete).not.toHaveBeenCalled();
+    });
+  });
 });

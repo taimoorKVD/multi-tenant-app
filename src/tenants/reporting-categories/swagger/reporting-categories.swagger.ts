@@ -134,6 +134,7 @@ export const TenantReportingCategoriesSwagger = {
       ApiOperation({ summary: 'Delete reporting category', description: 'Deletes a reporting category by ID.' }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Reporting category deleted successfully.' }),
+      ApiResponse({ status: 400, description: 'Category has assigned items and cannot be deleted.' }),
       ApiResponse({ status: 404, description: 'Reporting category not found.' }),
     ),
 };

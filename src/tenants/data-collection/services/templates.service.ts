@@ -54,6 +54,48 @@ export class TemplatesService {
     return versionRepo.save(version);
   }
 
+  /** YYYY-MM-DD in UTC — used when Recurring UI omits the Date field. */
+  private todayUtcDateOnly(): string {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(now.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  private isRecurringFrequency(type: unknown): boolean {
+    return String(type || '').toLowerCase() === 'recurring';
+  }
+
+  /**
+   * Validate assign + frequency for publish.
+   * Recurring Frequency UI has no date picker — default `date` to today when missing.
+   * Mutates schema.frequency in place so the stored snapshot keeps a concrete start date.
+   */
+  private ensurePublishableSchema(schema: Record<string, any>) {
+    if (!schema.assign || (!(schema.assign.users?.length) && !(schema.assign.jobPosition?.length))) {
+      throw new BadRequestException(
+        'Assign step requires at least one user or job position before publishing',
+      );
+    }
+
+    if (!schema.frequency || typeof schema.frequency !== 'object') {
+      throw new BadRequestException('Frequency step is required before publishing');
+    }
+
+    const frequency = schema.frequency as Record<string, any>;
+    const rawDate = frequency.date ?? frequency.startDate;
+    const hasDate = rawDate !== null && rawDate !== undefined && String(rawDate).trim() !== '';
+
+    if (!hasDate) {
+      if (this.isRecurringFrequency(frequency.type)) {
+        frequency.date = this.todayUtcDateOnly();
+      } else {
+        throw new BadRequestException('Frequency step requires a date before publishing');
+      }
+    }
+  }
+
   private async publishInternal(
     req: any,
     template: DataCollectionTemplate,
@@ -64,14 +106,7 @@ export class TemplatesService {
     }
 
     const schema = template.schema as Record<string, any>;
-    if (!schema.assign || (!(schema.assign.users?.length) && !(schema.assign.jobPosition?.length))) {
-      throw new BadRequestException(
-        'Assign step requires at least one user or job position before publishing',
-      );
-    }
-    if (!schema.frequency?.date && !schema.frequency?.startDate) {
-      throw new BadRequestException('Frequency step requires a date before publishing');
-    }
+    this.ensurePublishableSchema(schema);
 
     const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
     const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
@@ -105,9 +140,16 @@ export class TemplatesService {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const actorId = this.getActorId(req, dto.createdBy);
 
+      const schema = (dto.schema as Record<string, any>) ?? null;
+      if (!schema) {
+        throw new BadRequestException('Cannot publish a template without a schema');
+      }
+      // Validate (and default recurring date) before insert so failed publishes leave no orphan draft.
+      this.ensurePublishableSchema(schema);
+
       const template = templateRepo.create({
         name: dto.name,
-        schema: (dto.schema as Record<string, any>) ?? null,
+        schema,
         status: TemplateStatus.DRAFT,
         isActive: true,
         createdBy: actorId,

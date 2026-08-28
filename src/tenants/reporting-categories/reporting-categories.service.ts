@@ -211,4 +211,56 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
       },
     };
   }
+
+  async delete(req: any, id: number) {
+    const repo = this.getRepo(req);
+    const category = await repo.findOne({
+      where: { id } as any,
+      relations: ['items'],
+    });
+
+    if (!category) {
+      throw new NotFoundException(`Reporting category with ID ${id} not found`);
+    }
+
+    const itemCount = category.items?.length ?? 0;
+    if (itemCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete reporting category "${category.name}" because it has ${itemCount} assigned item(s). Remove all items from the category first.`,
+      );
+    }
+
+    return super.delete(req, id);
+  }
+
+  async bulkDelete(req: any, ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const repo = this.getRepo(req);
+    const categories = await repo.find({
+      where: { id: In(uniqueIds) } as any,
+      relations: ['items'],
+    });
+
+    const foundIds = categories.map((category) => category.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+    if (missingIds.length) {
+      throw new NotFoundException(`Records not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    const withItems = categories.filter((category) => (category.items || []).length > 0);
+    if (withItems.length) {
+      const details = withItems
+        .map((category) => `"${category.name}" (${category.items.length} item(s))`)
+        .join(', ');
+      throw new BadRequestException(
+        `Cannot delete reporting categor${withItems.length === 1 ? 'y' : 'ies'} with assigned items: ${details}. Remove all items first.`,
+      );
+    }
+
+    return super.bulkDelete(req, uniqueIds);
+  }
 }
