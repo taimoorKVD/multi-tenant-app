@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, ILike, Repository } from 'typeorm';
+import { DataSource, ILike, In, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { ReportingGroup } from './entities';
 import { CreateReportingGroupDto, UpdateReportingGroupDto } from './dto';
@@ -97,5 +97,67 @@ export class ReportingGroupsService extends TenantAbstractService<ReportingGroup
       tenant: req.tenantConnection.options.database,
       data: saved,
     };
+  }
+
+  private assertGroupCanBeDeleted(group: ReportingGroup): void {
+    const categories = group.reportingCategories || [];
+    if (!categories.length) {
+      return;
+    }
+
+    const categoriesWithItems = categories.filter((category) => (category.items || []).length > 0);
+    if (categoriesWithItems.length) {
+      const details = categoriesWithItems
+        .map((category) => `"${category.name}" (${category.items.length} item(s))`)
+        .join(', ');
+      throw new BadRequestException(
+        `Cannot delete reporting group "${group.name}" because the following categor${categoriesWithItems.length === 1 ? 'y has' : 'ies have'} assigned items: ${details}. Remove all items from categories first.`,
+      );
+    }
+
+    throw new BadRequestException(
+      `Cannot delete reporting group "${group.name}" because it has ${categories.length} reporting categor${categories.length === 1 ? 'y' : 'ies'}. Delete all categories first.`,
+    );
+  }
+
+  async delete(req: any, id: number) {
+    const repo = this.getRepo(req);
+    const group = await repo.findOne({
+      where: { id } as any,
+      relations: ['reportingCategories', 'reportingCategories.items'],
+    });
+
+    if (!group) {
+      throw new NotFoundException(`Reporting group with ID ${id} not found`);
+    }
+
+    this.assertGroupCanBeDeleted(group);
+
+    return super.delete(req, id);
+  }
+
+  async bulkDelete(req: any, ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const repo = this.getRepo(req);
+    const groups = await repo.find({
+      where: { id: In(uniqueIds) } as any,
+      relations: ['reportingCategories', 'reportingCategories.items'],
+    });
+
+    const foundIds = groups.map((group) => group.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+    if (missingIds.length) {
+      throw new NotFoundException(`Records not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    for (const group of groups) {
+      this.assertGroupCanBeDeleted(group);
+    }
+
+    return super.bulkDelete(req, uniqueIds);
   }
 }
