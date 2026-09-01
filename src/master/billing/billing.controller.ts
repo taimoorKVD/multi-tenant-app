@@ -21,6 +21,8 @@ import {
   QuerySubscriptionDto,
   UpdatePlanDto,
 } from './dto';
+import { BulkDeleteDto } from '../../common/dto';
+import { BulkDeleteSwagger } from '../../common/swagger';
 import { BillingSwagger } from './swagger';
 
 @ApiTags('Plan Management')
@@ -62,6 +64,13 @@ export class PlansController {
   @MasterAccess('edit-plan')
   updatePlan(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePlanDto) {
     return this.billingService.updatePlan(id, dto);
+  }
+
+  @Delete('bulk')
+  @MasterAccess('delete-plan')
+  @BulkDeleteSwagger('plans')
+  bulkDeletePlans(@Body() dto: BulkDeleteDto) {
+    return this.billingService.bulkDeletePlans(dto.ids);
   }
 
   @Delete(':id')

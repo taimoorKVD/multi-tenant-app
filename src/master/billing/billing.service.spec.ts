@@ -34,6 +34,7 @@ describe('BillingService', () => {
     slugify: jest.fn((value: string) => value.toLowerCase()),
     ensureProductAndPrice: jest.fn(),
     unixToDate: jest.fn((value?: number | null) => (value ? new Date(value * 1000) : null)),
+    cancelSubscriptionImmediately: jest.fn(),
   };
 
   let service: BillingService;
@@ -385,5 +386,52 @@ describe('BillingService', () => {
   it('acknowledges unknown Stripe events without throwing', async () => {
     const result = await service.processStripeEvent(stripeEvent('radar.early_fraud_warning.created', { id: 'issfr_1' }));
     expect(result).toEqual({ received: true, type: 'radar.early_fraud_warning.created' });
+  });
+
+  it('cancels non-cancelled Stripe subscriptions when a tenant is deleted', async () => {
+    stripeService.isConfigured.mockReturnValue(true);
+    subscriptionRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        tenantId: 12,
+        status: SubscriptionStatus.ACTIVE,
+        stripeSubscriptionId: 'sub_active',
+      },
+    ]);
+
+    await service.cancelSubscriptionsForTenantDeletion(12);
+
+    expect(subscriptionRepo.find).toHaveBeenCalledWith({
+      where: {
+        tenantId: 12,
+        status: expect.anything(),
+      },
+    });
+    expect(stripeService.cancelSubscriptionImmediately).toHaveBeenCalledTimes(1);
+    expect(stripeService.cancelSubscriptionImmediately).toHaveBeenCalledWith('sub_active');
+  });
+
+  it('skips Stripe cancellation when deleting a tenant without billable subscriptions', async () => {
+    subscriptionRepo.find.mockResolvedValue([]);
+
+    await service.cancelSubscriptionsForTenantDeletion(12);
+
+    expect(stripeService.cancelSubscriptionImmediately).not.toHaveBeenCalled();
+  });
+
+  it('allows tenant deletion when Stripe is not configured', async () => {
+    stripeService.isConfigured.mockReturnValue(false);
+    subscriptionRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        tenantId: 12,
+        status: SubscriptionStatus.ACTIVE,
+        stripeSubscriptionId: 'sub_active',
+      },
+    ]);
+
+    await service.cancelSubscriptionsForTenantDeletion(12);
+
+    expect(stripeService.cancelSubscriptionImmediately).not.toHaveBeenCalled();
   });
 });

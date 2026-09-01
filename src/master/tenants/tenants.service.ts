@@ -1172,6 +1172,8 @@ export class TenantsService {
       const dbName = tenant.dbName;
       this.logger.log(`🧹 Preparing to delete tenant "${tenant.name}" and DB "${dbName}"`);
 
+      await this.billingService.cancelSubscriptionsForTenantDeletion(tenant.id);
+
       if (tenantConnections[dbName]) {
         const conn = tenantConnections[dbName];
         if (conn.isInitialized) {
