@@ -312,6 +312,26 @@ export class StripeService {
     }
   }
 
+  async cancelSubscriptionImmediately(stripeSubscriptionId: string) {
+    try {
+      const stripe = this.getClient();
+      const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+      if (subscription.status === 'canceled') {
+        return subscription;
+      }
+      return await stripe.subscriptions.cancel(stripeSubscriptionId);
+    } catch (error) {
+      const stripeError = error as { code?: string };
+      if (stripeError.code === 'resource_missing') {
+        this.logger.warn(
+          `Stripe subscription ${stripeSubscriptionId} not found; treating as already cancelled`,
+        );
+        return null;
+      }
+      this.rethrow(error, 'Failed to cancel Stripe subscription');
+    }
+  }
+
   async retrieveSubscription(subscriptionId: string) {
     try {
       return await this.getClient().subscriptions.retrieve(subscriptionId, {

@@ -9,7 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import Stripe from 'stripe';
 import { Tenant } from '../tenants/entities';
 import {
@@ -1243,5 +1243,35 @@ export class BillingService {
       if (!map.has(row.tenantId)) map.set(row.tenantId, row);
     }
     return map;
+  }
+
+  async cancelSubscriptionsForTenantDeletion(tenantId: number): Promise<void> {
+    const subscriptions = await this.subscriptionRepo.find({
+      where: {
+        tenantId,
+        status: Not(SubscriptionStatus.CANCELLED),
+      },
+    });
+
+    if (!subscriptions.length) {
+      this.logger.debug(`No active subscriptions to cancel for tenant ${tenantId}`);
+      return;
+    }
+
+    for (const subscription of subscriptions) {
+      if (!subscription.stripeSubscriptionId) continue;
+
+      if (!this.stripeService.isConfigured()) {
+        this.logger.warn(
+          `Stripe is not configured; subscription ${subscription.id} for tenant ${tenantId} was not cancelled in Stripe`,
+        );
+        continue;
+      }
+
+      await this.stripeService.cancelSubscriptionImmediately(subscription.stripeSubscriptionId);
+      this.logger.log(
+        `Cancelled Stripe subscription ${subscription.stripeSubscriptionId} for tenant ${tenantId}`,
+      );
+    }
   }
 }
