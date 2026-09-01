@@ -354,18 +354,61 @@ export class BillingService {
   async deletePlan(id: number) {
     const plan = await this.planRepo.findOne({ where: { id } });
     if (!plan) throw new NotFoundException('Plan not found');
-    const activeSubs = await this.subscriptionRepo.count({
-      where: {
-        planId: id,
-        status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL, SubscriptionStatus.PAST_DUE]),
-      },
-    });
-    if (activeSubs > 0) {
-      throw new BadRequestException('Cannot delete a plan with active subscriptions. Deactivate it instead.');
-    }
+    await this.ensurePlansCanBeDeleted([plan]);
     await this.stripeService.archiveProduct(plan);
     await this.planRepo.remove(plan);
     return { success: true, message: 'Plan deleted' };
+  }
+
+  async bulkDeletePlans(ids: number[]) {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one valid ID is required');
+    }
+
+    const plans = await this.planRepo.find({ where: { id: In(uniqueIds) } });
+    const foundIds = plans.map((plan) => plan.id);
+    const missingIds = uniqueIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length) {
+      throw new NotFoundException(`Plans not found for IDs: ${missingIds.join(', ')}`);
+    }
+
+    await this.ensurePlansCanBeDeleted(plans);
+
+    for (const plan of plans) {
+      await this.stripeService.archiveProduct(plan);
+      await this.planRepo.remove(plan);
+    }
+
+    return {
+      success: true,
+      message: `${foundIds.length} plan(s) deleted successfully`,
+      data: { deletedIds: foundIds, count: foundIds.length },
+    };
+  }
+
+  private async ensurePlansCanBeDeleted(plans: Plan[]) {
+    if (!plans.length) return;
+
+    const planIds = plans.map((plan) => plan.id);
+    const blockedPlans = await this.subscriptionRepo
+      .createQueryBuilder('subscription')
+      .select('subscription.planId', 'planId')
+      .addSelect('COUNT(*)', 'count')
+      .where('subscription.planId IN (:...planIds)', { planIds })
+      .andWhere('subscription.status IN (:...statuses)', {
+        statuses: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL, SubscriptionStatus.PAST_DUE],
+      })
+      .groupBy('subscription.planId')
+      .getRawMany<{ planId: number; count: string }>();
+
+    if (!blockedPlans.length) return;
+
+    const blockedIds = blockedPlans.map((row) => row.planId).join(', ');
+    throw new BadRequestException(
+      `Cannot delete plan(s) with active subscriptions (plan IDs: ${blockedIds}). Deactivate them instead.`,
+    );
   }
 
   async listSubscriptions(query: QuerySubscriptionDto) {
