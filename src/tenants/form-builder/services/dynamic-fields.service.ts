@@ -294,6 +294,10 @@ export class DynamicFieldsService {
       if (fieldId) {
         fieldIdByCanonicalKey.set(canonicalKey, fieldId);
         if (fieldKey) fieldIdByCanonicalKey.set(fieldKey, fieldId);
+        if (systemMappingKey) fieldIdByCanonicalKey.set(systemMappingKey, fieldId);
+        if (fieldName && fieldName !== canonicalKey && fieldName !== fieldKey) {
+          fieldIdByCanonicalKey.set(fieldName, fieldId);
+        }
       }
 
       const aliases = [
@@ -353,6 +357,12 @@ export class DynamicFieldsService {
     for (const [alias, canonical] of Object.entries(relationFieldAliases)) {
       aliasToCanonicalMap.set(alias, canonical);
       aliasToCanonicalMap.set(this.normalizeFieldAlias(alias), canonical);
+
+      const fieldId = fieldIdByCanonicalKey.get(alias) || fieldIdByCanonicalKey.get(canonical);
+      if (fieldId) {
+        fieldIdByCanonicalKey.set(alias, fieldId);
+        fieldIdByCanonicalKey.set(canonical, fieldId);
+      }
     }
 
     fallbackSystemFieldKeys.forEach((key) => {
@@ -683,7 +693,11 @@ export class DynamicFieldsService {
     const consumedKeys = new Set<string>();
 
     for (const [canonicalKey, value] of Object.entries(systemValues)) {
-      const fieldId = fieldIdByCanonicalKey.get(canonicalKey);
+      const fieldId = this.resolveFieldIdForSystemValue(
+        canonicalKey,
+        fieldIdByCanonicalKey,
+        context.aliasToCanonicalMap,
+      );
       if (fieldId && !(fieldId in idKeyed)) idKeyed[fieldId] = value;
     }
 
@@ -721,6 +735,24 @@ export class DynamicFieldsService {
     }
 
     return { ...idKeyed, ...meta };
+  }
+
+  /** Resolves a system-column key (e.g. phone_number) to its form field id. */
+  private resolveFieldIdForSystemValue(
+    systemKey: string,
+    fieldIdByCanonicalKey: Map<string, string>,
+    aliasToCanonicalMap: Map<string, string>,
+  ): string | undefined {
+    const direct = fieldIdByCanonicalKey.get(systemKey);
+    if (direct) return direct;
+
+    for (const [alias, canonical] of aliasToCanonicalMap.entries()) {
+      if (canonical !== systemKey) continue;
+      const fieldId = fieldIdByCanonicalKey.get(alias) || fieldIdByCanonicalKey.get(canonical);
+      if (fieldId) return fieldId;
+    }
+
+    return undefined;
   }
 
   async loadDynamicRows(
