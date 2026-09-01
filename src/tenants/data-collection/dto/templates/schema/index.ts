@@ -1,5 +1,6 @@
 export { AssignReportTargetsDto } from './assign-report.dto';
 export { MonthlyRuleDto, FrequencyRecurringDto, FrequencyScheduleDto, FrequencyDto } from './frequency.dto';
+export { FieldConditionRuleDto, FieldConditionsDto } from './field-conditions.dto';
 export {
   FieldOptionDto,
   FieldOptionSourceDto,

@@ -18,6 +18,7 @@ import {
   DataCollectionEmailTemplateSeeder,
   BillingPermissionsSeeder,
   BillingPlansSeeder,
+  DataCollectionRestaurantTemplatesSeeder,
 } from '../seeders';
 
 (async () => {
@@ -38,6 +39,7 @@ import {
     new DataCollectionEmailTemplateSeeder(),
     new BillingPermissionsSeeder(),
     new BillingPlansSeeder(),
+    new DataCollectionRestaurantTemplatesSeeder(),
   ]);
 
   const shouldReset = process.argv.includes('--reset') || process.argv.includes('reset');

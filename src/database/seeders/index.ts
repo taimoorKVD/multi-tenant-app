@@ -14,3 +14,4 @@ export * from './013-data-collection-permissions.seeder';
 export * from './014-data-collection-email-templates.seeder';
 export * from './015-billing-permissions.seeder';
 export * from './016-billing-plans.seeder';
+export * from './017-data-collection-restaurant-templates.seeder';

@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { FieldConditionsDto } from './field-conditions.dto';
 
 export class FieldOptionDto {
   @ApiProperty({ example: 'Current Quantity' })
@@ -99,6 +100,15 @@ export class TemplateFieldDto {
   @ValidateNested()
   @Type(() => FieldOptionSourceDto)
   optionSource?: FieldOptionSourceDto;
+
+  @ApiPropertyOptional({
+    type: FieldConditionsDto,
+    description: 'Conditional visibility/enable rules evaluated against other field answers.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FieldConditionsDto)
+  conditions?: FieldConditionsDto;
 }
 
 export class TemplateRowDto {
@@ -152,6 +162,15 @@ export class TemplateSectionDto {
   @IsOptional()
   @IsNumber()
   sortOrder?: number;
+
+  @ApiPropertyOptional({
+    type: FieldConditionsDto,
+    description: 'Optional section-level conditional visibility.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FieldConditionsDto)
+  conditions?: FieldConditionsDto;
 
   @ApiProperty({ type: [TemplateRowDto] })
   @IsArray()
