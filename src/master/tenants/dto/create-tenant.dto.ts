@@ -1,7 +1,6 @@
-import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  Allow,
   IsEmail,
   IsEnum,
   IsInt,
@@ -106,12 +105,4 @@ export class CreateTenantDto {
   @IsInt()
   @Min(0)
   trialDays?: number;
-
-  @ApiHideProperty()
-  @Allow()
-  admin?: unknown;
-
-  @ApiHideProperty()
-  @Allow()
-  industry?: unknown;
 }

@@ -170,6 +170,8 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.department).toBe('Operations');
     expect(result.data.nickname).toBe('JD');
     expect(result.data.fld_test_name).toBe('John Doe');
+    expect(result.data.fld_test_password).toBeUndefined();
+    expect(result.data.password).toBeUndefined();
     expect(result.credentialsEmail).toEqual({ sent: false, error: expect.any(String) });
     expect((mailServiceMock.sendTemplateMail as any)).not.toHaveBeenCalled();
   });
@@ -510,6 +512,97 @@ describe('UsersService dynamic fields', () => {
     );
     expect(result.success).toBe(true);
     expect(result.data.fld_test_email).toBe('john@kingdomvision.com');
+  });
+
+  it('create returns phone number when form field key differs from users table column', async () => {
+    const moduleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 10, slug: 'users' }),
+    };
+
+    const formRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 20,
+        moduleId: 10,
+        autosaveSchema: {
+          fields: [
+            { id: 'fld_test_name', fieldKey: 'name', isSystemField: true, systemMappingKey: 'name', isRequired: true },
+            { id: 'fld_test_email', fieldKey: 'email', isSystemField: true, systemMappingKey: 'email', isRequired: true },
+            { id: 'fld_test_password', fieldKey: 'password', isSystemField: true, systemMappingKey: 'password', isRequired: true },
+            {
+              id: 'fld_test_phone',
+              name: 'phone_number',
+              fieldKey: 'phoneNumber',
+              label: 'Phone Number',
+              isSystemField: false,
+              dataKeys: ['phoneNumber', 'phone_number', 'fld_test_phone'],
+            },
+          ],
+        },
+      }),
+      save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
+    };
+
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 30, isActive: true }),
+    };
+
+    const roleRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 1, name: 'Employee' }),
+    };
+
+    const userRepo = {
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => ({ id: 101, ...payload, phoneNumber: payload.phoneNumber ?? '03102135074' })),
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 101,
+          name: 'Daniyal Shamsi',
+          email: 'daniyal.kv@gmail.com',
+          plainPassword: 'admin123',
+          password: 'hash',
+          phoneNumber: '03102135074',
+          role: { id: 1, name: 'Employee' },
+          isSystem: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+    };
+
+    const dynamicRepo = {
+      findOne: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ moduleId: 10, entityId: 101, data: {} }),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, roleRepo],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.create(req, {
+      name: 'Daniyal Shamsi',
+      email: 'daniyal.kv@gmail.com',
+      password: 'admin123',
+      password_confirm: 'admin123',
+      fld_test_phone: '03102135074',
+    });
+
+    expect(userRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phoneNumber: '03102135074',
+      }),
+    );
+    expect(result.data.fld_test_phone).toBe('03102135074');
   });
 
   it('sends employee account-ready credentials email when a user is created', async () => {

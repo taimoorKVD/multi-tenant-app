@@ -324,6 +324,73 @@ describe('DynamicFieldsService', () => {
       expect(result.fld_1).toBe('John');
       expect(result.id).toBe(1);
     });
+
+    it('maps system column keys to form field ids via relation aliases', () => {
+      const context = {
+        fieldIdByCanonicalKey: new Map([['phoneNumber', 'fld_phone']]),
+        systemFieldKeys: new Set(['phone_number']),
+        aliasToCanonicalMap: new Map([['phoneNumber', 'phone_number']]),
+        schemaFields: [
+          {
+            id: 'fld_phone',
+            fieldKey: 'phoneNumber',
+            canonicalKey: 'phoneNumber',
+            name: 'phone_number',
+            isSystemField: false,
+            dataKeys: ['phoneNumber', 'phone_number', 'fld_phone'],
+          },
+        ],
+        fieldIdSet: new Set(['fld_phone']),
+        identityKeyOwner: new Map(),
+      } as any;
+
+      const result = service.buildResponse(
+        context,
+        { phone_number: '03102135074' },
+        {},
+        { id: 3 },
+      );
+
+      expect(result.fld_phone).toBe('03102135074');
+      expect(result.id).toBe(3);
+    });
+
+    it('never returns password values in id-keyed responses', () => {
+      const context = {
+        fieldIdByCanonicalKey: new Map([
+          ['name', 'fld_name'],
+          ['password', 'fld_password'],
+        ]),
+        systemFieldKeys: new Set(['name', 'password']),
+        aliasToCanonicalMap: new Map(),
+        schemaFields: [
+          { id: 'fld_name', fieldKey: 'name', canonicalKey: 'name', name: 'name', isSystemField: true, dataKeys: [] },
+          {
+            id: 'fld_password',
+            fieldKey: 'password',
+            canonicalKey: 'password',
+            name: 'password',
+            isSystemField: true,
+            dataKeys: ['password'],
+          },
+        ],
+        fieldIdSet: new Set(['fld_name', 'fld_password']),
+        identityKeyOwner: new Map(),
+      } as any;
+
+      const result = service.buildResponse(
+        context,
+        { name: 'John', password: 'Secret123!', plain_password: 'Secret123!' },
+        { fld_password: 'Secret123!' },
+        { id: 1 },
+      );
+
+      expect(result.fld_name).toBe('John');
+      expect(result.fld_password).toBeUndefined();
+      expect(result.password).toBeUndefined();
+      expect(result.plain_password).toBeUndefined();
+      expect(result.id).toBe(1);
+    });
   });
 
   describe('loadDynamicRows', () => {

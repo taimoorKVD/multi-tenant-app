@@ -55,6 +55,12 @@ export interface SchemaContextOptions {
  */
 @Injectable()
 export class DynamicFieldsService {
+  private readonly sensitiveResponseKeys = new Set([
+    'password',
+    'plain_password',
+    'password_confirm',
+  ]);
+
   normalizeFieldAlias(value: string): string {
     return String(value || '')
       .trim()
@@ -294,6 +300,10 @@ export class DynamicFieldsService {
       if (fieldId) {
         fieldIdByCanonicalKey.set(canonicalKey, fieldId);
         if (fieldKey) fieldIdByCanonicalKey.set(fieldKey, fieldId);
+        if (systemMappingKey) fieldIdByCanonicalKey.set(systemMappingKey, fieldId);
+        if (fieldName && fieldName !== canonicalKey && fieldName !== fieldKey) {
+          fieldIdByCanonicalKey.set(fieldName, fieldId);
+        }
       }
 
       const aliases = [
@@ -353,6 +363,12 @@ export class DynamicFieldsService {
     for (const [alias, canonical] of Object.entries(relationFieldAliases)) {
       aliasToCanonicalMap.set(alias, canonical);
       aliasToCanonicalMap.set(this.normalizeFieldAlias(alias), canonical);
+
+      const fieldId = fieldIdByCanonicalKey.get(alias) || fieldIdByCanonicalKey.get(canonical);
+      if (fieldId) {
+        fieldIdByCanonicalKey.set(alias, fieldId);
+        fieldIdByCanonicalKey.set(canonical, fieldId);
+      }
     }
 
     fallbackSystemFieldKeys.forEach((key) => {
@@ -654,6 +670,39 @@ export class DynamicFieldsService {
     return filtered;
   }
 
+  private isSensitiveResponseKey(key: string): boolean {
+    const trimmed = String(key || '').trim();
+    if (!trimmed) return false;
+    if (this.sensitiveResponseKeys.has(trimmed)) return true;
+    return this.sensitiveResponseKeys.has(this.normalizeFieldAlias(trimmed));
+  }
+
+  private isSensitiveSchemaField(field: SchemaFieldRef): boolean {
+    const keys = [field.canonicalKey, field.fieldKey, field.name, ...field.dataKeys];
+    return keys.some((key) => this.isSensitiveResponseKey(key));
+  }
+
+  private stripSensitiveResponseFields(
+    context: DynamicSchemaContext,
+    response: Record<string, any>,
+  ): Record<string, any> {
+    const next = { ...response };
+
+    for (const key of Object.keys(next)) {
+      if (this.isSensitiveResponseKey(key)) {
+        delete next[key];
+      }
+    }
+
+    for (const field of context.schemaFields) {
+      if (this.isSensitiveSchemaField(field)) {
+        delete next[field.id];
+      }
+    }
+
+    return next;
+  }
+
   /**
    * Builds a response object keyed by stable field ids (fld_...). System field
    * values are supplied by canonical key in `systemValues`; the remaining custom
@@ -676,14 +725,23 @@ export class DynamicFieldsService {
 
     const fieldIdByCanonicalKey = context.fieldIdByCanonicalKey;
     if (!fieldIdByCanonicalKey || fieldIdByCanonicalKey.size === 0) {
-      return { ...filteredDynamicData, ...systemValues, ...meta };
+      return this.stripSensitiveResponseFields(context, {
+        ...filteredDynamicData,
+        ...systemValues,
+        ...meta,
+      });
     }
 
     const idKeyed: Record<string, any> = {};
     const consumedKeys = new Set<string>();
 
     for (const [canonicalKey, value] of Object.entries(systemValues)) {
-      const fieldId = fieldIdByCanonicalKey.get(canonicalKey);
+      if (this.isSensitiveResponseKey(canonicalKey)) continue;
+      const fieldId = this.resolveFieldIdForSystemValue(
+        canonicalKey,
+        fieldIdByCanonicalKey,
+        context.aliasToCanonicalMap,
+      );
       if (fieldId && !(fieldId in idKeyed)) idKeyed[fieldId] = value;
     }
 
@@ -720,7 +778,25 @@ export class DynamicFieldsService {
       idKeyed[key] = value;
     }
 
-    return { ...idKeyed, ...meta };
+    return this.stripSensitiveResponseFields(context, { ...idKeyed, ...meta });
+  }
+
+  /** Resolves a system-column key (e.g. phone_number) to its form field id. */
+  private resolveFieldIdForSystemValue(
+    systemKey: string,
+    fieldIdByCanonicalKey: Map<string, string>,
+    aliasToCanonicalMap: Map<string, string>,
+  ): string | undefined {
+    const direct = fieldIdByCanonicalKey.get(systemKey);
+    if (direct) return direct;
+
+    for (const [alias, canonical] of aliasToCanonicalMap.entries()) {
+      if (canonical !== systemKey) continue;
+      const fieldId = fieldIdByCanonicalKey.get(alias) || fieldIdByCanonicalKey.get(canonical);
+      if (fieldId) return fieldId;
+    }
+
+    return undefined;
   }
 
   async loadDynamicRows(
