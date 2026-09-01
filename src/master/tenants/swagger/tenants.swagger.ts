@@ -140,7 +140,7 @@ export const TenantSwagger = {
             }),
             ApiBody({
                 description:
-                    'Payload matching the Create Tenant screen. Login uses business email; password is auto-generated.',
+                    'Organization, address, and plan/trial details. The first admin is created automatically using `name` and `email`; do not send `admin`, `password`, or `confirmPassword` — credentials are generated server-side and emailed.',
                 schema: {
                     type: 'object',
                     required: ['name', 'domain', 'email', 'planId'],
@@ -176,7 +176,11 @@ export const TenantSwagger = {
                         data: {
                             ...tenantExample,
                             database: 'tenant_acme',
-                            password: 'K7m$pQ2nLx9w',
+                            credentialsEmail: {
+                                sent: true,
+                                recipients: ['admin@acme.com'],
+                                error: null,
+                            },
                             loginUrl: 'https://acme.eusocial.com/login',
                             loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
                             tenantSlug: 'acme',

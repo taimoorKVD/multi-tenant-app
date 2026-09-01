@@ -354,6 +354,43 @@ describe('DynamicFieldsService', () => {
       expect(result.fld_phone).toBe('03102135074');
       expect(result.id).toBe(3);
     });
+
+    it('never returns password values in id-keyed responses', () => {
+      const context = {
+        fieldIdByCanonicalKey: new Map([
+          ['name', 'fld_name'],
+          ['password', 'fld_password'],
+        ]),
+        systemFieldKeys: new Set(['name', 'password']),
+        aliasToCanonicalMap: new Map(),
+        schemaFields: [
+          { id: 'fld_name', fieldKey: 'name', canonicalKey: 'name', name: 'name', isSystemField: true, dataKeys: [] },
+          {
+            id: 'fld_password',
+            fieldKey: 'password',
+            canonicalKey: 'password',
+            name: 'password',
+            isSystemField: true,
+            dataKeys: ['password'],
+          },
+        ],
+        fieldIdSet: new Set(['fld_name', 'fld_password']),
+        identityKeyOwner: new Map(),
+      } as any;
+
+      const result = service.buildResponse(
+        context,
+        { name: 'John', password: 'Secret123!', plain_password: 'Secret123!' },
+        { fld_password: 'Secret123!' },
+        { id: 1 },
+      );
+
+      expect(result.fld_name).toBe('John');
+      expect(result.fld_password).toBeUndefined();
+      expect(result.password).toBeUndefined();
+      expect(result.plain_password).toBeUndefined();
+      expect(result.id).toBe(1);
+    });
   });
 
   describe('loadDynamicRows', () => {

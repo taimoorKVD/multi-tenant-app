@@ -170,6 +170,8 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.department).toBe('Operations');
     expect(result.data.nickname).toBe('JD');
     expect(result.data.fld_test_name).toBe('John Doe');
+    expect(result.data.fld_test_password).toBeUndefined();
+    expect(result.data.password).toBeUndefined();
     expect(result.credentialsEmail).toEqual({ sent: false, error: expect.any(String) });
     expect((mailServiceMock.sendTemplateMail as any)).not.toHaveBeenCalled();
   });

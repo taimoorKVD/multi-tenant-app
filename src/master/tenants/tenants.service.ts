@@ -667,6 +667,8 @@ export class TenantsService {
     const tenantName = dto.name?.trim();
     if (!tenantName) throw new BadRequestException('Tenant name is required');
     const businessEmail = dto.email.trim().toLowerCase();
+    // Admin login is always provisioned from tenant name + business email.
+    // Any legacy `admin` block in the request body is stripped before validation.
     const adminPassword = options?.adminPassword || this.generateAdminPassword();
 
     let dbName = '';
@@ -1153,7 +1155,6 @@ export class TenantsService {
           recipients: email?.recipients ?? [],
           error: email?.error ?? null,
         },
-        password: adminSetup.plainPassword,
         loginUrl: this.getTenantLoginUrl(tenant.subdomain, tenant.customDomain),
         loginApiUrl: this.getTenantLoginApiUrl(tenant.subdomain),
         tenantSlug: tenant.subdomain,

@@ -40,7 +40,6 @@ export interface ITenantResponse {
       customerId: string | null;
       subscriptionId: string | null;
     };
-    password: string;
     loginUrl: string;
     loginApiUrl: string;
     tenantSlug: string;
