@@ -5,7 +5,10 @@ import { Allow, IsOptional, IsString } from 'class-validator';
 /**
  * Frontend Frequency step payload (loose validation — stored as JSON, expanded by FrequencyService):
  * `{ type: "atOnce", date: "2026-08-21", jobPosition: null, recurring: null }`
- * or `{ type: "recurring", date: "...", recurring: { ... } }`
+ * or UI recurring:
+ * `{ type: "recurring", date: null, recurring: { every: 1, interval: "day", repeatCount: 5, daysOfWeek: [], monthMode: "dayOfMonth", ... } }`
+ * or canonical:
+ * `{ type: "recurring", date: "...", recurring: { interval: 1, unit: "day", repeat: 5 } }`
  */
 export class FrequencyDto {
   @ApiPropertyOptional({ example: 'atOnce' })
@@ -78,6 +81,7 @@ export class MonthlyRuleDto {
 }
 
 export class FrequencyRecurringDto {
+  /** Canonical interval count, or UI unit string ("day"|"week"|"month"|"year"). */
   @IsOptional()
   @Allow()
   interval?: number | string;
@@ -86,9 +90,47 @@ export class FrequencyRecurringDto {
   @Allow()
   unit?: string;
 
+  /** UI: repeat every N (preferred over numeric `interval` when unit is in `interval`). */
   @IsOptional()
   @Allow()
-  repeat?: number | string;
+  every?: number | string;
+
+  @IsOptional()
+  @Allow()
+  repeat?: number | string | boolean;
+
+  /** UI: number of occurrences (maps to `repeat`). */
+  @IsOptional()
+  @Allow()
+  repeatCount?: number | string;
+
+  @IsOptional()
+  @Allow()
+  daysOfWeek?: Array<string | number>;
+
+  @IsOptional()
+  @Allow()
+  monthMode?: string;
+
+  @IsOptional()
+  @Allow()
+  dayOfMonth?: number | string;
+
+  @IsOptional()
+  @Allow()
+  weekOrder?: string;
+
+  @IsOptional()
+  @Allow()
+  onTheMonth?: string;
+
+  @IsOptional()
+  @Allow()
+  yearDay?: number | string;
+
+  @IsOptional()
+  @Allow()
+  yearMonth?: string;
 
   @IsOptional()
   @Allow()
