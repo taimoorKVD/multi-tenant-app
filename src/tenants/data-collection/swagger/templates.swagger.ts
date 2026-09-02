@@ -242,15 +242,16 @@ export const TenantDataCollectionTemplatesSwagger = {
       } as any),
       ApiResponse({
         status: 200,
-        description: 'Template updated successfully. Response schema includes field `value` when sent.',
+        description:
+          'Template updated successfully. Assign/frequency schema changes auto-publish (cancel future open assignments + rematerialize) unless publish=false.',
         schema: {
           example: {
             success: true,
-            message: 'Template updated successfully',
+            message: 'Template updated and published successfully',
             data: {
               id: 16,
               name: 'Form 1',
-              status: 'draft',
+              status: 'active',
               schema: {
                 formName: 'Form 1',
                 assign: { users: [3], jobPosition: null },

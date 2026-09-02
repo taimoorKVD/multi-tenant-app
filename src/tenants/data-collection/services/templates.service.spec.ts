@@ -233,7 +233,7 @@ describe('TemplatesService', () => {
       expect(req.versionRepo.save).not.toHaveBeenCalled();
     });
 
-    it('moves ACTIVE template to DRAFT when schema changes without publish', async () => {
+    it('moves ACTIVE template to DRAFT when non-schedule schema changes without publish', async () => {
       const req = createReq();
       const existing = {
         id: 1,
@@ -249,6 +249,102 @@ describe('TemplatesService', () => {
       await service.update(req, 1, { schema: { ...fullSchema, sections: [] } as any });
 
       expect(existing.status).toBe(TemplateStatus.DRAFT);
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+    });
+
+    it('auto-publishes when frequency changes (even without publish flag)', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const nextSchema = {
+        ...fullSchema,
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-02',
+          jobPosition: null,
+          recurring: {
+            every: 3,
+            interval: 'week',
+            repeatCount: 2,
+            daysOfWeek: ['tuesday', 'sunday'],
+          },
+        },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema })
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.update(req, 1, { schema: nextSchema as any });
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('published');
+      expect(assignmentsService.cancelFutureForTemplate).toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+    });
+
+    it('auto-publishes when assign targets change', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const nextSchema = {
+        ...fullSchema,
+        assign: { users: [1, 2], jobPosition: [] },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema })
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.update(req, 1, { schema: nextSchema as any });
+
+      expect(result.message).toContain('published');
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+    });
+
+    it('does not auto-publish frequency change when publish=false', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const nextSchema = {
+        ...fullSchema,
+        frequency: {
+          ...fullSchema.frequency,
+          type: 'recurring',
+          recurring: { every: 1, interval: 'day', repeatCount: 3 },
+        },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save.mockResolvedValueOnce(existing);
+
+      const result = await service.update(req, 1, {
+        schema: nextSchema as any,
+        publish: false,
+      });
+
+      expect(result.message).toBe('Template updated successfully');
+      expect(existing.status).toBe(TemplateStatus.DRAFT);
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
     });
 
     it('publishes when publish=true', async () => {
