@@ -67,6 +67,19 @@ export class TemplatesService {
     return String(type || '').toLowerCase() === 'recurring';
   }
 
+  /** Assign / frequency changes require rematerializing employee assignments. */
+  private scheduleAffectingSchemaChanged(
+    previous: Record<string, any> | null | undefined,
+    next: Record<string, any> | null | undefined,
+  ): boolean {
+    if (!next || typeof next !== 'object') return false;
+    const prevAssign = JSON.stringify(previous?.assign ?? null);
+    const nextAssign = JSON.stringify(next.assign ?? null);
+    const prevFrequency = JSON.stringify(previous?.frequency ?? null);
+    const nextFrequency = JSON.stringify(next.frequency ?? null);
+    return prevAssign !== nextAssign || prevFrequency !== nextFrequency;
+  }
+
   /**
    * Validate assign + frequency for publish.
    * Recurring Frequency UI has no date picker — default `date` to today when missing.
@@ -215,7 +228,16 @@ export class TemplatesService {
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
-      if (template.status === TemplateStatus.ARCHIVED && dto.publish) {
+      const previousSchema = (template.schema || null) as Record<string, any> | null;
+      const scheduleChanged =
+        dto.schema !== undefined &&
+        this.scheduleAffectingSchemaChanged(previousSchema, dto.schema as Record<string, any>);
+
+      // Match create: assign/frequency edits re-publish unless explicitly opted out with publish:false.
+      const shouldPublish =
+        dto.publish === true || (dto.publish !== false && scheduleChanged);
+
+      if (template.status === TemplateStatus.ARCHIVED && shouldPublish) {
         throw new BadRequestException('Archived templates cannot be published; restore or create a new draft');
       }
 
@@ -225,14 +247,14 @@ export class TemplatesService {
       if (dto.isActive !== undefined) template.isActive = dto.isActive;
       template.updatedBy = actorId;
 
-      // Editing an active template moves it back to draft until re-published (unless publish flag set).
-      if (dto.schema !== undefined && template.status === TemplateStatus.ACTIVE && dto.publish !== true) {
+      // Non-schedule schema edits on an active template go back to draft until re-published.
+      if (dto.schema !== undefined && template.status === TemplateStatus.ACTIVE && !shouldPublish) {
         template.status = TemplateStatus.DRAFT;
       }
 
-      let saved = await templateRepo.save(template);
+      const saved = await templateRepo.save(template);
 
-      if (dto.publish === true) {
+      if (shouldPublish) {
         const published = await this.publishInternal(req, saved, actorId);
         return {
           success: true,

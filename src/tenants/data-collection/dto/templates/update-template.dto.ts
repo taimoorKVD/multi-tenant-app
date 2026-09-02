@@ -25,7 +25,9 @@ export class UpdateTemplateDto {
 
   @ApiPropertyOptional({
     example: false,
-    description: 'When true, publish after update (new version + regenerate future assignments).',
+    description:
+      'When true, publish after update (new version + regenerate future assignments). ' +
+      'Assign/frequency schema changes auto-publish unless this is explicitly false.',
   })
   @IsOptional()
   @IsBoolean()
