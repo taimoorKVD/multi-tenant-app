@@ -6,42 +6,69 @@ import {
   WeekdayOrdinal,
 } from '../entities/enums';
 
+export type FrequencyMonthlyRule = {
+  type: MonthlyRuleType | string;
+  day?: number;
+  ordinal?: WeekdayOrdinal | string;
+  weekday?: string;
+  month?: string;
+};
+
 export type FrequencyScheduleInput = {
   interval: number;
   unit: FrequencyUnit | string;
   repeat: number;
-  monthlyRule?: {
-    type: MonthlyRuleType | string;
-    day?: number;
-    ordinal?: WeekdayOrdinal | string;
-    weekday?: string;
-    month?: string;
-  };
+  monthlyRule?: FrequencyMonthlyRule;
+  /** UI weekly BYDAY list (e.g. ["monday","wednesday"]). */
+  daysOfWeek?: string[];
 };
+
+/** Loose recurring/schedule payload from UI or legacy API. */
+export type FrequencyScheduleRaw = Record<string, any>;
 
 export type FrequencyInput = {
   type?: FrequencyType | string;
   /** Frontend field */
-  date?: string;
+  date?: string | null;
   /** Legacy field */
-  startDate?: string;
+  startDate?: string | null;
   endDate?: string | null;
-  /** Frontend nested schedule */
-  recurring?: FrequencyScheduleInput | null;
+  /** Frontend nested schedule (UI or canonical) */
+  recurring?: FrequencyScheduleRaw | FrequencyScheduleInput | null;
   /** Legacy nested schedule */
-  schedule?: FrequencyScheduleInput | null;
+  schedule?: FrequencyScheduleRaw | FrequencyScheduleInput | null;
   jobPosition?: number[] | number | null;
 };
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
+  sun: 0,
   monday: 1,
+  mon: 1,
   tuesday: 2,
+  tue: 2,
+  tues: 2,
   wednesday: 3,
+  wed: 3,
   thursday: 4,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
   friday: 5,
+  fri: 5,
   saturday: 6,
+  sat: 6,
 };
+
+const WEEKDAY_NAME_BY_INDEX = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
 
 const MONTH_INDEX: Record<string, number> = {
   january: 0,
@@ -58,6 +85,22 @@ const MONTH_INDEX: Record<string, number> = {
   december: 11,
 };
 
+const UNIT_ALIASES: Record<string, FrequencyUnit> = {
+  day: FrequencyUnit.DAY,
+  days: FrequencyUnit.DAY,
+  daily: FrequencyUnit.DAY,
+  week: FrequencyUnit.WEEK,
+  weeks: FrequencyUnit.WEEK,
+  weekly: FrequencyUnit.WEEK,
+  month: FrequencyUnit.MONTH,
+  months: FrequencyUnit.MONTH,
+  monthly: FrequencyUnit.MONTH,
+  year: FrequencyUnit.YEAR,
+  years: FrequencyUnit.YEAR,
+  yearly: FrequencyUnit.YEAR,
+  annually: FrequencyUnit.YEAR,
+};
+
 @Injectable()
 export class FrequencyService {
   /** UTC today as YYYY-MM-DD when Recurring UI omits `date`. */
@@ -71,9 +114,11 @@ export class FrequencyService {
 
   /**
    * Expand frequency into due dates.
-   * Supports frontend payload:
-   * `{ type: "atOnce", date: "2026-08-21", recurring: null }`
-   * and legacy `{ type: "one_time"|"recurring", startDate, schedule }`.
+   * Supports:
+   * - `{ type: "atOnce", date: "2026-08-21", recurring: null }`
+   * - Canonical `{ recurring: { interval, unit, repeat, monthlyRule? } }`
+   * - UI Frequency card `{ recurring: { every, interval: "day", repeatCount, daysOfWeek, monthMode, ... } }`
+   * - Legacy `{ type: "one_time"|"recurring", startDate, schedule }`
    * Recurring without `date`/`startDate` anchors to today (UTC).
    */
   expandOccurrences(frequency: FrequencyInput | null | undefined, maxOccurrences = 100): Date[] {
@@ -96,31 +141,257 @@ export class FrequencyService {
     }
     if (!startRaw) return [];
 
-    const start = this.parseDateOnly(startRaw);
+    const start = this.parseDateOnly(String(startRaw));
     if (!start) return [];
 
     if (isAtOnce) {
       return end && start > end ? [] : [start];
     }
 
-    const schedule = frequency.recurring || frequency.schedule;
-    if (!schedule) {
+    const raw = (frequency.recurring || frequency.schedule) as FrequencyScheduleRaw | null | undefined;
+    if (!raw) {
       return [start];
     }
 
-    const interval = Math.max(1, Number(schedule.interval) || 1);
-    const unitRaw = String(schedule.unit || FrequencyUnit.MONTH).toLowerCase();
-    const unit = unitRaw as FrequencyUnit;
-    const repeat = Math.min(Math.max(1, Number(schedule.repeat) || 1), maxOccurrences);
+    const schedule = this.normalizeSchedule(raw, maxOccurrences);
     const dates: Date[] = [];
+
+    if (
+      String(schedule.unit).toLowerCase() === FrequencyUnit.WEEK &&
+      schedule.daysOfWeek &&
+      schedule.daysOfWeek.length
+    ) {
+      return this.expandWeeklyByDays(start, schedule, end, maxOccurrences);
+    }
 
     let cursor = new Date(start.getTime());
 
-    for (let i = 0; i < repeat; i++) {
-      const due = this.applyMonthlyRule(cursor, unit, schedule.monthlyRule);
+    for (let i = 0; i < schedule.repeat; i++) {
+      const due = this.applyMonthlyRule(cursor, schedule.unit, schedule.monthlyRule);
       if (end && due > end) break;
       dates.push(due);
-      cursor = this.addInterval(cursor, interval, unit);
+      cursor = this.addInterval(cursor, schedule.interval, schedule.unit);
+    }
+
+    return dates;
+  }
+
+  /**
+   * Normalize UI + legacy recurring payloads into a canonical schedule.
+   *
+   * UI shape:
+   * `{ every: 1, interval: "day", repeatCount: 5, daysOfWeek: [], monthMode, dayOfMonth, ... }`
+   * Canonical:
+   * `{ interval: 1, unit: "day", repeat: 5, monthlyRule?, daysOfWeek? }`
+   */
+  normalizeSchedule(raw: FrequencyScheduleRaw, maxOccurrences = 100): FrequencyScheduleInput {
+    const unit = this.resolveUnit(raw);
+    const interval = this.resolveIntervalCount(raw);
+    const repeat = this.resolveRepeat(raw, maxOccurrences);
+    const daysOfWeek = this.resolveDaysOfWeek(raw);
+    const monthlyRule = this.resolveMonthlyRule(raw, unit, daysOfWeek);
+
+    return {
+      interval,
+      unit,
+      repeat,
+      ...(monthlyRule ? { monthlyRule } : {}),
+      ...(daysOfWeek.length ? { daysOfWeek } : {}),
+    };
+  }
+
+  private resolveUnit(raw: FrequencyScheduleRaw): FrequencyUnit {
+    if (raw.unit != null && String(raw.unit).trim() !== '') {
+      const fromUnit = UNIT_ALIASES[String(raw.unit).toLowerCase().trim()];
+      if (fromUnit) return fromUnit;
+    }
+
+    // UI stores unit name in `interval` ("day" | "week" | "month" | "year").
+    if (typeof raw.interval === 'string') {
+      const fromInterval = UNIT_ALIASES[raw.interval.toLowerCase().trim()];
+      if (fromInterval) return fromInterval;
+    }
+
+    return FrequencyUnit.MONTH;
+  }
+
+  private resolveIntervalCount(raw: FrequencyScheduleRaw): number {
+    if (raw.every != null && raw.every !== '') {
+      const n = Number(raw.every);
+      if (Number.isFinite(n) && n >= 1) return Math.floor(n);
+    }
+
+    // Canonical numeric interval (not the UI unit string).
+    if (typeof raw.interval === 'number' || (typeof raw.interval === 'string' && !UNIT_ALIASES[String(raw.interval).toLowerCase().trim()])) {
+      const n = Number(raw.interval);
+      if (Number.isFinite(n) && n >= 1) return Math.floor(n);
+    }
+
+    return 1;
+  }
+
+  private resolveRepeat(raw: FrequencyScheduleRaw, maxOccurrences: number): number {
+    if (raw.repeatCount != null && raw.repeatCount !== '') {
+      const n = Number(raw.repeatCount);
+      if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), maxOccurrences);
+    }
+
+    // Seeds / open-ended: repeat: true → fill up to maxOccurrences.
+    if (raw.repeat === true) {
+      return maxOccurrences;
+    }
+
+    if (raw.repeat != null && raw.repeat !== '') {
+      const n = Number(raw.repeat);
+      if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), maxOccurrences);
+    }
+
+    return 1;
+  }
+
+  private resolveDaysOfWeek(raw: FrequencyScheduleRaw): string[] {
+    const source = raw.daysOfWeek ?? raw.weekdays ?? raw.byDay;
+    if (!Array.isArray(source)) return [];
+
+    const names: string[] = [];
+    for (const item of source) {
+      if (item == null || item === '') continue;
+      if (typeof item === 'number' && item >= 0 && item <= 6) {
+        names.push(WEEKDAY_NAME_BY_INDEX[item]);
+        continue;
+      }
+      const key = String(item).toLowerCase().trim();
+      const idx = WEEKDAY_INDEX[key];
+      if (idx !== undefined) {
+        names.push(WEEKDAY_NAME_BY_INDEX[idx]);
+      }
+    }
+
+    // Stable unique order Sun→Sat.
+    return [...new Set(names)].sort(
+      (a, b) => (WEEKDAY_INDEX[a] ?? 0) - (WEEKDAY_INDEX[b] ?? 0),
+    );
+  }
+
+  private resolveMonthlyRule(
+    raw: FrequencyScheduleRaw,
+    unit: FrequencyUnit,
+    daysOfWeek: string[],
+  ): FrequencyMonthlyRule | undefined {
+    if (raw.monthlyRule && typeof raw.monthlyRule === 'object') {
+      return raw.monthlyRule as FrequencyMonthlyRule;
+    }
+
+    const unitKey = String(unit).toLowerCase();
+    if (unitKey !== FrequencyUnit.MONTH && unitKey !== FrequencyUnit.YEAR) {
+      return undefined;
+    }
+
+    const mode = String(raw.monthMode || raw.monthlyMode || raw.ruleType || '')
+      .toLowerCase()
+      .trim();
+    const isNth =
+      mode === 'nthweekday' ||
+      mode === 'nth_weekday' ||
+      mode === 'onthe' ||
+      mode === 'on_the' ||
+      mode === MonthlyRuleType.NTH_WEEKDAY.toLowerCase();
+
+    if (isNth) {
+      const weekday =
+        this.firstWeekdayName(raw.weekday ?? raw.onTheWeekday ?? daysOfWeek[0]) || 'monday';
+      return {
+        type: MonthlyRuleType.NTH_WEEKDAY,
+        ordinal: String(raw.weekOrder || raw.ordinal || WeekdayOrdinal.FIRST).toLowerCase(),
+        weekday,
+        ...(unitKey === FrequencyUnit.YEAR
+          ? { month: String(raw.onTheMonth || raw.yearMonth || raw.month || 'january').toLowerCase() }
+          : {}),
+      };
+    }
+
+    // Default / dayOfMonth (UI always sends monthMode:"dayOfMonth" with dayOfMonth).
+    const daySource =
+      unitKey === FrequencyUnit.YEAR
+        ? (raw.yearDay ?? raw.dayOfMonth ?? raw.day)
+        : (raw.dayOfMonth ?? raw.day);
+    const day = daySource === '' || daySource == null ? undefined : Number(daySource);
+    const month =
+      unitKey === FrequencyUnit.YEAR
+        ? String(raw.yearMonth || raw.onTheMonth || raw.month || 'january').toLowerCase()
+        : undefined;
+
+    // Only attach a rule when UI provided month-specific fields or unit is year.
+    const hasUiMonthFields =
+      raw.dayOfMonth != null ||
+      raw.yearDay != null ||
+      raw.yearMonth != null ||
+      raw.monthMode != null ||
+      raw.month != null;
+
+    if (!hasUiMonthFields && unitKey === FrequencyUnit.MONTH) {
+      return undefined;
+    }
+
+    return {
+      type: MonthlyRuleType.DAY_OF_MONTH,
+      day: Number.isFinite(day as number) ? (day as number) : 1,
+      ...(month ? { month } : {}),
+    };
+  }
+
+  private firstWeekdayName(value: unknown): string | undefined {
+    if (value == null || value === '') return undefined;
+    if (typeof value === 'number' && value >= 0 && value <= 6) {
+      return WEEKDAY_NAME_BY_INDEX[value];
+    }
+    const key = String(value).toLowerCase().trim();
+    const idx = WEEKDAY_INDEX[key];
+    return idx !== undefined ? WEEKDAY_NAME_BY_INDEX[idx] : undefined;
+  }
+
+  /**
+   * Weekly with selected weekdays (RRULE-like):
+   * every N weeks on the listed days, COUNT = repeat.
+   */
+  private expandWeeklyByDays(
+    start: Date,
+    schedule: FrequencyScheduleInput,
+    end: Date | null,
+    maxOccurrences: number,
+  ): Date[] {
+    const selected = (schedule.daysOfWeek || [])
+      .map((d) => WEEKDAY_INDEX[String(d).toLowerCase()])
+      .filter((n): n is number => n !== undefined);
+    if (!selected.length) return [];
+
+    const selectedSet = new Set(selected);
+    const intervalWeeks = Math.max(1, schedule.interval);
+    const repeat = Math.min(Math.max(1, schedule.repeat), maxOccurrences);
+    const dates: Date[] = [];
+
+    // Week anchor: Sunday of the start week (UTC).
+    const startWeekSunday = new Date(start.getTime());
+    startWeekSunday.setUTCDate(start.getUTCDate() - start.getUTCDay());
+
+    // Scan forward day-by-day with a generous safety cap.
+    const cursor = new Date(start.getTime());
+    const safetyDays = Math.max(repeat * intervalWeeks * 7 * 2, 366 * 2);
+
+    for (let i = 0; i < safetyDays && dates.length < repeat; i++) {
+      const dow = cursor.getUTCDay();
+      if (selectedSet.has(dow) && cursor >= start) {
+        const weekSunday = new Date(cursor.getTime());
+        weekSunday.setUTCDate(cursor.getUTCDate() - dow);
+        const weeksFromStart = Math.floor(
+          (weekSunday.getTime() - startWeekSunday.getTime()) / (7 * 24 * 60 * 60 * 1000),
+        );
+        if (weeksFromStart >= 0 && weeksFromStart % intervalWeeks === 0) {
+          if (end && cursor > end) break;
+          dates.push(new Date(cursor.getTime()));
+        }
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
     return dates;
@@ -158,7 +429,7 @@ export class FrequencyService {
   private applyMonthlyRule(
     base: Date,
     unit: FrequencyUnit | string,
-    rule?: FrequencyScheduleInput['monthlyRule'],
+    rule?: FrequencyMonthlyRule,
   ): Date {
     if (!rule?.type) return new Date(base.getTime());
 
@@ -195,7 +466,7 @@ export class FrequencyService {
     weekday?: string,
   ): Date {
     const weekdayKey = String(weekday || '').toLowerCase();
-    if (MONTH_INDEX[weekdayKey] !== undefined && !WEEKDAY_INDEX[weekdayKey]) {
+    if (MONTH_INDEX[weekdayKey] !== undefined && WEEKDAY_INDEX[weekdayKey] === undefined) {
       return new Date(Date.UTC(year, MONTH_INDEX[weekdayKey], 1, 0, 0, 0, 0));
     }
 
