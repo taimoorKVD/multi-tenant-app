@@ -29,8 +29,10 @@ export const PermissionSwagger = {
                             {
                                 module: { name: 'Form' },
                                 permissions: [
-                                    { id: 33, name: 'View' },
-                                    { id: 37, name: 'Create' },
+                                    { id: 46, name: 'View' },
+                                    { id: 47, name: 'Complete' },
+                                    { id: 48, name: 'View Submission' },
+                                    { id: 49, name: 'Review' },
                                 ],
                             },
                             {
