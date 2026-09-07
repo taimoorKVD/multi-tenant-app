@@ -3,6 +3,7 @@ import { ISeeder } from '../interfaces/seeder.interface';
 import { Tenant } from '../../master/tenants/entities';
 import { Permission } from '../../tenants/permission/entities';
 import { Role } from '../../tenants/role/entities';
+import { resolvePermissionModuleName } from '../../common/utils/permission-module';
 
 export class DataCollectionPermissionsSeeder implements ISeeder {
   name = 'DataCollectionPermissionsSeeder';
@@ -49,8 +50,16 @@ export class DataCollectionPermissionsSeeder implements ISeeder {
         for (const permissionName of this.requiredPermissions) {
           let permission = await permissionRepo.findOne({ where: { name: permissionName } });
           if (!permission) {
-            permission = await permissionRepo.save(permissionRepo.create({ name: permissionName }));
+            permission = await permissionRepo.save(
+              permissionRepo.create({
+                name: permissionName,
+                module: resolvePermissionModuleName(permissionName),
+              }),
+            );
             inserted += 1;
+          } else if (!permission.module) {
+            permission.module = resolvePermissionModuleName(permissionName);
+            await permissionRepo.save(permission);
           }
           ensuredPermissions.push(permission);
         }
@@ -94,8 +103,16 @@ export class DataCollectionPermissionsSeeder implements ISeeder {
         for (const permissionName of employeePermissionNames) {
           let permission = await permissionRepo.findOne({ where: { name: permissionName } });
           if (!permission) {
-            permission = await permissionRepo.save(permissionRepo.create({ name: permissionName }));
+            permission = await permissionRepo.save(
+              permissionRepo.create({
+                name: permissionName,
+                module: resolvePermissionModuleName(permissionName),
+              }),
+            );
             inserted += 1;
+          } else if (!permission.module) {
+            permission.module = resolvePermissionModuleName(permissionName);
+            await permissionRepo.save(permission);
           }
           employeePermissions.push(permission);
         }

@@ -8,35 +8,32 @@ export const PermissionSwagger = {
     GetAll: () =>
         applyDecorators(
             ApiOperation({
-                summary: 'Get all permissions (paginated)',
+                summary: 'Get all permissions grouped by module',
                 description:
-                    'Retrieves a paginated list of permissions available in the system. Each permission defines an allowed action for a specific module.',
-            }),
-            ApiQuery({
-                name: 'page',
-                required: false,
-                example: 1,
-                description: 'Page number for pagination (default = 1)',
+                    'Retrieves permissions grouped under their module. Each group contains the module display name and its permission actions.',
             }),
             ApiResponse({
                 status: 200,
-                description: 'Paginated list of permissions retrieved successfully.',
+                description: 'Permissions retrieved successfully.',
                 schema: {
                     example: {
                         success: true,
                         data: [
-                            { id: 1, name: 'create-user' },
-                            { id: 2, name: 'view-user' },
-                            { id: 3, name: 'edit-user' },
-                            { id: 4, name: 'delete-user' },
-                            { id: 5, name: 'create-role' },
-                            { id: 6, name: 'view-role' },
+                            {
+                                module: { name: 'User' },
+                                permissions: [
+                                    { id: 1, name: 'Create' },
+                                    { id: 2, name: 'View' },
+                                ],
+                            },
+                            {
+                                module: { name: 'Role' },
+                                permissions: [
+                                    { id: 5, name: 'Create' },
+                                    { id: 6, name: 'View' },
+                                ],
+                            },
                         ],
-                        meta: {
-                            total: 20,
-                            page: 1,
-                            lastPage: 2,
-                        },
                     },
                 },
             }),
@@ -67,6 +64,13 @@ export const PermissionSwagger = {
                 description: 'Filter by permission name.',
             }),
             ApiQuery({
+                name: 'module',
+                required: false,
+                type: String,
+                example: 'users',
+                description: 'Filter by module name.',
+            }),
+            ApiQuery({
                 name: 'limit',
                 required: false,
                 type: Number,
@@ -93,6 +97,7 @@ export const PermissionSwagger = {
                         summary: 'Create permission request',
                         value: {
                             name: 'approve-user',
+                            module: { name: 'users' },
                         },
                     },
                 },
@@ -137,6 +142,7 @@ export const PermissionSwagger = {
                         summary: 'Update permission request',
                         value: {
                             name: 'approve-user-request',
+                            module: { name: 'users' },
                         },
                     },
                 },

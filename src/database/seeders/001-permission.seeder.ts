@@ -1,6 +1,7 @@
 import { ISeeder } from '../interfaces/seeder.interface';
 import { MasterDataSource } from '../datasource';
 import { Permission } from '../../master/permission/entities';
+import { resolvePermissionModuleName } from '../../common/utils/permission-module';
 
 export class PermissionSeeder implements ISeeder {
   name = 'PermissionSeeder';
@@ -8,65 +9,78 @@ export class PermissionSeeder implements ISeeder {
   async run() {
     const repo = MasterDataSource.getRepository(Permission);
     const existing = await repo.count();
-    if (existing > 0) return;
+    if (existing > 0) {
+      const missingModule = await repo
+        .createQueryBuilder('permission')
+        .where('permission.module IS NULL')
+        .getMany();
+      if (missingModule.length) {
+        for (const permission of missingModule) {
+          permission.module = resolvePermissionModuleName(permission.name);
+        }
+        await repo.save(missingModule);
+        console.log(`✅ Backfilled module on ${missingModule.length} permissions.`);
+      }
+      return;
+    }
 
     const modules = [
       {
-        module: 'user',
+        module: 'users',
+        permissionModule: 'user',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'User management permissions',
       },
       {
-        module: 'role',
+        module: 'roles',
+        permissionModule: 'role',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Role management permissions',
       },
       {
-        module: 'permission',
+        module: 'roles',
+        permissionModule: 'permission',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Permission management permissions',
       },
       {
-        module: 'tenant',
+        module: 'tenants',
+        permissionModule: 'tenant',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Tenant management permissions',
       },
       {
-        module: 'job-position',
+        module: 'jobpositions',
+        permissionModule: 'job-position',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Job position management permissions',
       },
       {
-        module: 'location',
+        module: 'locations',
+        permissionModule: 'location',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Location management permissions',
       },
       {
-        module: 'vendor',
+        module: 'vendors',
+        permissionModule: 'vendor',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Vendor management permissions',
       },
       {
-        module: 'reporting-group',
+        module: 'reporting-groups',
+        permissionModule: 'reporting-group',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Reporting group management permissions',
       },
       {
-        module: 'reporting-category',
+        module: 'reporting-categories',
+        permissionModule: 'reporting-category',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Reporting category management permissions',
       },
       {
-        module: 'item',
+        module: 'items',
+        permissionModule: 'item',
         actions: ['create', 'view', 'edit', 'delete'],
-        description: 'Item management permissions',
       },
     ];
 
     const allPermissions = modules.flatMap((mod) =>
       mod.actions.map((action) => ({
-        name: `${action}-${mod.module}`,
-        description: `${action.charAt(0).toUpperCase() + action.slice(1)} ${mod.module}`,
+        name: `${action}-${mod.permissionModule}`,
+        module: mod.module,
       })),
     );
 
