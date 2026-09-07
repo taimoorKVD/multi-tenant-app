@@ -12,20 +12,21 @@ export type GroupedPermissionModule = {
 
 const MODULE_DISPLAY_NAMES: Record<string, string> = {
   users: 'User',
-  roles: 'Role',
   jobpositions: 'Job Position',
   locations: 'Location',
   items: 'Item',
   vendors: 'Vendor',
   'reporting-groups': 'Reporting Group',
-  'reporting-categories': 'Reporting Category',
-  'form-builder': 'Form Builder',
-  'data-collection': 'Data Collection',
+  'form-builder': 'Form',
+  'data-collection': 'Template',
   mail: 'Mail',
   billing: 'Billing',
   tenants: 'Tenant',
   general: 'General',
 };
+
+/** Module keys omitted from the grouped permissions API response. */
+const HIDDEN_MODULE_KEYS = new Set(['roles', 'reporting-categories']);
 
 /**
  * Maps a permission name to its module key (aligned with plan module keys where possible).
@@ -140,6 +141,8 @@ export function groupPermissionsByModule(
   for (const permission of permissions) {
     const moduleKey =
       resolvePermissionModuleValue(permission.module as any, permission.name) || 'general';
+    if (HIDDEN_MODULE_KEYS.has(moduleKey)) continue;
+
     const displayName = formatModuleDisplayName(moduleKey);
 
     let group = groups.get(moduleKey);
