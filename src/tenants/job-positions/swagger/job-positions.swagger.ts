@@ -40,7 +40,8 @@ export const TenantJobPositionsSwagger = {
         applyDecorators(
             ApiOperation({
                 summary: 'List tenant job positions',
-                description: 'Returns tenant job positions with optional pagination and related permissions.',
+                description:
+                    'Returns tenant job positions with optional pagination. Permissions are grouped by module (same shape as create/update responses and the permissions API).',
             }),
             ApiQuery({
                 name: 'page',
@@ -59,6 +60,34 @@ export const TenantJobPositionsSwagger = {
             ApiResponse({
                 status: 200,
                 description: 'Job positions fetched successfully.',
+                schema: {
+                    example: {
+                        success: true,
+                        data: [
+                            {
+                                id: 1,
+                                name: 'Shift Manager',
+                                description: 'Supervises day-to-day floor operations.',
+                                permissions: [
+                                    {
+                                        module: { name: 'User' },
+                                        permissions: [
+                                            { id: 1, name: 'Create' },
+                                            { id: 32, name: 'View' },
+                                        ],
+                                    },
+                                    {
+                                        module: { name: 'Form' },
+                                        permissions: [
+                                            { id: 46, name: 'View' },
+                                            { id: 47, name: 'Submit' },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
             }),
         ),
 

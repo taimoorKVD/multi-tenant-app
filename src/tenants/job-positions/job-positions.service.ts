@@ -4,6 +4,7 @@ import {JobPosition} from './entities';
 import {TenantAbstractService} from '../../common/abstract';
 import {Permission} from '../permission/entities';
 import {CreateJobPositionDto, UpdateJobPositionDto} from './dto';
+import {groupPermissionsByModule} from '../../common/utils/permission-module';
 
 @Injectable()
 export class JobPositionsService extends TenantAbstractService<JobPosition> {
@@ -22,6 +23,26 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
         }
 
         return permissions;
+    }
+
+    private withGroupedPermissions<T extends {permissions?: Permission[] | null}>(
+        jobPosition: T | null,
+    ): (Omit<T, 'permissions'> & {permissions: ReturnType<typeof groupPermissionsByModule>}) | null {
+        if (!jobPosition) return null;
+        return {
+            ...jobPosition,
+            permissions: groupPermissionsByModule(jobPosition.permissions || []),
+        };
+    }
+
+    private withGroupedPermissionsList<T extends {permissions?: Permission[] | null}>(
+        jobPositions: T[],
+    ) {
+        return jobPositions.map(
+            (jobPosition) => this.withGroupedPermissions(jobPosition) as NonNullable<
+                ReturnType<JobPositionsService['withGroupedPermissions']>
+            >,
+        );
     }
 
     async create(req: any, data: CreateJobPositionDto): Promise<any> {
@@ -49,7 +70,7 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
                 success: true,
                 message: 'Record created successfully',
                 tenant: req.tenantConnection.options.database,
-                data: hydrated,
+                data: this.withGroupedPermissions(hydrated),
             };
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
@@ -59,11 +80,32 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
     }
 
     async findAll(req: any): Promise<any> {
-        return super.findAll(req, ['permissions']);
+        const result = await super.findAll(req, ['permissions']);
+        return {
+            ...result,
+            data: this.withGroupedPermissionsList(result.data || []),
+        };
+    }
+
+    async paginate(
+        req: any,
+        page = 1,
+        relations: string[] = ['permissions'],
+        limit?: number,
+    ): Promise<any> {
+        const result = await super.paginate(req, page, relations, limit);
+        return {
+            ...result,
+            data: this.withGroupedPermissionsList(result.data || []),
+        };
     }
 
     async findOne(req: any, id: number): Promise<any> {
-        return super.findOne(req, id, ['permissions']);
+        const result = await super.findOne(req, id, ['permissions']);
+        return {
+            ...result,
+            data: this.withGroupedPermissions(result.data),
+        };
     }
 
     async update(req: any, id: number, data: UpdateJobPositionDto): Promise<any> {
@@ -104,7 +146,7 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
                 success: true,
                 message: 'Record updated successfully',
                 tenant: req.tenantConnection.options.database,
-                data: hydrated,
+                data: this.withGroupedPermissions(hydrated),
             };
         } catch (error) {
             if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
@@ -164,7 +206,7 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
                 success: true,
                 tenant: req.tenantConnection.options.database,
                 count: data.length,
-                data,
+                data: this.withGroupedPermissionsList(data),
             };
         } catch (error) {
             console.error('Tenant job position search failed:', error);
