@@ -82,7 +82,10 @@ describe('TenantAuthService', () => {
       role: {
         id: 1,
         name: 'Admin',
-        permissions: [{ name: 'view-user' }, { name: 'edit-user' }],
+        permissions: [
+          { id: 1, name: 'view-user' },
+          { id: 2, name: 'edit-user' },
+        ],
       },
     });
 
@@ -103,7 +106,15 @@ describe('TenantAuthService', () => {
     expect(result.account_type).toBe('tenant_admin');
     expect(result.tenant_slug).toBe('test');
     expect(result.user.account_type).toBe('tenant_admin');
-    expect(result.user.role.permissions).toEqual([{ name: 'view-user' }, { name: 'edit-user' }]);
+    expect(result.user.role.permissions).toEqual([
+      {
+        module: { name: 'User' },
+        permissions: [
+          { id: 1, name: 'View' },
+          { id: 2, name: 'Edit' },
+        ],
+      },
+    ]);
     expect(result.user.email_verified).toBe(true);
   });
 
@@ -186,7 +197,12 @@ describe('TenantAuthService', () => {
     expect(result.user.role).toEqual({
       id: 1,
       name: 'Admin',
-      permissions: [{ id: 5, name: 'view-user' }],
+      permissions: [
+        {
+          module: { name: 'User' },
+          permissions: [{ id: 5, name: 'View' }],
+        },
+      ],
     });
   });
 

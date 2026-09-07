@@ -23,6 +23,7 @@ import { getTenantDataSource } from '../../../database/datasource';
 import { User } from '../../../tenants/users/entities';
 import { RefreshToken } from '../../../tenants/auth/entities';
 import { serializePlanModules } from '../plan-modules';
+import { groupPermissionsByModule } from '../../../common/utils/permission-module';
 import {
   amountCentsForBillingCycle,
   stripePriceIdForBillingCycle,
@@ -282,7 +283,7 @@ export class PublicSignupService {
         role: {
           id: user.role?.id,
           name: user.role?.name,
-          permissions: user.role?.permissions || [],
+          permissions: groupPermissionsByModule(user.role?.permissions || []),
         },
       },
     };
