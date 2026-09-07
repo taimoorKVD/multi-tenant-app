@@ -23,16 +23,21 @@ describe('resolvePermissionModuleName', () => {
 describe('display helpers', () => {
   it('formats module and action labels', () => {
     expect(formatModuleDisplayName('users')).toBe('User');
+    expect(formatModuleDisplayName('form-builder')).toBe('Form');
+    expect(formatModuleDisplayName('data-collection')).toBe('Template');
     expect(formatPermissionActionName('create-user')).toBe('Create');
     expect(formatPermissionActionName('archive-dc-template')).toBe('Archive');
   });
 
-  it('groups permissions by module', () => {
+  it('groups permissions by module and hides Role / Reporting Category', () => {
     expect(
       groupPermissionsByModule([
         { id: 1, name: 'create-user', module: 'users' },
         { id: 2, name: 'view-user', module: 'users' },
         { id: 3, name: 'create-form', module: 'form-builder' },
+        { id: 4, name: 'create-role', module: 'roles' },
+        { id: 5, name: 'view-reporting-category', module: 'reporting-categories' },
+        { id: 6, name: 'archive-dc-template', module: 'data-collection' },
       ]),
     ).toEqual([
       {
@@ -43,8 +48,12 @@ describe('display helpers', () => {
         ],
       },
       {
-        module: { name: 'Form Builder' },
+        module: { name: 'Form' },
         permissions: [{ id: 3, name: 'Create' }],
+      },
+      {
+        module: { name: 'Template' },
+        permissions: [{ id: 6, name: 'Archive' }],
       },
     ]);
   });

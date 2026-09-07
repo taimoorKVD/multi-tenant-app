@@ -27,10 +27,17 @@ export const PermissionSwagger = {
                                 ],
                             },
                             {
-                                module: { name: 'Role' },
+                                module: { name: 'Form' },
                                 permissions: [
-                                    { id: 5, name: 'Create' },
-                                    { id: 6, name: 'View' },
+                                    { id: 33, name: 'View' },
+                                    { id: 37, name: 'Create' },
+                                ],
+                            },
+                            {
+                                module: { name: 'Template' },
+                                permissions: [
+                                    { id: 39, name: 'Create' },
+                                    { id: 52, name: 'Archive' },
                                 ],
                             },
                         ],
