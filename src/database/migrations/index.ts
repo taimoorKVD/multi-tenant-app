@@ -21,3 +21,4 @@ export * from './1701010022000-AddTenantProfileFields';
 export * from './1701010023000-CreateWebsiteSignupsTable';
 export * from './1701010024000-AddOneTimeLoginTokenToWebsiteSignups';
 export * from './1701010025000-AddYearlyPricingToPlansTable';
+export * from './1701010026000-AddModuleToPermissionsTable';

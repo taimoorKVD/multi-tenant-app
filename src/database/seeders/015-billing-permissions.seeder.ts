@@ -2,6 +2,7 @@ import { ISeeder } from '../interfaces/seeder.interface';
 import { MasterDataSource } from '../datasource';
 import { Permission } from '../../master/permission/entities';
 import { Role } from '../../master/role/entities';
+import { resolvePermissionModuleName } from '../../common/utils/permission-module';
 
 export class BillingPermissionsSeeder implements ISeeder {
   name = 'BillingPermissionsSeeder';
@@ -28,8 +29,16 @@ export class BillingPermissionsSeeder implements ISeeder {
     for (const name of this.requiredPermissions) {
       let permission = await permissionRepo.findOne({ where: { name } });
       if (!permission) {
-        permission = await permissionRepo.save(permissionRepo.create({ name } as Permission));
+        permission = await permissionRepo.save(
+          permissionRepo.create({
+            name,
+            module: resolvePermissionModuleName(name),
+          } as Permission),
+        );
         inserted += 1;
+      } else if (!permission.module) {
+        permission.module = resolvePermissionModuleName(name);
+        await permissionRepo.save(permission);
       }
       ensured.push(permission);
     }

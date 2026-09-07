@@ -31,16 +31,9 @@ export class PermissionController {
   @Get()
   @TenantAccess('view-permission')
   @TenantPermissionSwagger.FindAll()
-  async all(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
+  async all(@Req() req) {
     try {
-      const parsedPage = Number(page);
-      const parsedLimit = limit === undefined ? undefined : Number(limit);
-      const result = await this.permissionService.paginate(
-        req,
-        Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1,
-        [],
-        Number.isFinite(parsedLimit) ? parsedLimit : undefined,
-      );
+      const result = await this.permissionService.findGrouped(req);
       return {
         ...result,
         message: 'Permissions fetched successfully',
@@ -57,10 +50,12 @@ export class PermissionController {
   async search(
     @Req() req,
     @Query('name') name?: string,
+    @Query('module') module?: string,
     @Query('limit') limit?: string,
   ) {
     return this.permissionService.search(req, limit ? Number(limit) : undefined, {
       name,
+      module,
     });
   }
 

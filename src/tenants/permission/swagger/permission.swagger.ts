@@ -9,23 +9,34 @@ export const TenantPermissionSwagger = {
     applyDecorators(
       ApiOperation({
         summary: 'Get tenant permissions',
-        description: 'Returns tenant permissions with optional pagination.',
+        description: 'Returns tenant permissions grouped by module.',
       }),
-      ApiQuery({
-        name: 'page',
-        required: false,
-        type: Number,
-        example: 1,
-        description: 'Optional page number. Defaults to 1 when provided as invalid.',
+      ApiResponse({
+        status: 200,
+        description: 'Permissions fetched successfully.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Permissions fetched successfully',
+            data: [
+              {
+                module: { name: 'User' },
+                permissions: [
+                  { id: 1, name: 'Create' },
+                  { id: 32, name: 'View' },
+                ],
+              },
+              {
+                module: { name: 'Data Collection' },
+                permissions: [
+                  { id: 39, name: 'Create' },
+                  { id: 52, name: 'Archive' },
+                ],
+              },
+            ],
+          },
+        },
       }),
-      ApiQuery({
-        name: 'limit',
-        required: false,
-        type: Number,
-        example: 10,
-        description: 'Optional page size. Defaults to 15 when omitted; use limit=0 to return all records.',
-      }),
-      ApiResponse({status: 200, description: 'Permissions fetched successfully.'}),
     ),
 
   Search: () =>
@@ -40,6 +51,13 @@ export const TenantPermissionSwagger = {
         type: String,
         example: 'view-user',
         description: 'Filter by permission name.',
+      }),
+      ApiQuery({
+        name: 'module',
+        required: false,
+        type: String,
+        example: 'users',
+        description: 'Filter by module name.',
       }),
       ApiQuery({
         name: 'limit',
@@ -65,6 +83,7 @@ export const TenantPermissionSwagger = {
             summary: 'Create permission request',
             value: {
               name: 'approve-vendor',
+              module: { name: 'vendors' },
             },
           },
         },
@@ -99,6 +118,7 @@ export const TenantPermissionSwagger = {
             summary: 'Update permission request',
             value: {
               name: 'approve-vendor-request',
+              module: { name: 'vendors' },
             },
           },
         },

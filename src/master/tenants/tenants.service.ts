@@ -23,6 +23,7 @@ import {State} from '../states/entities';
 import {TENANT_INDUSTRIES} from './tenant-industries';
 import {Permission} from '../../tenants/permission/entities';
 import {ApiResponse} from '../../common/abstract';
+import {resolvePermissionModuleName} from '../../common/utils/permission-module';
 import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../../tenants/form-builder/config/module-seeds';
 import {
   DynamicModule,
@@ -926,7 +927,13 @@ export class TenantsService {
       defaultPermissions.map(async (permName) => {
         let perm = await permissionRepo.findOne({ where: { name: permName } });
         if (!perm) {
-          perm = permissionRepo.create({ name: permName });
+          perm = permissionRepo.create({
+            name: permName,
+            module: resolvePermissionModuleName(permName),
+          });
+          await permissionRepo.save(perm);
+        } else if (!perm.module) {
+          perm.module = resolvePermissionModuleName(permName);
           await permissionRepo.save(perm);
         }
         return perm;
