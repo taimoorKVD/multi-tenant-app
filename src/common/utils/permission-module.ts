@@ -36,6 +36,9 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
  */
 const HIDDEN_MODULE_KEYS = new Set(['roles', 'reporting-categories', 'form-builder']);
 
+/** Individual permissions omitted from the grouped permissions API response. */
+const HIDDEN_PERMISSION_NAMES = new Set(['view-dc-submission']);
+
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -136,12 +139,11 @@ export function formatPermissionActionName(permissionName: string): string {
 
   if (name.includes('-dc-assignment')) {
     if (name.startsWith('view-')) return 'View';
-    if (name.startsWith('complete-')) return 'Complete';
+    if (name.startsWith('complete-')) return 'Submit';
     return titleCase(name.split('-')[0] || name);
   }
 
   if (name.includes('-dc-submission')) {
-    if (name.startsWith('view-')) return 'View Submission';
     if (name.startsWith('review-')) return 'Review';
     return titleCase(name.split('-')[0] || name);
   }
@@ -183,6 +185,7 @@ export function groupPermissionsByModule(
     // even when the DB still stores module = "data-collection".
     const moduleKey = resolvePermissionModuleName(permission.name);
     if (HIDDEN_MODULE_KEYS.has(moduleKey)) continue;
+    if (HIDDEN_PERMISSION_NAMES.has(permission.name.toLowerCase())) continue;
 
     const displayName = formatModuleDisplayName(moduleKey);
 

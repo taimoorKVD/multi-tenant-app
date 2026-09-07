@@ -38,12 +38,11 @@ describe('display helpers', () => {
     expect(formatPermissionActionName('create-user')).toBe('Create');
     expect(formatPermissionActionName('archive-dc-template')).toBe('Archive');
     expect(formatPermissionActionName('view-dc-assignment')).toBe('View');
-    expect(formatPermissionActionName('complete-dc-assignment')).toBe('Complete');
-    expect(formatPermissionActionName('view-dc-submission')).toBe('View Submission');
+    expect(formatPermissionActionName('complete-dc-assignment')).toBe('Submit');
     expect(formatPermissionActionName('review-dc-submission')).toBe('Review');
   });
 
-  it('groups Form vs Template and hides Role / Reporting Category / Form Builder', () => {
+  it('groups Form vs Template and hides Role / Reporting Category / Form Builder / View Submission', () => {
     expect(
       groupPermissionsByModule([
         { id: 1, name: 'create-user', module: 'users' },
@@ -73,8 +72,7 @@ describe('display helpers', () => {
         module: { name: 'Form' },
         permissions: [
           { id: 8, name: 'View' },
-          { id: 9, name: 'Complete' },
-          { id: 10, name: 'View Submission' },
+          { id: 9, name: 'Submit' },
           { id: 11, name: 'Review' },
         ],
       },
