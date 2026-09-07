@@ -49,7 +49,10 @@ export class FormsService {
     FORM_BUILDER_MODULE_SEEDS.map((seed) => [seed.slug, seed]),
   );
 
-  /** System identity fields that must stay editable on create/edit forms. */
+  /**
+   * System identity fields that must stay fillable on create/edit forms
+   * (`isReadonly: false`). Builder lock uses `isEditable` separately.
+   */
   private readonly editableIdentityFieldKeys = new Set([
     'name',
     'email',
@@ -86,12 +89,12 @@ export class FormsService {
     const next = (fields || []).map((field) => {
       if (!field || typeof field !== 'object' || Array.isArray(field)) return field;
       if (!this.isIdentityField(field)) return field;
-      if (field.isReadonly === false && field.isEditable !== false) return field;
+      // Keep fillable on user forms; do not override builder lock (`isEditable`).
+      if (field.isReadonly === false) return field;
       changed = true;
       return {
         ...field,
         isReadonly: false,
-        isEditable: true,
       };
     });
     return { fields: next, changed };
@@ -525,7 +528,10 @@ export class FormsService {
         helpText: item.helpText ?? null,
         isRequired: item.isRequired ?? false,
         isUnique: item.isUnique ?? false,
-        isReadonly: !(item.isEditable ?? true),
+        // isEditable=false locks the field in form builder (cannot delete).
+        // isReadonly controls fillability on create/edit forms.
+        isEditable: item.isEditable ?? true,
+        isReadonly: false,
         isSystemField: item.isSystemField ?? false,
         systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
         isShow: item.isShow ?? true,

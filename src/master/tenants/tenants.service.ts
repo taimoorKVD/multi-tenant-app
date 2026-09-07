@@ -1084,9 +1084,11 @@ export class TenantsService {
           placeholder: item.placeholder ?? 'Placeholder text',
           helpText: item.helpText ?? null,
           isRequired: item.isRequired ?? false,
+          // isEditable=false locks the field in form builder (cannot delete).
+          // isReadonly controls fillability on create/edit forms.
           isEditable: item.isEditable ?? true,
           isUnique: item.isUnique ?? false,
-          isReadonly: !(item.isEditable ?? true),
+          isReadonly: false,
           isSystemField: item.isSystemField ?? false,
           systemMappingKey: item.isSystemField ? (item.systemMappingKey ?? item.key) : null,
           isShow: item.isShow ?? true,
