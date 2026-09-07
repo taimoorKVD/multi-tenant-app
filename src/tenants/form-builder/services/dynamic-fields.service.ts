@@ -56,7 +56,8 @@ export interface SchemaContextOptions {
 @Injectable()
 export class DynamicFieldsService {
   private readonly sensitiveResponseKeys = new Set([
-    'password',
+    // `password` is allowed so tenant user edit can prefill from plain_password.
+    // Never expose plain_password as its own key, or password_confirm.
     'plain_password',
     'password_confirm',
   ]);

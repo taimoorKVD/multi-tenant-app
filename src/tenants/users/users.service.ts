@@ -300,6 +300,8 @@ export class UsersService extends TenantAbstractService<User> {
       {
         name: user.name,
         email: user.email,
+        // Edit forms need the stored plaintext; never expose the argon2 hash.
+        password: user.plainPassword ?? null,
         role_id: user.role?.id ?? null,
         job_position_id: user.jobPosition?.id ?? null,
         phone_number: user.phoneNumber ?? null,

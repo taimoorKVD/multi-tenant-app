@@ -27,6 +27,7 @@ import {
 import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
 import { BillingService } from '../../master/billing/billing.service';
 import { ALL_PLAN_MODULE_KEYS, serializePlanModules } from '../../master/billing/plan-modules';
+import { groupPermissionsByModule } from '../../common/utils/permission-module';
 import { renderEmailLayout, emailEscape } from '../../mail/utils/email-layout.util';
 import {
   prepareEmailLogo,
@@ -645,7 +646,7 @@ export class TenantAuthService {
           job_position: jobPosition,
           role: {
             ...user.role,
-            permissions: resolvedPermissions,
+            permissions: groupPermissionsByModule(resolvedPermissions),
           },
         },
       };
@@ -924,7 +925,7 @@ export class TenantAuthService {
           ? {
               id: user.role.id,
               name: user.role.name,
-              permissions: user.role.permissions ?? [],
+              permissions: groupPermissionsByModule(user.role.permissions ?? []),
             }
           : null,
         is_system: user.isSystem,

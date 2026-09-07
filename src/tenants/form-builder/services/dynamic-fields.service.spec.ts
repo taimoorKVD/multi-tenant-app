@@ -355,7 +355,7 @@ describe('DynamicFieldsService', () => {
       expect(result.id).toBe(3);
     });
 
-    it('never returns password values in id-keyed responses', () => {
+    it('returns password field for edit but strips plain_password key', () => {
       const context = {
         fieldIdByCanonicalKey: new Map([
           ['name', 'fld_name'],
@@ -386,7 +386,7 @@ describe('DynamicFieldsService', () => {
       );
 
       expect(result.fld_name).toBe('John');
-      expect(result.fld_password).toBeUndefined();
+      expect(result.fld_password).toBe('Secret123!');
       expect(result.password).toBeUndefined();
       expect(result.plain_password).toBeUndefined();
       expect(result.id).toBe(1);

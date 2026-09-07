@@ -77,10 +77,21 @@ export const TenantAuthLoginDocs = () =>
                             createdAt: '2026-04-14T00:52:55.371Z',
                             updatedAt: '2026-04-14T17:26:41.358Z',
                             permissions: [
-                                {id: 1, name: 'create-user'},
-                                {id: 2, name: 'view-job-position'},
-                                {id: 5, name: 'edit-location'},
-                                {id: 6, name: 'view-location'},
+                                {
+                                    module: { name: 'User' },
+                                    permissions: [{ id: 1, name: 'Create' }],
+                                },
+                                {
+                                    module: { name: 'Job Position' },
+                                    permissions: [{ id: 2, name: 'View' }],
+                                },
+                                {
+                                    module: { name: 'Location' },
+                                    permissions: [
+                                        { id: 5, name: 'Edit' },
+                                        { id: 6, name: 'View' },
+                                    ],
+                                },
                             ],
                         },
                     },
@@ -163,8 +174,14 @@ export const TenantAuthGetUserDocs = () =>
                             id: 1,
                             name: 'Senior Manager',
                             permissions: [
-                                {id: 1, name: 'create-user'},
-                                {id: 2, name: 'view-job-position'},
+                                {
+                                    module: { name: 'User' },
+                                    permissions: [{ id: 1, name: 'Create' }],
+                                },
+                                {
+                                    module: { name: 'Job Position' },
+                                    permissions: [{ id: 2, name: 'View' }],
+                                },
                             ],
                         },
                         is_system: false,
