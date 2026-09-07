@@ -29,14 +29,17 @@ export const TenantPermissionSwagger = {
               {
                 module: { name: 'Form' },
                 permissions: [
-                  { id: 33, name: 'View' },
-                  { id: 37, name: 'Create' },
+                  { id: 46, name: 'View' },
+                  { id: 47, name: 'Complete' },
+                  { id: 48, name: 'View Submission' },
+                  { id: 49, name: 'Review' },
                 ],
               },
               {
                 module: { name: 'Template' },
                 permissions: [
                   { id: 39, name: 'Create' },
+                  { id: 40, name: 'View' },
                   { id: 52, name: 'Archive' },
                 ],
               },

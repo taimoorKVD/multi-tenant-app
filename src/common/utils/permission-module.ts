@@ -17,7 +17,11 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
   items: 'Item',
   vendors: 'Vendor',
   'reporting-groups': 'Reporting Group',
-  'form-builder': 'Form',
+  /** Employee task forms (assignments / submissions), not form-builder. */
+  form: 'Form',
+  /** DC templates only. */
+  template: 'Template',
+  /** Legacy key still used in DB for template perms. */
   'data-collection': 'Template',
   mail: 'Mail',
   billing: 'Billing',
@@ -25,11 +29,20 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
   general: 'General',
 };
 
-/** Module keys omitted from the grouped permissions API response. */
-const HIDDEN_MODULE_KEYS = new Set(['roles', 'reporting-categories']);
+/**
+ * Hidden from the grouped permissions API:
+ * - roles / reporting-categories (requested)
+ * - form-builder (create-form etc.) — "Form" means employee task forms, not form-builder
+ */
+const HIDDEN_MODULE_KEYS = new Set(['roles', 'reporting-categories', 'form-builder']);
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 /**
  * Maps a permission name to its module key (aligned with plan module keys where possible).
+ * Template = dc-template perms; Form = employee assignment/submission task forms.
  */
 export function resolvePermissionModuleName(permissionName: string): string {
   const name = String(permissionName || '')
@@ -38,7 +51,10 @@ export function resolvePermissionModuleName(permissionName: string): string {
 
   if (!name) return 'general';
 
-  if (/(^|-)dc-/.test(name)) return 'data-collection';
+  if (name.includes('-dc-template')) return 'template';
+  if (name.includes('-dc-assignment') || name.includes('-dc-submission')) return 'form';
+  if (/(^|-)dc-/.test(name)) return 'template';
+
   if (name.endsWith('-form') || name.includes('-form-')) return 'form-builder';
   if (name.endsWith('-reporting-category')) return 'reporting-categories';
   if (name.endsWith('-reporting-group')) return 'reporting-groups';
@@ -66,14 +82,21 @@ export function resolvePermissionModuleValue(
   value: PermissionModuleRef | string | null | undefined,
   fallbackPermissionName?: string,
 ): string | null {
+  // Prefer permission-name mapping so legacy DB module values (e.g. data-collection)
+  // still split correctly into Form vs Template.
+  if (fallbackPermissionName) {
+    return resolvePermissionModuleName(fallbackPermissionName);
+  }
+
   if (value != null) {
     const name =
       typeof value === 'string' ? value.trim() : String(value.name || '').trim();
-    if (name) return name.toLowerCase();
-  }
-
-  if (fallbackPermissionName) {
-    return resolvePermissionModuleName(fallbackPermissionName);
+    if (name) {
+      const key = name.toLowerCase();
+      if (key === 'data-collection') return 'template';
+      if (key === 'form-builder') return 'form-builder';
+      return key;
+    }
   }
 
   return null;
@@ -97,19 +120,34 @@ export function formatModuleDisplayName(moduleKey: string): string {
   return key
     .split(/[-_\s]+/)
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => titleCase(part))
     .join(' ');
 }
 
-/** Turns `create-user` / `archive-dc-template` into `Create` / `Archive`. */
+/**
+ * Turns permission keys into short UI labels.
+ * Assignment/submission keep distinct names so "View" is not repeated.
+ */
 export function formatPermissionActionName(permissionName: string): string {
   const name = String(permissionName || '')
     .trim()
     .toLowerCase();
   if (!name) return '';
 
+  if (name.includes('-dc-assignment')) {
+    if (name.startsWith('view-')) return 'View';
+    if (name.startsWith('complete-')) return 'Complete';
+    return titleCase(name.split('-')[0] || name);
+  }
+
+  if (name.includes('-dc-submission')) {
+    if (name.startsWith('view-')) return 'View Submission';
+    if (name.startsWith('review-')) return 'Review';
+    return titleCase(name.split('-')[0] || name);
+  }
+
   const action = name.split('-')[0] || name;
-  return action.charAt(0).toUpperCase() + action.slice(1);
+  return titleCase(action);
 }
 
 export function formatPermissionRecord<T extends { module?: string | PermissionModuleRef | null }>(
@@ -118,7 +156,9 @@ export function formatPermissionRecord<T extends { module?: string | PermissionM
   if (!permission) return null;
   return {
     ...permission,
-    module: formatPermissionModule(permission.module),
+    module: formatPermissionModule(
+      resolvePermissionModuleValue(permission.module as any, (permission as any).name),
+    ),
   };
 }
 
@@ -139,8 +179,9 @@ export function groupPermissionsByModule(
   const groups = new Map<string, GroupedPermissionModule>();
 
   for (const permission of permissions) {
-    const moduleKey =
-      resolvePermissionModuleValue(permission.module as any, permission.name) || 'general';
+    // Always group from the permission name so Form vs Template split is correct
+    // even when the DB still stores module = "data-collection".
+    const moduleKey = resolvePermissionModuleName(permission.name);
     if (HIDDEN_MODULE_KEYS.has(moduleKey)) continue;
 
     const displayName = formatModuleDisplayName(moduleKey);
