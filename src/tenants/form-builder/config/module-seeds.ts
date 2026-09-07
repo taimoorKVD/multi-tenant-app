@@ -135,6 +135,7 @@ const userDefaultFields: readonly FormBuilderFieldSeed[] = [
     label: 'Job Position',
     name: 'jobPosition',
     type: 'dropdown',
+    isRequired: true,
     isEditable: true,
     isSystemField: true,
     systemMappingKey: 'job_position_id',
