@@ -636,6 +636,7 @@ export const FORM_BUILDER_MODULE_SEEDS: readonly FormBuilderModuleSeed[] = [
   { slug: 'countries', name: 'Countries', type: 'static' },
   { slug: 'states', name: 'States', type: 'static' },
   { slug: 'cities', name: 'Cities', type: 'static' },
+  { slug: 'roles', name: 'Roles', type: 'static' },
 ];
 
 const moduleTypeBySlug = new Map(
