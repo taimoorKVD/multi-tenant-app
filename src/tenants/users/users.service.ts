@@ -234,12 +234,19 @@ export class UsersService extends TenantAbstractService<User> {
       return null;
     }
 
-    if (typeof value === 'object' && value !== null && 'id' in (value as Record<string, unknown>)) {
-      const id = Number((value as Record<string, unknown>).id);
+    // Form dropdowns often submit `[1]` or `[{ id: 1 }]` instead of a bare id.
+    let candidate: unknown = value;
+    if (Array.isArray(candidate)) {
+      if (candidate.length === 0) return null;
+      candidate = candidate[0];
+    }
+
+    if (typeof candidate === 'object' && candidate !== null && 'id' in (candidate as Record<string, unknown>)) {
+      const id = Number((candidate as Record<string, unknown>).id);
       return Number.isFinite(id) ? id : null;
     }
 
-    const id = Number(value);
+    const id = Number(candidate);
     return Number.isFinite(id) ? id : null;
   }
 

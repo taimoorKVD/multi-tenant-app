@@ -365,6 +365,24 @@ export class DynamicFieldsService {
       aliasToCanonicalMap.set(alias, canonical);
       aliasToCanonicalMap.set(this.normalizeFieldAlias(alias), canonical);
 
+      // Payload keys are remapped to the DB column (e.g. jobPosition → job_position_id).
+      // Keep required/system maps in sync so fld_* / alias payloads are not flagged missing.
+      if (requiredFieldKeys.has(alias)) {
+        requiredFieldKeys.delete(alias);
+        requiredFieldKeys.add(canonical);
+      }
+      if (fieldLabels.has(alias) && !fieldLabels.has(canonical)) {
+        fieldLabels.set(canonical, fieldLabels.get(alias)!);
+      }
+      if (systemFieldKeys.has(alias)) {
+        systemFieldKeys.add(canonical);
+      }
+      for (const field of schemaFields) {
+        if (field.canonicalKey === alias) {
+          field.canonicalKey = canonical;
+        }
+      }
+
       const fieldId = fieldIdByCanonicalKey.get(alias) || fieldIdByCanonicalKey.get(canonical);
       if (fieldId) {
         fieldIdByCanonicalKey.set(alias, fieldId);
