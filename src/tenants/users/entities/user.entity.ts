@@ -51,13 +51,13 @@ export class User {
   @Column({ type: 'varchar', name: 'plain_password', nullable: true })
   plainPassword: string | null;
 
-  @ManyToOne(() => Role)
-  @JoinColumn({ name: 'role_id' })
-  role: Role;
+  // @ManyToOne(() => Role)
+  // @JoinColumn({ name: 'role_id' })
+  // role: Role;
 
-  @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'job_position_id' })
-  jobPosition: JobPosition | null;
+  // @ManyToOne(() => JobPosition, { nullable: true, onDelete: 'SET NULL' })
+  // @JoinColumn({ name: 'job_position_id' })
+  // jobPosition: JobPosition | null;
 
   // @ManyToOne(() => Location, { nullable: true, onDelete: 'SET NULL' })
   // @JoinColumn({ name: 'location_id' })
