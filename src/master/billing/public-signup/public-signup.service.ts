@@ -245,7 +245,7 @@ export class PublicSignupService {
     const userRepo = tenantConnection.getRepository(User);
     const user = await userRepo.findOne({
       where: { email },
-      relations: ['role', 'role.permissions', 'jobPosition'],
+      relations: ['role', 'role.permissions', 'jobPosition', 'jobPosition.permissions'],
     });
     if (!user) {
       throw new UnauthorizedException('Tenant admin user not found');

@@ -12,6 +12,7 @@ import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
 import { User } from '../users/entities';
 import { JobPosition } from '../job-positions/entities';
+import { Permission } from '../permission/entities';
 import {
   ForgotPasswordDto,
   RefreshTokenDto,
@@ -82,6 +83,42 @@ export class TenantAuthService {
       id: jobPosition.id,
       name: jobPosition.name,
     };
+  }
+
+  /**
+   * Effective UI/API permissions for the session:
+   * - If a job position is assigned, use its permissions (including Admin users with a limited JP)
+   * - If no job position is set, fall back to role permissions (default tenant Admin keeps all)
+   */
+  private async resolveEffectivePermissions(
+    tenantConnection: DataSource,
+    user: User,
+  ): Promise<Permission[]> {
+    const rolePermissions = user.role?.permissions ?? [];
+
+    let jobPosition = user.jobPosition;
+    if (jobPosition?.id && !jobPosition.permissions) {
+      jobPosition = await tenantConnection.getRepository(JobPosition).findOne({
+        where: { id: jobPosition.id },
+        relations: ['permissions'],
+      });
+    }
+
+    if (!jobPosition?.id) {
+      const summary = await this.resolveJobPositionSummary(tenantConnection, user);
+      if (summary?.id) {
+        jobPosition = await tenantConnection.getRepository(JobPosition).findOne({
+          where: { id: summary.id },
+          relations: ['permissions'],
+        });
+      }
+    }
+
+    if (jobPosition?.id) {
+      return jobPosition.permissions ?? [];
+    }
+
+    return rolePermissions;
   }
 
   /**
@@ -596,7 +633,7 @@ export class TenantAuthService {
       const loginEmail = String(dto.email || '').trim().toLowerCase();
       const user = await userRepo.findOne({
         where: { email: loginEmail },
-        relations: ['role', 'role.permissions', 'jobPosition'],
+        relations: ['role', 'role.permissions', 'jobPosition', 'jobPosition.permissions'],
       });
 
       if (!user) {
@@ -612,11 +649,12 @@ export class TenantAuthService {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      const resolvedPermissions = user.role?.permissions ?? [];
+      const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+      const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
       const permissionNames = resolvedPermissions.map((permission) => permission.name);
       const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
       const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
-      const accountType = this.resolveAccountType(user, permissionNames);
+      const accountType = this.resolveAccountType(user, rolePermissionNames);
       const tokens = await this.issueAuthTokens(
         tenantConnection,
         req,
@@ -850,16 +888,18 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: payload.sub },
-      relations: ['role', 'role.permissions', 'jobPosition'],
+      relations: ['role', 'role.permissions', 'jobPosition', 'jobPosition.permissions'],
     });
 
     if (!user) {
       throw new UnauthorizedException('Invalid refresh token.');
     }
 
-    const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
+    const permissionNames = resolvedPermissions.map((permission) => permission.name);
     const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
-    const accountType = this.resolveAccountType(user, permissionNames);
+    const accountType = this.resolveAccountType(user, rolePermissionNames);
     const tokens = await this.issueAuthTokens(
       tenantConnection,
       req,
@@ -891,7 +931,7 @@ export class TenantAuthService {
 
     const user = await tenantConnection.getRepository(User).findOne({
       where: { id: userId },
-      relations: ['role', 'role.permissions', 'jobPosition'],
+      relations: ['role', 'role.permissions', 'jobPosition', 'jobPosition.permissions'],
     });
 
     if (!user) {
@@ -900,8 +940,9 @@ export class TenantAuthService {
 
     const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
     const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
-    const permissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
-    const accountType = this.resolveAccountType(user, permissionNames);
+    const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
+    const accountType = this.resolveAccountType(user, rolePermissionNames);
     const entitlements = await this.resolveEntitlements(req);
 
     return {
@@ -925,7 +966,7 @@ export class TenantAuthService {
           ? {
               id: user.role.id,
               name: user.role.name,
-              permissions: groupPermissionsByModule(user.role.permissions ?? []),
+              permissions: groupPermissionsByModule(resolvedPermissions),
             }
           : null,
         is_system: user.isSystem,

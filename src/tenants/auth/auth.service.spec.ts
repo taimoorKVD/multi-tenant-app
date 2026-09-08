@@ -7,6 +7,7 @@ import {
   RefreshToken,
 } from './entities';
 import { User } from '../users/entities';
+import { JobPosition } from '../job-positions/entities';
 
 describe('TenantAuthService', () => {
   const mockJwtService = {
@@ -41,6 +42,14 @@ describe('TenantAuthService', () => {
       findOne: jest.fn().mockResolvedValue(user),
       save: jest.fn().mockImplementation(async (entity: any) => entity),
     };
+    const jobPositionRepo = {
+      findOne: jest.fn().mockImplementation(async ({ where }: any) => {
+        if (user?.jobPosition?.id && where?.id === user.jobPosition.id) {
+          return user.jobPosition;
+        }
+        return null;
+      }),
+    };
     const passwordResetTokenRepo = {
       save: jest.fn().mockImplementation(async (entity: any) => entity),
       createQueryBuilder: jest.fn(),
@@ -60,6 +69,7 @@ describe('TenantAuthService', () => {
         options: { database: `tenant_${tenantId}` },
         getRepository: jest.fn().mockImplementation((entity: any) => {
           if (entity === User) return userRepo;
+          if (entity === JobPosition) return jobPositionRepo;
           if (entity === PasswordResetToken) return passwordResetTokenRepo;
           if (entity === EmailVerificationToken) return emailVerificationTokenRepo;
           if (entity === RefreshToken) return refreshTokenRepo;
@@ -67,6 +77,7 @@ describe('TenantAuthService', () => {
         }),
       },
       _userRepo: userRepo,
+      _jobPositionRepo: jobPositionRepo,
       _passwordResetTokenRepo: passwordResetTokenRepo,
       _emailVerificationTokenRepo: emailVerificationTokenRepo,
       _refreshTokenRepo: refreshTokenRepo,
@@ -116,6 +127,122 @@ describe('TenantAuthService', () => {
       },
     ]);
     expect(result.user.email_verified).toBe(true);
+  });
+
+  it('logs in employee with job-position permissions instead of shared role defaults', async () => {
+    const req = createReq({
+      id: 20,
+      email: 'cook@test.com',
+      password: 'hashed',
+      name: 'Cook',
+      role: {
+        id: 2,
+        name: 'Employee',
+        permissions: [
+          { id: 2, name: 'view-job-position' },
+          { id: 5, name: 'view-location' },
+          { id: 21, name: 'view-item' },
+          { id: 40, name: 'view-dc-template' },
+          { id: 46, name: 'view-dc-assignment' },
+          { id: 47, name: 'complete-dc-assignment' },
+        ],
+      },
+      jobPosition: {
+        id: 9,
+        name: 'Line Cook',
+        permissions: [
+          { id: 46, name: 'view-dc-assignment' },
+          { id: 47, name: 'complete-dc-assignment' },
+        ],
+      },
+    });
+
+    jest.spyOn(argon2, 'verify').mockResolvedValue(true as never);
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'employee-jwt', refreshToken: 'refresh-jwt' });
+
+    const result = await service.login(req, {
+      email: 'cook@test.com',
+      password: 'Secret123',
+    });
+
+    expect(result.account_type).toBe('tenant_user');
+    expect(result.user.role.permissions).toEqual([
+      {
+        module: { name: 'Form' },
+        permissions: [
+          { id: 46, name: 'View' },
+          { id: 47, name: 'Submit' },
+        ],
+      },
+    ]);
+    expect((service as any).issueAuthTokens).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      ['view-dc-assignment', 'complete-dc-assignment'],
+      true,
+    );
+  });
+
+  it('logs in Admin with job-position permissions instead of full Admin role set', async () => {
+    const req = createReq({
+      id: 30,
+      email: 'limited-admin@test.com',
+      password: 'hashed',
+      name: 'Limited Admin',
+      role: {
+        id: 1,
+        name: 'Admin',
+        permissions: [
+          { id: 1, name: 'create-user' },
+          { id: 18, name: 'edit-user' },
+          { id: 32, name: 'view-user' },
+          { id: 36, name: 'delete-user' },
+          { id: 46, name: 'view-dc-assignment' },
+        ],
+      },
+      jobPosition: {
+        id: 3,
+        name: 'Floor Supervisor',
+        permissions: [
+          { id: 32, name: 'view-user' },
+          { id: 5, name: 'view-location' },
+        ],
+      },
+    });
+
+    jest.spyOn(argon2, 'verify').mockResolvedValue(true as never);
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'admin-jwt', refreshToken: 'refresh-jwt' });
+
+    const result = await service.login(req, {
+      email: 'limited-admin@test.com',
+      password: 'Secret123',
+    });
+
+    expect(result.account_type).toBe('tenant_admin');
+    expect(result.user.role.permissions).toEqual([
+      {
+        module: { name: 'User' },
+        permissions: [{ id: 32, name: 'View' }],
+      },
+      {
+        module: { name: 'Location' },
+        permissions: [{ id: 5, name: 'View' }],
+      },
+    ]);
+    expect((service as any).issueAuthTokens).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      ['view-user', 'view-location'],
+      true,
+    );
   });
 
   it('throws when tenant connection is missing', async () => {
@@ -174,7 +301,7 @@ describe('TenantAuthService', () => {
         name: 'Admin',
         permissions: [{ id: 5, name: 'view-user' }],
       },
-      jobPosition: { id: 2, name: 'Manager' },
+      jobPosition: null,
       location: { id: 3, name: 'Karachi' },
       availabilityDays: ['monday', 'tuesday'],
       isSystem: false,
