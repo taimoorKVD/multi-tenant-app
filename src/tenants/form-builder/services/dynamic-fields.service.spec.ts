@@ -531,5 +531,68 @@ describe('DynamicFieldsService', () => {
       expect(result.moduleId).toBe(1);
       expect(result.formId).toBeNull();
     });
+
+    it('remaps required relation aliases to canonical column keys', async () => {
+      const moduleRepo = { findOne: jest.fn().mockResolvedValue({ id: 1, slug: 'users' }) };
+      const formRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 2,
+          moduleId: 1,
+          autosaveSchema: {
+            fields: [
+              {
+                id: 'fld_role',
+                fieldKey: 'role',
+                label: 'Role',
+                name: 'role',
+                isSystemField: true,
+                isRequired: true,
+              },
+              {
+                id: 'fld_job',
+                fieldKey: 'jobPosition',
+                label: 'Job Position',
+                name: 'jobPosition',
+                isSystemField: true,
+                isRequired: true,
+              },
+            ],
+          },
+        }),
+        save: jest.fn().mockImplementation((form) => Promise.resolve(form)),
+      };
+      const versionRepo = { findOne: jest.fn().mockResolvedValue({ id: 3, isActive: true }) };
+      const req = {
+        tenantConnection: {
+          getRepository: jest.fn().mockImplementation((entity: any) => {
+            if (entity === DynamicModule) return moduleRepo;
+            if (entity === Form) return formRepo;
+            if (entity === FormVersion) return versionRepo;
+            return {};
+          }),
+        },
+      };
+
+      const result = await service.getSchemaContext(req, 'users', {
+        relationFieldAliases: {
+          role: 'role_id',
+          jobPosition: 'job_position_id',
+        },
+      });
+
+      expect(result.requiredFieldKeys.has('role')).toBe(false);
+      expect(result.requiredFieldKeys.has('jobPosition')).toBe(false);
+      expect(result.requiredFieldKeys.has('role_id')).toBe(true);
+      expect(result.requiredFieldKeys.has('job_position_id')).toBe(true);
+      expect(result.fieldLabels.get('role_id')).toBe('Role');
+      expect(result.fieldLabels.get('job_position_id')).toBe('Job Position');
+
+      const normalized = service.resolvePayloadAliases(
+        { fld_role: [1], fld_job: [2] },
+        result.aliasToCanonicalMap,
+        result,
+      );
+      expect(normalized).toEqual({ role_id: [1], job_position_id: [2] });
+    });
   });
 });
