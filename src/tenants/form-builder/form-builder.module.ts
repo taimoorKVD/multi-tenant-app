@@ -3,7 +3,6 @@ import {
   FormsController,
   VersionsController,
 } from './controllers';
-import { PermissionsGuard } from './guards';
 import {
   AuditLogService,
   DynamicFieldsService,
@@ -23,7 +22,6 @@ import { UploadsModule } from '../uploads/uploads.module';
     VersionsService,
     AuditLogService,
     DynamicFieldsService,
-    PermissionsGuard,
   ],
   exports: [FormsService, DynamicFieldsService],
 })

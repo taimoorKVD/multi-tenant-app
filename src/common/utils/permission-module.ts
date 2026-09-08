@@ -37,7 +37,15 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
 const HIDDEN_MODULE_KEYS = new Set(['roles', 'reporting-categories', 'form-builder']);
 
 /** Individual permissions omitted from the grouped permissions API response. */
-const HIDDEN_PERMISSION_NAMES = new Set(['view-dc-submission']);
+const HIDDEN_PERMISSION_NAMES = new Set([
+  'view-dc-submission',
+  'create-form',
+  'view-form',
+  'edit-form',
+  'delete-form',
+  'publish-form',
+  'submit-form',
+]);
 
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);

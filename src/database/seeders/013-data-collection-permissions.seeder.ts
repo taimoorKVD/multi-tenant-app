@@ -93,7 +93,6 @@ export class DataCollectionPermissionsSeeder implements ISeeder {
           'view-dc-assignment',
           'complete-dc-assignment',
           'view-dc-template',
-          'submit-form',
           'view-item',
           'view-location',
           'view-job-position',

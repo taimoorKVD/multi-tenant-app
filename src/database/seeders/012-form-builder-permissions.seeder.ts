@@ -3,12 +3,16 @@ import { ISeeder } from '../interfaces/seeder.interface';
 import { Tenant } from '../../master/tenants/entities';
 import { Permission } from '../../tenants/permission/entities';
 import { Role } from '../../tenants/role/entities';
-import { resolvePermissionModuleName } from '../../common/utils/permission-module';
+import { In } from 'typeorm';
 
+/**
+ * Form-builder APIs are built into every module (users, items, vendors, …)
+ * and no longer use RBAC. This seeder detaches legacy form permissions from roles.
+ */
 export class FormBuilderPermissionsSeeder implements ISeeder {
   name = 'FormBuilderPermissionsSeeder';
 
-  private readonly requiredPermissions = [
+  private readonly legacyFormPermissions = [
     'create-form',
     'view-form',
     'edit-form',
@@ -22,7 +26,7 @@ export class FormBuilderPermissionsSeeder implements ISeeder {
     const tenants = await tenantRepo.find();
 
     if (!tenants.length) {
-      console.log('⚠️  No tenants found. Skipping form-builder permissions seeding.');
+      console.log('⚠️  No tenants found. Skipping form-builder permissions cleanup.');
       return;
     }
 
@@ -32,71 +36,36 @@ export class FormBuilderPermissionsSeeder implements ISeeder {
         const permissionRepo = tenantDataSource.getRepository(Permission);
         const roleRepo = tenantDataSource.getRepository(Role);
 
-        // Keep serial sequence aligned with current data to avoid duplicate PK errors.
-        await tenantDataSource.query(`
-          SELECT setval(
-            pg_get_serial_sequence('permissions', 'id'),
-            COALESCE((SELECT MAX(id) FROM permissions), 0) + 1,
-            false
-          )
-        `);
-
-        const ensuredPermissions: Permission[] = [];
-        let inserted = 0;
-
-        for (const permissionName of this.requiredPermissions) {
-          let permission = await permissionRepo.findOne({ where: { name: permissionName } });
-          if (!permission) {
-            permission = await permissionRepo.save(
-              permissionRepo.create({
-                name: permissionName,
-                module: resolvePermissionModuleName(permissionName),
-              }),
-            );
-            inserted += 1;
-          } else if (!permission.module) {
-            permission.module = resolvePermissionModuleName(permissionName);
-            await permissionRepo.save(permission);
-          }
-          ensuredPermissions.push(permission);
-        }
-
-        const adminRole = await roleRepo.findOne({
-          where: { name: 'Admin' },
-          relations: ['permissions'],
+        const legacyPermissions = await permissionRepo.find({
+          where: { name: In(this.legacyFormPermissions) },
         });
-
-        if (!adminRole) {
-          console.log(`⚠️  Tenant "${tenant.subdomain}" has no Admin role. Skipping role permission assignment.`);
+        if (!legacyPermissions.length) {
+          console.log(`⚠️  Tenant "${tenant.subdomain}": no legacy form-builder permissions.`);
           continue;
         }
 
-        const existingNames = new Set((adminRole.permissions || []).map((permission) => permission.name));
-        let granted = 0;
+        const legacyIds = new Set(legacyPermissions.map((permission) => permission.id));
+        const roles = await roleRepo.find({ relations: ['permissions'] });
+        let detached = 0;
 
-        for (const permission of ensuredPermissions) {
-          if (!existingNames.has(permission.name)) {
-            adminRole.permissions.push(permission);
-            existingNames.add(permission.name);
-            granted += 1;
+        for (const role of roles) {
+          const before = role.permissions?.length || 0;
+          role.permissions = (role.permissions || []).filter(
+            (permission) => !legacyIds.has(permission.id),
+          );
+          const removed = before - role.permissions.length;
+          if (removed > 0) {
+            await roleRepo.save(role);
+            detached += removed;
           }
-        }
-
-        if (granted > 0) {
-          await roleRepo.save(adminRole);
-        }
-
-        if (!inserted && !granted) {
-          console.log(`⚠️  Tenant "${tenant.subdomain}": form-builder permissions already assigned to Admin.`);
-          continue;
         }
 
         console.log(
-          `✅ Tenant "${tenant.subdomain}": form-builder permissions ensured (created=${inserted}, assigned=${granted}).`,
+          `✅ Tenant "${tenant.subdomain}": detached ${detached} legacy form-builder permission link(s) from roles.`,
         );
       } catch (error) {
         console.error(
-          `❌ Failed to seed form-builder permissions for tenant "${tenant.subdomain}": ${(error as Error).message}`,
+          `❌ Failed to clean form-builder permissions for tenant "${tenant.subdomain}": ${(error as Error).message}`,
         );
       }
     }
