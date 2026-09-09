@@ -1,8 +1,15 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { Item } from './entities';
+import { ReportingCategory } from '../reporting-categories/entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+
+const REPORTING_CATEGORY_PAYLOAD_KEYS = [
+  'reporting_group',
+  'reportingCategoryIds',
+  'reporting_category_ids',
+] as const;
 
 @Injectable()
 export class ItemsService extends TenantAbstractService<Item> {
@@ -104,6 +111,54 @@ export class ItemsService extends TenantAbstractService<Item> {
     }
   }
 
+  /**
+   * Form field `reporting_group` is a reporting *category* id (see module-seeds).
+   * Returns undefined when the payload did not include a reporting assignment key.
+   */
+  private extractReportingCategoryIds(payload: Record<string, any>): number[] | undefined {
+    const presentKey = REPORTING_CATEGORY_PAYLOAD_KEYS.find((key) =>
+      Object.prototype.hasOwnProperty.call(payload, key),
+    );
+    if (!presentKey) return undefined;
+
+    const raw = payload[presentKey];
+    if (raw === null || raw === undefined || raw === '') return [];
+
+    const values = Array.isArray(raw) ? raw : [raw];
+    return [
+      ...new Set(
+        values
+          .map((value) => {
+            if (value && typeof value === 'object' && 'id' in value) {
+              return Number((value as { id: unknown }).id);
+            }
+            return Number(value);
+          })
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+  }
+
+  private async resolveReportingCategories(
+    req: any,
+    categoryIds: number[],
+  ): Promise<ReportingCategory[]> {
+    if (!categoryIds.length) return [];
+
+    const categoryRepo = req.tenantConnection.getRepository(ReportingCategory) as Repository<ReportingCategory>;
+    const categories = await categoryRepo.findBy({ id: In(categoryIds) });
+
+    if (categories.length !== categoryIds.length) {
+      const found = new Set(categories.map((category) => category.id));
+      const missing = categoryIds.filter((id) => !found.has(id));
+      throw new BadRequestException(
+        `Reporting categor${missing.length === 1 ? 'y' : 'ies'} not found: ${missing.join(', ')}`,
+      );
+    }
+
+    return categories;
+  }
+
   private buildItemResponse(
     item: Item,
     dynamicData: Record<string, any>,
@@ -148,9 +203,16 @@ export class ItemsService extends TenantAbstractService<Item> {
         context,
       ));
 
+      const reportingCategoryIds = this.extractReportingCategoryIds(normalized);
+      const reportingCategories =
+        reportingCategoryIds !== undefined
+          ? await this.resolveReportingCategories(req, reportingCategoryIds)
+          : undefined;
+
       const entity = repo.create({
         createdBy: this.coerceId(body.createdBy) ?? actor,
         updatedBy: this.coerceId(body.updatedBy) ?? actor,
+        ...(reportingCategories !== undefined ? { reportingCategories } : {}),
       });
       this.applyStaticPayloadToItem(entity, staticPayload, true);
       const saved = await repo.save(entity);
@@ -186,12 +248,17 @@ export class ItemsService extends TenantAbstractService<Item> {
       const repo = this.getRepo(req);
       const actor = this.getActorId(req);
 
-      const entity = await repo.findOne({ where: { id } as any });
+      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
+      const reportingCategoryIds = this.extractReportingCategoryIds(normalized);
+
+      const entity = await repo.findOne({
+        where: { id } as any,
+        relations: reportingCategoryIds !== undefined ? ['reportingCategories'] : [],
+      });
       if (!entity) {
         throw new NotFoundException(`Item with ID ${id} not found`);
       }
 
-      const normalized = this.dynamicFields.resolvePayloadAliases(body, context.aliasToCanonicalMap, context);
       let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalized,
         context.systemFieldKeys,
@@ -208,6 +275,10 @@ export class ItemsService extends TenantAbstractService<Item> {
       this.applyStaticPayloadToItem(entity, staticPayload, false);
       const updatedBy = this.coerceId(body.updatedBy) ?? actor;
       if (updatedBy !== null) entity.updatedBy = updatedBy;
+
+      if (reportingCategoryIds !== undefined) {
+        entity.reportingCategories = await this.resolveReportingCategories(req, reportingCategoryIds);
+      }
 
       const saved = await repo.save(entity);
 
