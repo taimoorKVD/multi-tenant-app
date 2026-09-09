@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
+import { DynamicFieldsService } from '../form-builder/services';
 import { Item } from '../items/entities';
 import { ReportingGroup } from '../reporting-groups/entities';
 import { ReportingCategory } from './entities';
@@ -7,6 +8,12 @@ import { ReportingCategoriesService } from './reporting-categories.service';
 
 describe('ReportingCategoriesService', () => {
   let service: ReportingCategoriesService;
+  let dynamicFieldsMock: {
+    getSchemaContext: jest.Mock;
+    resolveFieldIdForDataKey: jest.Mock;
+    loadDynamicRow: jest.Mock;
+    upsertDynamicRow: jest.Mock;
+  };
 
   const baseRepoForCtor = { target: ReportingCategory };
 
@@ -16,12 +23,26 @@ describe('ReportingCategoriesService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new ReportingCategoriesService(dataSourceMock);
+    dynamicFieldsMock = {
+      getSchemaContext: jest.fn().mockResolvedValue({
+        moduleId: null,
+        activeVersionId: null,
+        fieldIdByCanonicalKey: new Map(),
+      }),
+      resolveFieldIdForDataKey: jest.fn().mockReturnValue(null),
+      loadDynamicRow: jest.fn().mockResolvedValue({}),
+      upsertDynamicRow: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new ReportingCategoriesService(
+      dataSourceMock,
+      dynamicFieldsMock as unknown as DynamicFieldsService,
+    );
   });
 
   function buildReq(repos: Map<any, any>) {
     return {
       tenantId: 'kingdomvision',
+      user: { id: 99 },
       tenantConnection: {
         options: { database: 'tenant_kingdomvision' },
         getRepository: jest.fn().mockImplementation((entity: any) => {
@@ -33,6 +54,15 @@ describe('ReportingCategoriesService', () => {
         }),
       },
     } as any;
+  }
+
+  function mockItemsReportingGroupContext(fieldId = 'fld_reporting_group') {
+    dynamicFieldsMock.getSchemaContext.mockResolvedValue({
+      moduleId: 10,
+      activeVersionId: 30,
+      fieldIdByCanonicalKey: new Map([['reporting_group', fieldId]]),
+    });
+    dynamicFieldsMock.resolveFieldIdForDataKey.mockReturnValue(fieldId);
   }
 
   describe('create', () => {
@@ -165,6 +195,45 @@ describe('ReportingCategoriesService', () => {
       ]);
     });
 
+    it('syncs reporting_group dynamic field for newly assigned items', async () => {
+      mockItemsReportingGroupContext();
+
+      const newItem = { id: 4, itemName: 'Item 4', reportingCategories: [{ id: 10 }] };
+      const category = { id: 10, name: 'Produce', items: [] };
+      const categoryRepo = {
+        findOne: jest.fn().mockResolvedValue(category),
+        save: jest.fn().mockImplementation(async (entity) => entity),
+      };
+      const itemRepo = {
+        findBy: jest.fn().mockResolvedValue([{ id: 4, itemName: 'Item 4' }]),
+        find: jest.fn().mockResolvedValue([newItem]),
+      };
+
+      dynamicFieldsMock.loadDynamicRow.mockResolvedValue({
+        fld_reporting_group: 99,
+        other_field: 'keep',
+      });
+
+      const req = buildReq(
+        new Map<any, any>([
+          [ReportingCategory, categoryRepo],
+          [Item, itemRepo],
+        ]),
+      );
+
+      await service.assignItems(req, 10, { itemIds: [4] });
+
+      expect(dynamicFieldsMock.upsertDynamicRow).toHaveBeenCalledWith(
+        req,
+        10,
+        4,
+        30,
+        { fld_reporting_group: 10, other_field: 'keep' },
+        99,
+        expect.any(Object),
+      );
+    });
+
     it('throws NotFoundException when category does not exist', async () => {
       const categoryRepo = {
         findOne: jest.fn().mockResolvedValue(null),
@@ -259,6 +328,48 @@ describe('ReportingCategoriesService', () => {
       expect(result.success).toBe(true);
       expect(result.data.removedCount).toBe(1);
       expect(result.data.items).toEqual([{ id: 4, itemName: 'Item 4' }]);
+    });
+
+    it('clears reporting_group dynamic field when item has no remaining categories', async () => {
+      mockItemsReportingGroupContext();
+
+      const item3 = { id: 3, itemName: 'Item 3' };
+      const category = {
+        id: 10,
+        name: 'Produce',
+        items: [item3],
+      };
+      const categoryRepo = {
+        findOne: jest.fn().mockResolvedValue(category),
+        save: jest.fn().mockImplementation(async (entity) => entity),
+      };
+      const itemRepo = {
+        find: jest.fn().mockResolvedValue([{ id: 3, itemName: 'Item 3', reportingCategories: [] }]),
+      };
+
+      dynamicFieldsMock.loadDynamicRow.mockResolvedValue({
+        fld_reporting_group: 10,
+        other_field: 'keep',
+      });
+
+      const req = buildReq(
+        new Map<any, any>([
+          [ReportingCategory, categoryRepo],
+          [Item, itemRepo],
+        ]),
+      );
+
+      await service.removeItems(req, 10, { itemIds: [3] });
+
+      expect(dynamicFieldsMock.upsertDynamicRow).toHaveBeenCalledWith(
+        req,
+        10,
+        3,
+        30,
+        { other_field: 'keep' },
+        99,
+        expect.any(Object),
+      );
     });
 
     it('throws NotFoundException when category does not exist', async () => {
