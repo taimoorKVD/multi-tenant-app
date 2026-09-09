@@ -26,6 +26,7 @@ describe('plan-modules', () => {
     expect(resolveModuleFromPath('/api/tenant/acme/items?page=1')).toBe('items');
     expect(resolveModuleFromPath('/api/modules')).toBe('form-builder');
     expect(resolveModuleFromPath('/api/forms/12')).toBe('form-builder');
+    expect(resolveModuleFromPath('/api/reporting-categories')).toBe('reporting-groups');
     expect(resolveModuleFromPath('/api/login')).toBeNull();
   });
 

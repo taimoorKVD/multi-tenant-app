@@ -39,8 +39,7 @@ export async function getTenantDataSource(dbName: string): Promise<DataSource> {
       SET module = CASE
         WHEN name ~ '(^|-)dc-' THEN 'data-collection'
         WHEN name LIKE '%-form' OR name LIKE '%-form-%' THEN 'form-builder'
-        WHEN name LIKE '%-reporting-category' THEN 'reporting-categories'
-        WHEN name LIKE '%-reporting-group' THEN 'reporting-groups'
+        WHEN name LIKE '%-reporting-category' OR name LIKE '%-reporting-group' THEN 'reporting-groups'
         WHEN name LIKE '%-job-position' THEN 'jobpositions'
         WHEN name LIKE '%-permission' THEN 'roles'
         WHEN name LIKE '%-role' THEN 'roles'

@@ -19,6 +19,7 @@ import {
   BillingPermissionsSeeder,
   BillingPlansSeeder,
   DataCollectionRestaurantTemplatesSeeder,
+  ReportingCategoryPermissionsSeeder,
 } from '../seeders';
 
 (async () => {
@@ -40,6 +41,7 @@ import {
     new BillingPermissionsSeeder(),
     new BillingPlansSeeder(),
     new DataCollectionRestaurantTemplatesSeeder(),
+    new ReportingCategoryPermissionsSeeder(),
   ]);
 
   const shouldReset = process.argv.includes('--reset') || process.argv.includes('reset');

@@ -31,10 +31,10 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
 
 /**
  * Hidden from the grouped permissions API:
- * - roles / reporting-categories (requested)
+ * - roles (requested)
  * - form-builder (create-form etc.) — "Form" means employee task forms, not form-builder
  */
-const HIDDEN_MODULE_KEYS = new Set(['roles', 'reporting-categories', 'form-builder']);
+const HIDDEN_MODULE_KEYS = new Set(['roles', 'form-builder']);
 
 /** Individual permissions omitted from the grouped permissions API response. */
 const HIDDEN_PERMISSION_NAMES = new Set([
@@ -67,8 +67,9 @@ export function resolvePermissionModuleName(permissionName: string): string {
   if (/(^|-)dc-/.test(name)) return 'template';
 
   if (name.endsWith('-form') || name.includes('-form-')) return 'form-builder';
-  if (name.endsWith('-reporting-category')) return 'reporting-categories';
-  if (name.endsWith('-reporting-group')) return 'reporting-groups';
+  if (name.endsWith('-reporting-group') || name.endsWith('-reporting-category')) {
+    return 'reporting-groups';
+  }
   if (name.endsWith('-job-position')) return 'jobpositions';
   if (name.endsWith('-permission')) return 'roles';
   if (name.endsWith('-role')) return 'roles';

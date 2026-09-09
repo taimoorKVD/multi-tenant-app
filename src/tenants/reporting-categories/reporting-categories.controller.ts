@@ -16,14 +16,14 @@ import { TenantReportingCategoriesSwagger } from './swagger';
 export class ReportingCategoriesController {
   constructor(private readonly reportingCategoriesService: ReportingCategoriesService) {}
 
-  @TenantAccess('create-reporting-category')
+  @TenantAccess('create-reporting-group')
   @Post()
   @TenantReportingCategoriesSwagger.Create()
   create(@Req() req, @Body() dto: CreateReportingCategoryDto) {
     return this.reportingCategoriesService.create(req, dto);
   }
 
-  @TenantAccess('view-reporting-category')
+  @TenantAccess('view-reporting-group')
   @Get()
   @TenantReportingCategoriesSwagger.FindAll()
   findAll(@Req() req, @Query('page') page?: number, @Query('limit') limit?: number) {
@@ -38,7 +38,7 @@ export class ReportingCategoriesController {
     );
   }
 
-  @TenantAccess('view-reporting-category')
+  @TenantAccess('view-reporting-group')
   @Get('search')
   @TenantReportingCategoriesSwagger.Search()
   search(
@@ -57,14 +57,14 @@ export class ReportingCategoriesController {
     });
   }
 
-  @TenantAccess('view-reporting-category')
+  @TenantAccess('view-reporting-group')
   @Get(':id')
   @TenantReportingCategoriesSwagger.FindOne()
   findOne(@Req() req, @Param('id', ParseIntPipe) id: number) {
     return this.reportingCategoriesService.findOne(req, id);
   }
 
-  @TenantAccess('edit-reporting-category')
+  @TenantAccess('edit-reporting-group')
   @Post(':id/items')
   @TenantReportingCategoriesSwagger.AssignItems()
   assignItems(
@@ -75,7 +75,7 @@ export class ReportingCategoriesController {
     return this.reportingCategoriesService.assignItems(req, id, dto);
   }
 
-  @TenantAccess('edit-reporting-category')
+  @TenantAccess('edit-reporting-group')
   @Delete(':id/items')
   @TenantReportingCategoriesSwagger.RemoveItems()
   removeItems(
@@ -86,21 +86,21 @@ export class ReportingCategoriesController {
     return this.reportingCategoriesService.removeItems(req, id, dto);
   }
 
-  @TenantAccess('edit-reporting-category')
+  @TenantAccess('edit-reporting-group')
   @Put(':id')
   @TenantReportingCategoriesSwagger.Update()
   update(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReportingCategoryDto) {
     return this.reportingCategoriesService.update(req, id, dto);
   }
 
-  @TenantAccess('delete-reporting-category')
+  @TenantAccess('delete-reporting-group')
   @Delete('bulk')
   @BulkDeleteSwagger('reporting categories')
   bulkRemove(@Req() req, @Body() dto: BulkDeleteDto) {
     return this.reportingCategoriesService.bulkDelete(req, dto.ids);
   }
 
-  @TenantAccess('delete-reporting-category')
+  @TenantAccess('delete-reporting-group')
   @Delete(':id')
   @TenantReportingCategoriesSwagger.Delete()
   remove(@Req() req, @Param('id', ParseIntPipe) id: number) {
