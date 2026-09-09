@@ -159,15 +159,42 @@ export class ItemsService extends TenantAbstractService<Item> {
     return categories;
   }
 
+  /**
+   * Prefer M2M assignment over stale dynamic `reporting_group` (e.g. after unassign from category).
+   */
+  private applyReportingGroupFromRelations(
+    dynamicData: Record<string, any>,
+    item: Item,
+    context: DynamicSchemaContext,
+  ): Record<string, any> {
+    if (!item.reportingCategories) return dynamicData;
+
+    const fieldId =
+      context.fieldIdByCanonicalKey.get('reporting_group') ||
+      this.dynamicFields.resolveFieldIdForDataKey(context, 'reporting_group');
+    if (!fieldId) return dynamicData;
+
+    const next = { ...dynamicData };
+    const categoryId = item.reportingCategories[0]?.id ?? null;
+    if (categoryId === null) {
+      delete next[fieldId];
+      delete next.reporting_group;
+    } else {
+      next[fieldId] = categoryId;
+    }
+    return next;
+  }
+
   private buildItemResponse(
     item: Item,
     dynamicData: Record<string, any>,
     context: DynamicSchemaContext,
   ): Record<string, any> {
+    const resolvedDynamic = this.applyReportingGroupFromRelations(dynamicData, item, context);
     return this.dynamicFields.buildResponse(
       context,
       { item_name: item.itemName },
-      dynamicData,
+      resolvedDynamic,
       {
         id: item.id,
         created_at: item.createdAt,
@@ -350,7 +377,10 @@ export class ItemsService extends TenantAbstractService<Item> {
   async findOne(req: any, id: number): Promise<any> {
     try {
       const repo = this.getRepo(req);
-      const entity = await repo.findOne({ where: { id } as any });
+      const entity = await repo.findOne({
+        where: { id } as any,
+        relations: ['reportingCategories'],
+      });
       if (!entity) {
         throw new NotFoundException(`Item with ID ${id} not found`);
       }

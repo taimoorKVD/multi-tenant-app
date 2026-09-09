@@ -5,10 +5,24 @@ import { ReportingCategory } from './entities';
 import { ReportingGroup } from '../reporting-groups/entities';
 import { Item } from '../items/entities';
 import { AssignReportingCategoryItemsDto, CreateReportingCategoryDto, UpdateReportingCategoryDto } from './dto';
+import { DynamicFieldsService } from '../form-builder/services';
 
 @Injectable()
 export class ReportingCategoriesService extends TenantAbstractService<ReportingCategory> {
-  constructor(private readonly dataSource: DataSource) {
+  private readonly itemsModuleSlug = 'items';
+  private readonly itemsFallbackSystemFieldKeys = new Set([
+    'id',
+    'item_name',
+    'created_at',
+    'updated_at',
+    'created_by',
+    'updated_by',
+  ]);
+
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly dynamicFields: DynamicFieldsService,
+  ) {
     super(dataSource.getRepository(ReportingCategory));
   }
 
@@ -18,6 +32,74 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
 
   private getItemRepo(req: any): Repository<Item> {
     return req.tenantConnection.getRepository(Item);
+  }
+
+  private getActorId(req: any): number | null {
+    const candidate = req?.user?.id ?? req?.user?.sub ?? req?.user?.userId ?? null;
+    if (candidate === null || candidate === undefined) return null;
+    const actorId = Number(candidate);
+    return Number.isFinite(actorId) ? actorId : null;
+  }
+
+  /**
+   * Keep the item form field `reporting_group` in sync with M2M assignments.
+   * Pass `preferredCategoryId` after assign-from-category; omit after remove to derive from remaining links.
+   */
+  private async syncItemsReportingGroupField(
+    req: any,
+    itemIds: number[],
+    preferredCategoryId?: number | null,
+  ): Promise<void> {
+    const uniqueIds = [...new Set(itemIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) return;
+
+    const context = await this.dynamicFields.getSchemaContext(req, this.itemsModuleSlug, {
+      fallbackSystemFieldKeys: this.itemsFallbackSystemFieldKeys,
+    });
+    if (!context.moduleId) return;
+
+    const fieldId =
+      context.fieldIdByCanonicalKey.get('reporting_group') ||
+      this.dynamicFields.resolveFieldIdForDataKey(context, 'reporting_group');
+    if (!fieldId) return;
+
+    const actor = this.getActorId(req);
+    const itemRepo = this.getItemRepo(req);
+    const items = await itemRepo.find({
+      where: { id: In(uniqueIds) } as any,
+      relations: ['reportingCategories'],
+    });
+
+    for (const item of items) {
+      const remainingIds = (item.reportingCategories || []).map((category) => category.id);
+      let nextValue: number | null;
+      if (preferredCategoryId !== undefined) {
+        nextValue = preferredCategoryId;
+      } else if (remainingIds.length) {
+        nextValue = remainingIds[0];
+      } else {
+        nextValue = null;
+      }
+
+      const existing = await this.dynamicFields.loadDynamicRow(req, context.moduleId, item.id, context);
+      const nextData = { ...existing };
+      if (nextValue === null) {
+        delete nextData[fieldId];
+        delete nextData.reporting_group;
+      } else {
+        nextData[fieldId] = nextValue;
+      }
+
+      await this.dynamicFields.upsertDynamicRow(
+        req,
+        context.moduleId,
+        item.id,
+        context.activeVersionId,
+        nextData,
+        actor,
+        context,
+      );
+    }
   }
 
   async create(req: any, dto: CreateReportingCategoryDto) {
@@ -153,6 +235,14 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
     category.items = [...(category.items || []), ...toAdd];
     const saved = await repo.save(category);
 
+    if (toAdd.length) {
+      await this.syncItemsReportingGroupField(
+        req,
+        toAdd.map((item) => item.id),
+        categoryId,
+      );
+    }
+
     return {
       success: true,
       message: 'Items assigned to reporting category successfully',
@@ -187,7 +277,8 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
 
     const before = category.items || [];
     const remaining = before.filter((item) => !removeIds.has(item.id));
-    const removedCount = before.length - remaining.length;
+    const removedIds = before.filter((item) => removeIds.has(item.id)).map((item) => item.id);
+    const removedCount = removedIds.length;
 
     if (!removedCount) {
       throw new BadRequestException('None of the provided items are assigned to this category');
@@ -195,6 +286,8 @@ export class ReportingCategoriesService extends TenantAbstractService<ReportingC
 
     category.items = remaining;
     const saved = await repo.save(category);
+
+    await this.syncItemsReportingGroupField(req, removedIds);
 
     return {
       success: true,
