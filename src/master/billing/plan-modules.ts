@@ -7,7 +7,6 @@ export type PlanModuleKey =
   | 'items'
   | 'vendors'
   | 'reporting-groups'
-  | 'reporting-categories'
   | 'form-builder'
   | 'data-collection'
   | 'mail';
@@ -26,8 +25,7 @@ export const PLAN_MODULES: PlanModuleDefinition[] = [
   { key: 'locations', name: 'Locations', description: 'Store and kitchen locations' },
   { key: 'items', name: 'Items', description: 'Inventory catalog' },
   { key: 'vendors', name: 'Vendors', description: 'Suppliers' },
-  { key: 'reporting-groups', name: 'Reporting Groups', description: 'Reporting groups' },
-  { key: 'reporting-categories', name: 'Reporting Categories', description: 'Reporting categories' },
+  { key: 'reporting-groups', name: 'Reporting Groups', description: 'Reporting groups and categories' },
   { key: 'form-builder', name: 'Form Builder', description: 'Dynamic form builder' },
   { key: 'data-collection', name: 'Data Collection', description: 'Assignments, submissions, and templates' },
   { key: 'mail', name: 'Email Templates', description: 'Tenant email templates' },
@@ -70,7 +68,7 @@ export function resolveModuleFromPath(path: string): PlanModuleKey | null {
     return 'form-builder';
   }
   if (stripped.startsWith('/api/reporting-groups')) return 'reporting-groups';
-  if (stripped.startsWith('/api/reporting-categories')) return 'reporting-categories';
+  if (stripped.startsWith('/api/reporting-categories')) return 'reporting-groups';
   if (stripped.startsWith('/api/jobpositions')) return 'jobpositions';
   if (stripped.startsWith('/api/locations')) return 'locations';
   if (stripped.startsWith('/api/vendors')) return 'vendors';

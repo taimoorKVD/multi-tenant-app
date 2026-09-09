@@ -66,11 +66,6 @@ export class PermissionSeeder implements ISeeder {
         actions: ['create', 'view', 'edit', 'delete'],
       },
       {
-        module: 'reporting-categories',
-        permissionModule: 'reporting-category',
-        actions: ['create', 'view', 'edit', 'delete'],
-      },
-      {
         module: 'items',
         permissionModule: 'item',
         actions: ['create', 'view', 'edit', 'delete'],

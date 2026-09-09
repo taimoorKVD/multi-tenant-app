@@ -21,6 +21,8 @@ describe('resolvePermissionModuleName', () => {
     expect(resolvePermissionModuleName('view-permission')).toBe('roles');
     expect(resolvePermissionModuleName('create-job-position')).toBe('jobpositions');
     expect(resolvePermissionModuleName('submit-form')).toBe('form-builder');
+    expect(resolvePermissionModuleName('view-reporting-group')).toBe('reporting-groups');
+    expect(resolvePermissionModuleName('create-reporting-category')).toBe('reporting-groups');
   });
 
   it('maps billing permissions', () => {
@@ -42,13 +44,13 @@ describe('display helpers', () => {
     expect(formatPermissionActionName('review-dc-submission')).toBe('Review');
   });
 
-  it('groups Form vs Template and hides Role / Reporting Category / Form Builder / View Submission', () => {
+  it('groups Form vs Template and hides Role / Form Builder / View Submission', () => {
     expect(
       groupPermissionsByModule([
         { id: 1, name: 'create-user', module: 'users' },
         { id: 3, name: 'create-form', module: 'form-builder' },
         { id: 4, name: 'create-role', module: 'roles' },
-        { id: 5, name: 'view-reporting-category', module: 'reporting-categories' },
+        { id: 5, name: 'view-reporting-group', module: 'reporting-groups' },
         { id: 6, name: 'archive-dc-template', module: 'data-collection' },
         { id: 7, name: 'view-dc-template', module: 'data-collection' },
         { id: 8, name: 'view-dc-assignment', module: 'data-collection' },
@@ -60,6 +62,10 @@ describe('display helpers', () => {
       {
         module: { name: 'User' },
         permissions: [{ id: 1, name: 'Create' }],
+      },
+      {
+        module: { name: 'Reporting Group' },
+        permissions: [{ id: 5, name: 'View' }],
       },
       {
         module: { name: 'Template' },
