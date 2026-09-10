@@ -283,12 +283,11 @@ export class TenantAuthService {
     req: any,
     email: string,
     token: string,
-    scope: 'tenant' | 'tenant-user',
+    _scope: 'tenant' | 'tenant-user',
   ): string {
-    // Frontend routes stay under /tenant/*; host must be the tenant subdomain
-    // e.g. https://iphone.eusocial.thebetawebsite.com/tenant/reset-password?...
-    const path = scope === 'tenant-user' ? '/tenant/user/reset-password' : '/tenant/reset-password';
-    const base = `${this.resolveTenantAppBase(req)}${path}`;
+    // Tenant SPA route is /reset-password on the subdomain
+    // e.g. https://iphone.eusocial.thebetawebsite.com/reset-password?...
+    const base = `${this.resolveTenantAppBase(req)}/reset-password`;
     return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
   }
 
@@ -296,10 +295,9 @@ export class TenantAuthService {
     req: any,
     email: string,
     token: string,
-    scope: 'tenant' | 'tenant-user',
+    _scope: 'tenant' | 'tenant-user',
   ): string {
-    const path = scope === 'tenant-user' ? '/tenant/user/verify-email' : '/tenant/verify-email';
-    const base = `${this.resolveTenantAppBase(req)}${path}`;
+    const base = `${this.resolveTenantAppBase(req)}/verify-email`;
     return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
   }
 
