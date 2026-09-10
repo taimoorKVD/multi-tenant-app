@@ -120,8 +120,9 @@ export class TenantsService {
     return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
   }
 
+  /** Tenant workspace URL, e.g. https://iphone.eusocial.thebetawebsite.com/ */
   getTenantLoginUrl(subdomain: string, customDomain?: string | null): string {
-    return `${this.getTenantAppUrl(subdomain, customDomain)}/login`;
+    return `${this.getTenantAppUrl(subdomain, customDomain)}/`;
   }
 
   getTenantHandoffLoginUrl(
@@ -229,7 +230,7 @@ export class TenantsService {
     }
 
     const tenantAppUrl = this.getTenantAppUrl(payload.tenantSubdomain, payload.customDomain);
-    const loginUrl = `${tenantAppUrl}/login`;
+    const loginUrl = `${tenantAppUrl}/`;
     const preparedLogo = await prepareEmailLogo(this.getLogoUrl(tenantAppUrl));
 
     const transporter = nodemailer.createTransport({

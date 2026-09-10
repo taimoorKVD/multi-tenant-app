@@ -100,12 +100,13 @@ export class UsersService extends TenantAbstractService<User> {
     return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
   }
 
+  /** Tenant workspace URL, e.g. https://iphone.eusocial.thebetawebsite.com/ */
   private getTenantLoginUrl(tenantSlug?: string | null, customDomain?: string | null): string {
-    const slug = String(tenantSlug || '').trim();
-    if (slug) {
-      return `${this.getTenantAppUrl(slug, customDomain)}/login`;
+    const slug = String(tenantSlug || '').trim().toLowerCase();
+    if (slug && !/^\d+$/.test(slug)) {
+      return `${this.getTenantAppUrl(slug, customDomain)}/`;
     }
-    return `${this.getFrontendBaseUrl()}/login`;
+    return `${this.getFrontendBaseUrl()}/`;
   }
 
   private getLogoUrl(tenantAppUrl: string): string {

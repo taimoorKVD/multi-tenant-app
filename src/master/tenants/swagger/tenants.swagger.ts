@@ -181,7 +181,7 @@ export const TenantSwagger = {
                                 recipients: ['admin@acme.com'],
                                 error: null,
                             },
-                            loginUrl: 'https://acme.eusocial.com/login',
+                            loginUrl: 'https://acme.eusocial.com/',
                             loginApiUrl: 'https://api.eusocial.com/api/tenant/acme/login',
                             tenantSlug: 'acme',
                         },

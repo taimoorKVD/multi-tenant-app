@@ -383,6 +383,41 @@ describe('TenantAuthService', () => {
     expect(req._passwordResetTokenRepo.save).toHaveBeenCalled();
   });
 
+  it('builds reset and verify email links on the tenant subdomain', () => {
+    const prevFrontend = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = 'https://eusocial.thebetawebsite.com';
+
+    try {
+      const req = { tenantId: 'iphone' };
+      const resetUrl = (service as any).getTenantResetUrl(
+        req,
+        'omais.kv@gmail.com',
+        'abc123',
+        'tenant',
+      );
+      const verifyUrl = (service as any).getTenantVerifyEmailUrl(
+        req,
+        'omais.kv@gmail.com',
+        'abc123',
+        'tenant',
+      );
+
+      expect(resetUrl).toBe(
+        'https://iphone.eusocial.thebetawebsite.com/tenant/reset-password?email=omais.kv%40gmail.com&token=abc123',
+      );
+      expect(verifyUrl).toBe(
+        'https://iphone.eusocial.thebetawebsite.com/tenant/verify-email?email=omais.kv%40gmail.com&token=abc123',
+      );
+      expect(resetUrl).not.toContain('tenant_slug=');
+    } finally {
+      if (prevFrontend === undefined) {
+        delete process.env.FRONTEND_URL;
+      } else {
+        process.env.FRONTEND_URL = prevFrontend;
+      }
+    }
+  });
+
   it('verifyResetToken throws on invalid token', async () => {
     const req = createReq(null);
     const qb = {
