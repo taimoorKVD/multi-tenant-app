@@ -227,6 +227,54 @@ export class TenantAuthService {
     return 'http://localhost:4200'; // Default fallback, should ideally be overridden in production via env variable
   }
 
+  private getPlatformHost(): string {
+    const explicit = process.env.PLATFORM_DOMAIN?.trim();
+    if (explicit) return explicit.replace(/^\./, '').replace(/\/+$/, '');
+
+    try {
+      return new URL(this.getFrontendBaseUrl()).hostname.replace(/^(www|admin)\./, '');
+    } catch {
+      return 'eusocial.thebetawebsite.com';
+    }
+  }
+
+  private getTenantAppUrl(subdomain: string, customDomain?: string | null): string {
+    if (customDomain?.trim()) {
+      const host = customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      const protocol = host.includes('localhost') ? 'http' : 'https';
+      return `${protocol}://${host}`;
+    }
+
+    let protocol = 'https';
+    let port = '';
+    try {
+      const frontend = new URL(this.getFrontendBaseUrl());
+      protocol = frontend.protocol.replace(':', '') || 'https';
+      port = frontend.port ? `:${frontend.port}` : '';
+    } catch {
+      protocol = 'https';
+    }
+
+    return `${protocol}://${subdomain}.${this.getPlatformHost()}${port}`;
+  }
+
+  /** Tenant workspace origin, e.g. https://iphone.eusocial.thebetawebsite.com */
+  private resolveTenantAppBase(req: any): string {
+    const slug = String(
+      req?.tenant?.subdomain || req?.tenantId || req?.tenantSlug || '',
+    )
+      .trim()
+      .toLowerCase();
+    const customDomain =
+      req?.tenant?.customDomain || req?.customDomain || null;
+
+    if (slug && !/^\d+$/.test(slug)) {
+      return this.getTenantAppUrl(slug, customDomain);
+    }
+
+    return this.getFrontendBaseUrl();
+  }
+
   private buildTokenHash(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
@@ -237,10 +285,11 @@ export class TenantAuthService {
     token: string,
     scope: 'tenant' | 'tenant-user',
   ): string {
+    // Frontend routes stay under /tenant/*; host must be the tenant subdomain
+    // e.g. https://iphone.eusocial.thebetawebsite.com/tenant/reset-password?...
     const path = scope === 'tenant-user' ? '/tenant/user/reset-password' : '/tenant/reset-password';
-    const base = `${this.getFrontendBaseUrl()}${path}`;
-    const tenantSlug = req?.tenantId ? `&tenant_slug=${encodeURIComponent(String(req.tenantId))}` : '';
-    return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}${tenantSlug}`;
+    const base = `${this.resolveTenantAppBase(req)}${path}`;
+    return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
   }
 
   private getTenantVerifyEmailUrl(
@@ -250,9 +299,8 @@ export class TenantAuthService {
     scope: 'tenant' | 'tenant-user',
   ): string {
     const path = scope === 'tenant-user' ? '/tenant/user/verify-email' : '/tenant/verify-email';
-    const base = `${this.getFrontendBaseUrl()}${path}`;
-    const tenantSlug = req?.tenantId ? `&tenant_slug=${encodeURIComponent(String(req.tenantId))}` : '';
-    return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}${tenantSlug}`;
+    const base = `${this.resolveTenantAppBase(req)}${path}`;
+    return `${base}?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
   }
 
   private resolveSmtpConfig() {
@@ -494,7 +542,7 @@ export class TenantAuthService {
         text: `This link expires in ${this.resetTokenTtlMinutes} minutes and can be used only once. If you did not request a password reset, you can safely ignore this email.`,
         variant: 'warning',
       },
-      cta: { label: 'Reset password', url: resetUrl },
+      cta: { label: 'Reset Password', url: resetUrl },
     });
 
     try {
