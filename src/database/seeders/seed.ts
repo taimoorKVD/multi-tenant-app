@@ -20,6 +20,7 @@ import {
   BillingPlansSeeder,
   DataCollectionRestaurantTemplatesSeeder,
   ReportingCategoryPermissionsSeeder,
+  TenantSeeder,
 } from '../seeders';
 
 (async () => {
@@ -27,6 +28,7 @@ import {
     new PermissionSeeder(),
     new RoleSeeder(),
     new UserSeeder(),
+    new TenantSeeder(),
     new JobPositionSeeder(),
     new LocationSeeder(),
     new CountrySeeder(),
