@@ -42,6 +42,9 @@ describe('PermissionsGuard', () => {
     (reflector.getAllAndOverride as jest.Mock).mockReturnValue(['delete-form']);
     const ctx = ctxWithRequest({ user: { permissions: ['view-form'] } });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(ctx)).toThrow(
+      'You do not have Delete permission for Form Builder.',
+    );
   });
 
   it('denies when request user is missing', () => {

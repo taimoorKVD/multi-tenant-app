@@ -2,6 +2,7 @@ import {
   resolvePermissionModuleName,
   formatPermissionActionName,
   formatModuleDisplayName,
+  formatPermissionDeniedMessage,
   groupPermissionsByModule,
 } from './permission-module';
 
@@ -42,6 +43,21 @@ describe('display helpers', () => {
     expect(formatPermissionActionName('view-dc-assignment')).toBe('View');
     expect(formatPermissionActionName('complete-dc-assignment')).toBe('Submit');
     expect(formatPermissionActionName('review-dc-submission')).toBe('Review');
+  });
+
+  it('formats clear permission denied messages by module', () => {
+    expect(formatPermissionDeniedMessage(['create-user'])).toBe(
+      'You do not have Create permission for User.',
+    );
+    expect(formatPermissionDeniedMessage(['create-user', 'view-user'])).toBe(
+      'You do not have Create or View permission for User.',
+    );
+    expect(formatPermissionDeniedMessage(['view-dc-template', 'complete-dc-assignment'])).toBe(
+      'You do not have View permission for Template or Submit permission for Form.',
+    );
+    expect(formatPermissionDeniedMessage([])).toBe(
+      'You do not have permission for this resource.',
+    );
   });
 
   it('groups Form vs Template and hides Role / Form Builder / View Submission', () => {

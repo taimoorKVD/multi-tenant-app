@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { MASTER_PERMISSIONS_KEY } from '../decorators';
+import { formatPermissionDeniedMessage } from '../utils/permission-module';
 
 @Injectable()
 export class MasterPermissionsGuard implements CanActivate {
@@ -22,10 +23,9 @@ export class MasterPermissionsGuard implements CanActivate {
       user.role?.permissions?.map((p) => (typeof p === 'string' ? p : p.name)) || [];
 
     const missing = perms.filter((p) => !userPerms.includes(p));
-    if (missing.length)
-      throw new ForbiddenException(
-        `You do not have permission for this resource: ${missing.join(', ')}`,
-      );
+    if (missing.length) {
+      throw new ForbiddenException(formatPermissionDeniedMessage(missing));
+    }
 
     return true;
   }
