@@ -403,10 +403,10 @@ describe('TenantAuthService', () => {
       );
 
       expect(resetUrl).toBe(
-        'https://iphone.eusocial.thebetawebsite.com/tenant/reset-password?email=omais.kv%40gmail.com&token=abc123',
+        'https://iphone.eusocial.thebetawebsite.com/reset-password?email=omais.kv%40gmail.com&token=abc123',
       );
       expect(verifyUrl).toBe(
-        'https://iphone.eusocial.thebetawebsite.com/tenant/verify-email?email=omais.kv%40gmail.com&token=abc123',
+        'https://iphone.eusocial.thebetawebsite.com/verify-email?email=omais.kv%40gmail.com&token=abc123',
       );
       expect(resetUrl).not.toContain('tenant_slug=');
     } finally {
