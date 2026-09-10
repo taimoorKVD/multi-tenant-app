@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../../../common/decorators';
+import { formatPermissionDeniedMessage } from '../../../common/utils/permission-module';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -32,7 +33,7 @@ export class PermissionsGuard implements CanActivate {
 
     const missing = requiredPermissions.filter((permission) => !permissions.includes(permission));
     if (missing.length) {
-      throw new ForbiddenException(`Missing required permissions: ${missing.join(', ')}`);
+      throw new ForbiddenException(formatPermissionDeniedMessage(missing));
     }
 
     return true;

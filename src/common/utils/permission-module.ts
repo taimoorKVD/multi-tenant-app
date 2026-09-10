@@ -161,6 +161,45 @@ export function formatPermissionActionName(permissionName: string): string {
   return titleCase(action);
 }
 
+function joinWithOr(items: string[]): string {
+  if (items.length <= 1) return items[0] || '';
+  if (items.length === 2) return `${items[0]} or ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, or ${items[items.length - 1]}`;
+}
+
+/**
+ * Builds a clear ForbiddenException message from missing permission keys,
+ * e.g. "You do not have Create permission for User."
+ */
+export function formatPermissionDeniedMessage(missingPermissions: string[]): string {
+  const missing = (missingPermissions || [])
+    .map((permission) => String(permission || '').trim())
+    .filter(Boolean);
+
+  if (!missing.length) {
+    return 'You do not have permission for this resource.';
+  }
+
+  const actionsByModule = new Map<string, string[]>();
+
+  for (const permission of missing) {
+    const moduleName = formatModuleDisplayName(resolvePermissionModuleName(permission));
+    const action = formatPermissionActionName(permission) || permission;
+    const actions = actionsByModule.get(moduleName) || [];
+    if (!actions.includes(action)) {
+      actions.push(action);
+    }
+    actionsByModule.set(moduleName, actions);
+  }
+
+  const parts = Array.from(actionsByModule.entries()).map(
+    ([moduleName, actions]) =>
+      `${joinWithOr(actions)} permission for ${moduleName}`,
+  );
+
+  return `You do not have ${joinWithOr(parts)}.`;
+}
+
 export function formatPermissionRecord<T extends { module?: string | PermissionModuleRef | null }>(
   permission: T | null,
 ): (Omit<T, 'module'> & { module: PermissionModuleRef | null }) | null {

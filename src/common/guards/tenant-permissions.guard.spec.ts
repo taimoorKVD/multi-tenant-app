@@ -59,6 +59,9 @@ describe('TenantPermissionsGuard', () => {
     });
 
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(ctx)).toThrow(
+      'You do not have Delete permission for User.',
+    );
   });
 
   it('denies when request user is missing', () => {
