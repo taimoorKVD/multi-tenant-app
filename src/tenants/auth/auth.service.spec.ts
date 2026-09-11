@@ -8,6 +8,18 @@ import {
 } from './entities';
 import { User } from '../users/entities';
 import { JobPosition } from '../job-positions/entities';
+import { Permission } from '../permission/entities';
+
+const DEFAULT_ROLE_MODULE_PERMISSIONS = [
+  { id: 101, name: 'create-role' },
+  { id: 102, name: 'edit-role' },
+  { id: 103, name: 'view-role' },
+  { id: 104, name: 'delete-role' },
+  { id: 105, name: 'create-permission' },
+  { id: 106, name: 'edit-permission' },
+  { id: 107, name: 'view-permission' },
+  { id: 108, name: 'delete-permission' },
+];
 
 describe('TenantAuthService', () => {
   const mockJwtService = {
@@ -50,6 +62,18 @@ describe('TenantAuthService', () => {
         return null;
       }),
     };
+    const permissionRepo = {
+      find: jest.fn().mockImplementation(async ({ where }: any) => {
+        const names = Array.isArray(where)
+          ? where.map((item: any) => item.name).filter(Boolean)
+          : where?.name
+            ? [where.name]
+            : [];
+        return DEFAULT_ROLE_MODULE_PERMISSIONS.filter((permission) =>
+          names.includes(permission.name),
+        );
+      }),
+    };
     const passwordResetTokenRepo = {
       save: jest.fn().mockImplementation(async (entity: any) => entity),
       createQueryBuilder: jest.fn(),
@@ -70,6 +94,7 @@ describe('TenantAuthService', () => {
         getRepository: jest.fn().mockImplementation((entity: any) => {
           if (entity === User) return userRepo;
           if (entity === JobPosition) return jobPositionRepo;
+          if (entity === Permission) return permissionRepo;
           if (entity === PasswordResetToken) return passwordResetTokenRepo;
           if (entity === EmailVerificationToken) return emailVerificationTokenRepo;
           if (entity === RefreshToken) return refreshTokenRepo;
@@ -78,6 +103,7 @@ describe('TenantAuthService', () => {
       },
       _userRepo: userRepo,
       _jobPositionRepo: jobPositionRepo,
+      _permissionRepo: permissionRepo,
       _passwordResetTokenRepo: passwordResetTokenRepo,
       _emailVerificationTokenRepo: emailVerificationTokenRepo,
       _refreshTokenRepo: refreshTokenRepo,
@@ -187,7 +213,7 @@ describe('TenantAuthService', () => {
     );
   });
 
-  it('logs in Admin with job-position permissions instead of full Admin role set', async () => {
+  it('logs in Admin with job-position permissions plus default Roles permissions', async () => {
     const req = createReq({
       id: 30,
       email: 'limited-admin@test.com',
@@ -202,6 +228,7 @@ describe('TenantAuthService', () => {
           { id: 32, name: 'view-user' },
           { id: 36, name: 'delete-user' },
           { id: 46, name: 'view-dc-assignment' },
+          { id: 103, name: 'view-role' },
         ],
       },
       jobPosition: {
@@ -240,7 +267,15 @@ describe('TenantAuthService', () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      ['view-user', 'view-location'],
+      expect.arrayContaining([
+        'view-user',
+        'view-location',
+        'view-role',
+        'create-role',
+        'edit-role',
+        'delete-role',
+        'view-permission',
+      ]),
       true,
     );
   });

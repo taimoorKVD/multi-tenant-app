@@ -28,12 +28,27 @@ import {
 import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
 import { BillingService } from '../../master/billing/billing.service';
 import { ALL_PLAN_MODULE_KEYS, serializePlanModules } from '../../master/billing/plan-modules';
-import { groupPermissionsByModule } from '../../common/utils/permission-module';
+import {
+  groupPermissionsByModule,
+  resolvePermissionModuleName,
+} from '../../common/utils/permission-module';
 import { renderEmailLayout, emailEscape } from '../../mail/utils/email-layout.util';
 import {
   prepareEmailLogo,
   toNodemailerLogoAttachments,
 } from '../../mail/utils/email-logo.util';
+
+/** Roles module is hidden from JP assignment UI; Admin still needs these by default. */
+const DEFAULT_ROLE_MODULE_PERMISSIONS = [
+  'create-role',
+  'edit-role',
+  'view-role',
+  'delete-role',
+  'create-permission',
+  'edit-permission',
+  'view-permission',
+  'delete-permission',
+] as const;
 
 @Injectable()
 export class TenantAuthService {
@@ -85,9 +100,64 @@ export class TenantAuthService {
     };
   }
 
+  private mergePermissions(...groups: Array<Permission[] | null | undefined>): Permission[] {
+    const byName = new Map<string, Permission>();
+    for (const group of groups) {
+      for (const permission of group || []) {
+        if (permission?.name && !byName.has(permission.name)) {
+          byName.set(permission.name, permission);
+        }
+      }
+    }
+    return Array.from(byName.values());
+  }
+
+  private isAdminLikeRole(user: User): boolean {
+    const roleName = String(user.role?.name || '')
+      .trim()
+      .toLowerCase();
+    return (
+      roleName === 'admin' ||
+      roleName.includes('admin') ||
+      roleName.includes('owner')
+    );
+  }
+
+  /**
+   * Roles permissions are hidden from the job-position picker, so Admin users with a JP
+   * would otherwise lose view-role / create-role / etc. Keep those from the role, and for
+   * Admin-like roles also ensure the default Roles module set is present.
+   */
+  private async resolveDefaultRoleModulePermissions(
+    tenantConnection: DataSource,
+    user: User,
+    rolePermissions: Permission[],
+  ): Promise<Permission[]> {
+    const fromRole = rolePermissions.filter(
+      (permission) => resolvePermissionModuleName(permission.name) === 'roles',
+    );
+
+    if (!this.isAdminLikeRole(user)) {
+      return fromRole;
+    }
+
+    const existing = new Set(fromRole.map((permission) => permission.name));
+    const missingNames = DEFAULT_ROLE_MODULE_PERMISSIONS.filter((name) => !existing.has(name));
+    if (!missingNames.length) {
+      return fromRole;
+    }
+
+    const missing = await tenantConnection.getRepository(Permission).find({
+      where: missingNames.map((name) => ({ name })),
+    });
+
+    return this.mergePermissions(fromRole, missing);
+  }
+
   /**
    * Effective UI/API permissions for the session:
    * - If a job position is assigned, use its permissions (including Admin users with a limited JP)
+   * - Always merge Roles-module permissions from the user's role (hidden from JP UI)
    * - If no job position is set, fall back to role permissions (default tenant Admin keeps all)
    */
   private async resolveEffectivePermissions(
@@ -95,6 +165,11 @@ export class TenantAuthService {
     user: User,
   ): Promise<Permission[]> {
     const rolePermissions = user.role?.permissions ?? [];
+    const roleModulePermissions = await this.resolveDefaultRoleModulePermissions(
+      tenantConnection,
+      user,
+      rolePermissions,
+    );
 
     let jobPosition = user.jobPosition;
     if (jobPosition?.id && !jobPosition.permissions) {
@@ -115,10 +190,10 @@ export class TenantAuthService {
     }
 
     if (jobPosition?.id) {
-      return jobPosition.permissions ?? [];
+      return this.mergePermissions(jobPosition.permissions ?? [], roleModulePermissions);
     }
 
-    return rolePermissions;
+    return this.mergePermissions(rolePermissions, roleModulePermissions);
   }
 
   /**
