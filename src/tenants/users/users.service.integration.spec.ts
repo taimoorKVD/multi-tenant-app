@@ -31,9 +31,18 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
     sendTemplateMail: jest.fn().mockResolvedValue({ status: 'sent' }),
   } as unknown as MailService;
 
+  const permissionSessionSyncMock = {
+    syncUsers: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeAll(async () => {
     dataSource = await getTenantDataSource('tenant_kingdomvision');
-    service = new UsersService(dataSource as any, mailServiceMock, new DynamicFieldsService());
+    service = new UsersService(
+      dataSource as any,
+      mailServiceMock,
+      new DynamicFieldsService(),
+      permissionSessionSyncMock as any,
+    );
 
     userRepo = dataSource.getRepository(User);
     roleRepo = dataSource.getRepository(Role);
