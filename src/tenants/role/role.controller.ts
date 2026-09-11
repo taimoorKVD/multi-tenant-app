@@ -16,12 +16,17 @@ import {BulkDeleteDto} from '../../common/dto';
 import {BulkDeleteSwagger} from '../../common/swagger';
 import {ApiTags} from '@nestjs/swagger';
 import {TenantRoleSwagger} from './swagger';
+import {PermissionSessionSyncService} from '../auth/permission-session-sync.service';
+import {User} from '../users/entities';
 
 @ApiTags('Role Management')
 @TenantRoleSwagger.Auth()
 @Controller(['roles', 'tenant/:tenantId/roles'])
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {
+  constructor(
+    private readonly roleService: RoleService,
+    private readonly permissionSessionSync: PermissionSessionSyncService,
+  ) {
   }
 
   /**
@@ -111,6 +116,22 @@ export class RoleController {
     };
 
     const updated = await this.roleService.create(req, updateData);
+
+    if (ids !== undefined) {
+      const users = await req.tenantConnection.getRepository(User).find({
+        where: {role: {id: +id}} as any,
+        select: ['id'],
+      });
+      await this.permissionSessionSync.syncUsers(
+        req,
+        users.map((user: User) => user.id),
+        {
+          reason: 'role_permissions_updated',
+          roleId: +id,
+        },
+      );
+    }
+
     return {
       ...updated,
       message: 'Role updated successfully',

@@ -18,11 +18,11 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
   vendors: 'Vendor',
   'reporting-groups': 'Reporting Group',
   /** Employee task forms (assignments / submissions), not form-builder. */
-  form: 'Form',
+  form: 'Task',
   /** DC templates only. */
-  template: 'Template',
+  template: 'Form Template',
   /** Legacy key still used in DB for template perms. */
-  'data-collection': 'Template',
+  'data-collection': 'Form Template',
   mail: 'Mail',
   billing: 'Billing',
   tenants: 'Tenant',
@@ -32,7 +32,7 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
 /**
  * Hidden from the grouped permissions API:
  * - roles (requested)
- * - form-builder (create-form etc.) — "Form" means employee task forms, not form-builder
+ * - form-builder (create-form etc.) — "Task" means employee assignments/submissions, not form-builder
  */
 const HIDDEN_MODULE_KEYS = new Set(['roles', 'form-builder']);
 
@@ -53,7 +53,7 @@ function titleCase(value: string): string {
 
 /**
  * Maps a permission name to its module key (aligned with plan module keys where possible).
- * Template = dc-template perms; Form = employee assignment/submission task forms.
+ * Form Template = dc-template perms; Task = employee assignment/submission forms.
  */
 export function resolvePermissionModuleName(permissionName: string): string {
   const name = String(permissionName || '')
@@ -95,7 +95,7 @@ export function resolvePermissionModuleValue(
   fallbackPermissionName?: string,
 ): string | null {
   // Prefer permission-name mapping so legacy DB module values (e.g. data-collection)
-  // still split correctly into Form vs Template.
+  // still split correctly into Task vs Form Template.
   if (fallbackPermissionName) {
     return resolvePermissionModuleName(fallbackPermissionName);
   }
@@ -229,7 +229,7 @@ export function groupPermissionsByModule(
   const groups = new Map<string, GroupedPermissionModule>();
 
   for (const permission of permissions) {
-    // Always group from the permission name so Form vs Template split is correct
+    // Always group from the permission name so Task vs Form Template split is correct
     // even when the DB still stores module = "data-collection".
     const moduleKey = resolvePermissionModuleName(permission.name);
     if (HIDDEN_MODULE_KEYS.has(moduleKey)) continue;

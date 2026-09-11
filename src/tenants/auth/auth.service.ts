@@ -28,12 +28,27 @@ import {
 import { EntityDynamicData, DynamicModule } from '../form-builder/entities';
 import { BillingService } from '../../master/billing/billing.service';
 import { ALL_PLAN_MODULE_KEYS, serializePlanModules } from '../../master/billing/plan-modules';
-import { groupPermissionsByModule } from '../../common/utils/permission-module';
+import {
+  groupPermissionsByModule,
+  resolvePermissionModuleName,
+} from '../../common/utils/permission-module';
 import { renderEmailLayout, emailEscape } from '../../mail/utils/email-layout.util';
 import {
   prepareEmailLogo,
   toNodemailerLogoAttachments,
 } from '../../mail/utils/email-logo.util';
+
+/** Roles module is hidden from JP assignment UI; Admin still needs these by default. */
+const DEFAULT_ROLE_MODULE_PERMISSIONS = [
+  'create-role',
+  'edit-role',
+  'view-role',
+  'delete-role',
+  'create-permission',
+  'edit-permission',
+  'view-permission',
+  'delete-permission',
+] as const;
 
 @Injectable()
 export class TenantAuthService {
@@ -85,9 +100,64 @@ export class TenantAuthService {
     };
   }
 
+  private mergePermissions(...groups: Array<Permission[] | null | undefined>): Permission[] {
+    const byName = new Map<string, Permission>();
+    for (const group of groups) {
+      for (const permission of group || []) {
+        if (permission?.name && !byName.has(permission.name)) {
+          byName.set(permission.name, permission);
+        }
+      }
+    }
+    return Array.from(byName.values());
+  }
+
+  private isAdminLikeRole(user: User): boolean {
+    const roleName = String(user.role?.name || '')
+      .trim()
+      .toLowerCase();
+    return (
+      roleName === 'admin' ||
+      roleName.includes('admin') ||
+      roleName.includes('owner')
+    );
+  }
+
+  /**
+   * Roles permissions are hidden from the job-position picker, so Admin users with a JP
+   * would otherwise lose view-role / create-role / etc. Keep those from the role, and for
+   * Admin-like roles also ensure the default Roles module set is present.
+   */
+  private async resolveDefaultRoleModulePermissions(
+    tenantConnection: DataSource,
+    user: User,
+    rolePermissions: Permission[],
+  ): Promise<Permission[]> {
+    const fromRole = rolePermissions.filter(
+      (permission) => resolvePermissionModuleName(permission.name) === 'roles',
+    );
+
+    if (!this.isAdminLikeRole(user)) {
+      return fromRole;
+    }
+
+    const existing = new Set(fromRole.map((permission) => permission.name));
+    const missingNames = DEFAULT_ROLE_MODULE_PERMISSIONS.filter((name) => !existing.has(name));
+    if (!missingNames.length) {
+      return fromRole;
+    }
+
+    const missing = await tenantConnection.getRepository(Permission).find({
+      where: missingNames.map((name) => ({ name })),
+    });
+
+    return this.mergePermissions(fromRole, missing);
+  }
+
   /**
    * Effective UI/API permissions for the session:
    * - If a job position is assigned, use its permissions (including Admin users with a limited JP)
+   * - Always merge Roles-module permissions from the user's role (hidden from JP UI)
    * - If no job position is set, fall back to role permissions (default tenant Admin keeps all)
    */
   private async resolveEffectivePermissions(
@@ -95,6 +165,11 @@ export class TenantAuthService {
     user: User,
   ): Promise<Permission[]> {
     const rolePermissions = user.role?.permissions ?? [];
+    const roleModulePermissions = await this.resolveDefaultRoleModulePermissions(
+      tenantConnection,
+      user,
+      rolePermissions,
+    );
 
     let jobPosition = user.jobPosition;
     if (jobPosition?.id && !jobPosition.permissions) {
@@ -115,10 +190,10 @@ export class TenantAuthService {
     }
 
     if (jobPosition?.id) {
-      return jobPosition.permissions ?? [];
+      return this.mergePermissions(jobPosition.permissions ?? [], roleModulePermissions);
     }
 
-    return rolePermissions;
+    return this.mergePermissions(rolePermissions, roleModulePermissions);
   }
 
   /**
@@ -425,6 +500,26 @@ export class TenantAuthService {
       .delete()
       .from(RefreshToken)
       .where('user_id = :userId', { userId })
+      .execute();
+  }
+
+  /** Public revoke used by permission session sync (job position / role / assignment changes). */
+  async revokeRefreshTokensForUsers(
+    tenantConnection: DataSource,
+    userIds: number[],
+  ): Promise<void> {
+    const uniqueIds = [
+      ...new Set(userIds.map(Number).filter((id) => Number.isFinite(id) && id > 0)),
+    ];
+    if (!uniqueIds.length) {
+      return;
+    }
+
+    await this.getRefreshTokenRepo(tenantConnection)
+      .createQueryBuilder()
+      .delete()
+      .from(RefreshToken)
+      .where('user_id IN (:...userIds)', { userIds: uniqueIds })
       .execute();
   }
 
@@ -893,6 +988,55 @@ export class TenantAuthService {
     };
   }
 
+  private async buildAuthSessionResponse(
+    req: any,
+    tenantConnection: DataSource,
+    user: User,
+    message: string,
+  ) {
+    const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
+    const permissionNames = resolvedPermissions.map((permission) => permission.name);
+    const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+    const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
+    const accountType = this.resolveAccountType(user, rolePermissionNames);
+    const tokens = await this.issueAuthTokens(
+      tenantConnection,
+      req,
+      user,
+      permissionNames,
+      emailVerified,
+    );
+    const entitlements = await this.resolveEntitlements(req);
+
+    return {
+      success: true,
+      message,
+      user_type: 'tenant' as const,
+      account_type: accountType,
+      tenant_slug: req.tenantId || null,
+      tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: entitlements.modules,
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        email_verified: emailVerified,
+        account_type: accountType,
+        job_position: jobPosition,
+        role: user.role
+          ? {
+              ...user.role,
+              permissions: groupPermissionsByModule(resolvedPermissions),
+            }
+          : null,
+      },
+    };
+  }
+
   async refreshToken(req: any, dto: RefreshTokenDto) {
     const tenantConnection: DataSource = req.tenantConnection;
     if (!tenantConnection) {
@@ -941,32 +1085,39 @@ export class TenantAuthService {
       throw new UnauthorizedException('Invalid refresh token.');
     }
 
-    const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
-    const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
-    const permissionNames = resolvedPermissions.map((permission) => permission.name);
-    const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
-    const accountType = this.resolveAccountType(user, rolePermissionNames);
-    const tokens = await this.issueAuthTokens(
-      tenantConnection,
+    return this.buildAuthSessionResponse(
       req,
+      tenantConnection,
       user,
-      permissionNames,
-      emailVerified,
+      'Token refreshed successfully.',
     );
-    const entitlements = await this.resolveEntitlements(req);
+  }
 
-    return {
-      success: true,
-      message: 'Token refreshed successfully.',
-      user_type: 'tenant',
-      account_type: accountType,
-      tenant_slug: req.tenantId || null,
-      tenant: tenantConnection.options.database,
-      plan: entitlements.plan,
-      allowedModules: entitlements.allowedModules,
-      modules: entitlements.modules,
-      ...tokens,
-    };
+  /**
+   * Re-issue tokens from a still-valid access JWT after permission changes.
+   * Used when refresh tokens were revoked and the client received `permissions.changed`.
+   */
+  async resyncSession(req: any, userId: number) {
+    const tenantConnection: DataSource = req.tenantConnection;
+    if (!tenantConnection) {
+      throw new BadRequestException('Missing tenant connection');
+    }
+
+    const user = await tenantConnection.getRepository(User).findOne({
+      where: { id: userId },
+      relations: ['role', 'role.permissions', 'jobPosition', 'jobPosition.permissions'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid session.');
+    }
+
+    return this.buildAuthSessionResponse(
+      req,
+      tenantConnection,
+      user,
+      'Session permissions resynced successfully.',
+    );
   }
 
   async getProfile(req: any, userId: number) {

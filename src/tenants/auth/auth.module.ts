@@ -7,6 +7,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TenantJwtStrategy } from './strategies/tenant-jwt.strategy';
 import { TenantAuthGuard } from './guards';
 import { BillingModule } from '../../master/billing/billing.module';
+import { PermissionSessionSyncService } from './permission-session-sync.service';
 
 @Module({
   imports: [
@@ -23,7 +24,17 @@ import { BillingModule } from '../../master/billing/billing.module';
     }),
   ],
   controllers: [TenantAuthController],
-  providers: [TenantAuthService, TenantJwtStrategy, TenantAuthGuard],
-  exports: [TenantAuthService, TenantJwtStrategy, TenantAuthGuard],
+  providers: [
+    TenantAuthService,
+    TenantJwtStrategy,
+    TenantAuthGuard,
+    PermissionSessionSyncService,
+  ],
+  exports: [
+    TenantAuthService,
+    TenantJwtStrategy,
+    TenantAuthGuard,
+    PermissionSessionSyncService,
+  ],
 })
 export class TenantAuthModule {}

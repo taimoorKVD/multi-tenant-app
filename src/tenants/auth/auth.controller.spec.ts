@@ -10,6 +10,7 @@ describe('TenantAuthController', () => {
     sendEmailVerification: jest.fn(),
     verifyEmail: jest.fn(),
     refreshToken: jest.fn(),
+    resyncSession: jest.fn(),
     getProfile: jest.fn(),
     logout: jest.fn(),
   };
@@ -47,5 +48,21 @@ describe('TenantAuthController', () => {
     await expect(controller.me({ user: { email: 'admin@kingdomvision.com' } } as any))
       .rejects
       .toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('resyncs session permissions for authenticated user', async () => {
+    const session = {
+      success: true,
+      message: 'Session permissions resynced successfully.',
+      accessToken: 'a',
+      refreshToken: 'r',
+    };
+    const req = { user: { sub: 10 }, tenantId: 'acme' };
+    mockAuthService.resyncSession.mockResolvedValue(session);
+
+    const result = await controller.resyncSession(req);
+
+    expect(result).toBe(session);
+    expect(mockAuthService.resyncSession).toHaveBeenCalledWith(req, 10);
   });
 });

@@ -8,6 +8,18 @@ import {
 } from './entities';
 import { User } from '../users/entities';
 import { JobPosition } from '../job-positions/entities';
+import { Permission } from '../permission/entities';
+
+const DEFAULT_ROLE_MODULE_PERMISSIONS = [
+  { id: 101, name: 'create-role' },
+  { id: 102, name: 'edit-role' },
+  { id: 103, name: 'view-role' },
+  { id: 104, name: 'delete-role' },
+  { id: 105, name: 'create-permission' },
+  { id: 106, name: 'edit-permission' },
+  { id: 107, name: 'view-permission' },
+  { id: 108, name: 'delete-permission' },
+];
 
 describe('TenantAuthService', () => {
   const mockJwtService = {
@@ -50,6 +62,18 @@ describe('TenantAuthService', () => {
         return null;
       }),
     };
+    const permissionRepo = {
+      find: jest.fn().mockImplementation(async ({ where }: any) => {
+        const names = Array.isArray(where)
+          ? where.map((item: any) => item.name).filter(Boolean)
+          : where?.name
+            ? [where.name]
+            : [];
+        return DEFAULT_ROLE_MODULE_PERMISSIONS.filter((permission) =>
+          names.includes(permission.name),
+        );
+      }),
+    };
     const passwordResetTokenRepo = {
       save: jest.fn().mockImplementation(async (entity: any) => entity),
       createQueryBuilder: jest.fn(),
@@ -70,6 +94,7 @@ describe('TenantAuthService', () => {
         getRepository: jest.fn().mockImplementation((entity: any) => {
           if (entity === User) return userRepo;
           if (entity === JobPosition) return jobPositionRepo;
+          if (entity === Permission) return permissionRepo;
           if (entity === PasswordResetToken) return passwordResetTokenRepo;
           if (entity === EmailVerificationToken) return emailVerificationTokenRepo;
           if (entity === RefreshToken) return refreshTokenRepo;
@@ -78,6 +103,7 @@ describe('TenantAuthService', () => {
       },
       _userRepo: userRepo,
       _jobPositionRepo: jobPositionRepo,
+      _permissionRepo: permissionRepo,
       _passwordResetTokenRepo: passwordResetTokenRepo,
       _emailVerificationTokenRepo: emailVerificationTokenRepo,
       _refreshTokenRepo: refreshTokenRepo,
@@ -171,7 +197,7 @@ describe('TenantAuthService', () => {
     expect(result.account_type).toBe('tenant_user');
     expect(result.user.role.permissions).toEqual([
       {
-        module: { name: 'Form' },
+        module: { name: 'Task' },
         permissions: [
           { id: 46, name: 'View' },
           { id: 47, name: 'Submit' },
@@ -187,7 +213,7 @@ describe('TenantAuthService', () => {
     );
   });
 
-  it('logs in Admin with job-position permissions instead of full Admin role set', async () => {
+  it('logs in Admin with job-position permissions plus default Roles permissions', async () => {
     const req = createReq({
       id: 30,
       email: 'limited-admin@test.com',
@@ -202,6 +228,7 @@ describe('TenantAuthService', () => {
           { id: 32, name: 'view-user' },
           { id: 36, name: 'delete-user' },
           { id: 46, name: 'view-dc-assignment' },
+          { id: 103, name: 'view-role' },
         ],
       },
       jobPosition: {
@@ -240,7 +267,15 @@ describe('TenantAuthService', () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      ['view-user', 'view-location'],
+      expect.arrayContaining([
+        'view-user',
+        'view-location',
+        'view-role',
+        'create-role',
+        'edit-role',
+        'delete-role',
+        'view-permission',
+      ]),
       true,
     );
   });
@@ -531,5 +566,49 @@ describe('TenantAuthService', () => {
     expect(result.success).toBe(true);
     expect(result.accessToken).toBe('tenant-access');
     expect(result.refreshToken).toBe('tenant-refresh');
+    expect(result.user.id).toBe(1);
+    expect(result.user.email).toBe('admin@test.com');
+  });
+
+  it('resyncSession reissues tokens from access session', async () => {
+    const user = {
+      id: 10,
+      email: 'staff@test.com',
+      name: 'Staff',
+      role: {
+        id: 2,
+        name: 'Employee',
+        permissions: [{ id: 1, name: 'view-user' }],
+      },
+      jobPosition: {
+        id: 3,
+        name: 'Clerk',
+        permissions: [{ id: 1, name: 'view-user' }],
+      },
+    };
+    const req = createReq(user);
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'new-access', refreshToken: 'new-refresh' });
+
+    const result = await service.resyncSession(req, 10);
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('resynced');
+    expect(result.accessToken).toBe('new-access');
+    expect(result.user.job_position).toEqual({ id: 3, name: 'Clerk' });
+  });
+
+  it('revokeRefreshTokensForUsers deletes tokens for the given users', async () => {
+    const req = createReq({ id: 1 });
+    const deleteQb = createDeleteQueryBuilder();
+    req._refreshTokenRepo.createQueryBuilder.mockReturnValue(deleteQb);
+
+    await service.revokeRefreshTokensForUsers(req.tenantConnection, [1, 2, 2]);
+
+    expect(deleteQb.from).toHaveBeenCalledWith(RefreshToken);
+    expect(deleteQb.where).toHaveBeenCalledWith('user_id IN (:...userIds)', { userIds: [1, 2] });
+    expect(deleteQb.execute).toHaveBeenCalled();
   });
 });

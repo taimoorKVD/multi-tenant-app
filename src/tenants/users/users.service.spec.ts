@@ -26,9 +26,18 @@ describe('UsersService dynamic fields', () => {
     sendTemplateMail: jest.fn().mockResolvedValue({ status: 'queued' }),
   } as unknown as MailService;
 
+  const permissionSessionSyncMock = {
+    syncUsers: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new UsersService(dataSourceMock, mailServiceMock, dynamicFieldsService);
+    service = new UsersService(
+      dataSourceMock,
+      mailServiceMock,
+      dynamicFieldsService,
+      permissionSessionSyncMock as any,
+    );
   });
 
   function buildReq(repos: Map<any, any>) {
@@ -764,6 +773,81 @@ describe('UsersService dynamic fields', () => {
     expect(result.data.legacy_tag).toBe('old-value');
     expect(result.data.employee_code).toBe('EMP-009');
     expect(result.data.emergency_contact).toBe('+1 999 111');
+    expect(permissionSessionSyncMock.syncUsers).not.toHaveBeenCalled();
+  });
+
+  it('update syncs session when job position changes', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+
+    const existingUser = {
+      id: 101,
+      name: 'John Doe',
+      email: 'john@acme.com',
+      plainPassword: 'Secret123!',
+      password: 'hash',
+      role: { id: 1, name: 'Admin' },
+      jobPosition: { id: 1, name: 'Old JP' },
+      isSystem: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const userRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({ ...existingUser })
+        .mockResolvedValueOnce({
+          ...existingUser,
+          jobPosition: { id: 2, name: 'New JP' },
+        }),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+    };
+
+    const jobPositionRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 2, name: 'New JP' }),
+    };
+
+    const dynamicRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 500,
+        moduleId: 10,
+        entityId: 101,
+        formVersionId: 30,
+        data: {},
+        updatedBy: null,
+      }),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const repos = new Map<any, any>([
+      [User, userRepo],
+      [Role, { findOne: jest.fn() }],
+      [JobPosition, jobPositionRepo],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.update(req, 101, {
+      job_position_id: 2,
+    });
+
+    expect(result.success).toBe(true);
+    expect(permissionSessionSyncMock.syncUsers).toHaveBeenCalledWith(
+      req,
+      [101],
+      expect.objectContaining({
+        reason: 'user_job_position_changed',
+        jobPositionId: 2,
+        roleId: 1,
+      }),
+    );
   });
 
   it('throws when updating a user removes a required form-builder field', async () => {

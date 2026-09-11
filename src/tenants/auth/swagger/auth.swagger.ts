@@ -355,7 +355,8 @@ export const TenantAuthRefreshTokenDocs = () =>
     applyDecorators(
         ApiOperation({
             summary: 'Rotate refresh token',
-            description: 'Exchanges a valid tenant refresh token for a new access token and a rotated refresh token.',
+            description:
+                'Exchanges a valid tenant refresh token for a new access token and a rotated refresh token. Response includes the same `user` block as login (fresh permissions).',
         }),
         ApiBody({
             type: RefreshTokenDto,
@@ -386,12 +387,61 @@ export const TenantAuthRefreshTokenDocs = () =>
                     refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh',
                     expires_in: '2h',
                     refresh_expires_in_days: 7,
+                    user: {
+                        id: 1,
+                        email: 'admin@tenant.com',
+                        name: 'Admin',
+                        email_verified: true,
+                        account_type: 'tenant_admin',
+                        job_position: { id: 2, name: 'Manager' },
+                        role: { id: 1, name: 'Admin', permissions: [] },
+                    },
                 },
             },
         }),
         ApiResponse({
             status: 401,
             description: 'Refresh token is invalid or expired.',
+        }),
+    );
+
+export const TenantAuthResyncSessionDocs = () =>
+    applyDecorators(
+        ApiBearerAuth('access-token'),
+        ApiOperation({
+            summary: 'Resync session permissions',
+            description:
+                'Re-issues access and refresh tokens from the current access JWT after job-position/role permission changes. Use when the realtime event `permissions.changed` arrives (refresh tokens were revoked).',
+        }),
+        ApiResponse({
+            status: 200,
+            description: 'Session resynced with fresh permissions.',
+            schema: {
+                example: {
+                    success: true,
+                    message: 'Session permissions resynced successfully.',
+                    user_type: 'tenant',
+                    account_type: 'tenant_user',
+                    tenant_slug: 'kingdomvision',
+                    accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access',
+                    refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh',
+                    expires_in: '2h',
+                    refresh_expires_in_days: 7,
+                    user: {
+                        id: 10,
+                        email: 'employee@tenant.com',
+                        name: 'Employee',
+                        email_verified: true,
+                        account_type: 'tenant_user',
+                        job_position: { id: 3, name: 'Staff' },
+                        role: { id: 2, name: 'Employee', permissions: [] },
+                    },
+                },
+            },
+        }),
+        ApiResponse({
+            status: 401,
+            description: 'Access token missing or invalid.',
         }),
     );
 

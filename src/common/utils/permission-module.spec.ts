@@ -35,9 +35,9 @@ describe('resolvePermissionModuleName', () => {
 describe('display helpers', () => {
   it('formats module and action labels', () => {
     expect(formatModuleDisplayName('users')).toBe('User');
-    expect(formatModuleDisplayName('form')).toBe('Form');
-    expect(formatModuleDisplayName('template')).toBe('Template');
-    expect(formatModuleDisplayName('data-collection')).toBe('Template');
+    expect(formatModuleDisplayName('form')).toBe('Task');
+    expect(formatModuleDisplayName('template')).toBe('Form Template');
+    expect(formatModuleDisplayName('data-collection')).toBe('Form Template');
     expect(formatPermissionActionName('create-user')).toBe('Create');
     expect(formatPermissionActionName('archive-dc-template')).toBe('Archive');
     expect(formatPermissionActionName('view-dc-assignment')).toBe('View');
@@ -53,14 +53,14 @@ describe('display helpers', () => {
       'You do not have Create or View permission for User.',
     );
     expect(formatPermissionDeniedMessage(['view-dc-template', 'complete-dc-assignment'])).toBe(
-      'You do not have View permission for Template or Submit permission for Form.',
+      'You do not have View permission for Form Template or Submit permission for Task.',
     );
     expect(formatPermissionDeniedMessage([])).toBe(
       'You do not have permission for this resource.',
     );
   });
 
-  it('groups Form vs Template and hides Role / Form Builder / View Submission', () => {
+  it('groups Task vs Form Template and hides Role / Form Builder / View Submission', () => {
     expect(
       groupPermissionsByModule([
         { id: 1, name: 'create-user', module: 'users' },
@@ -84,14 +84,14 @@ describe('display helpers', () => {
         permissions: [{ id: 5, name: 'View' }],
       },
       {
-        module: { name: 'Template' },
+        module: { name: 'Form Template' },
         permissions: [
           { id: 6, name: 'Archive' },
           { id: 7, name: 'View' },
         ],
       },
       {
-        module: { name: 'Form' },
+        module: { name: 'Task' },
         permissions: [
           { id: 8, name: 'View' },
           { id: 9, name: 'Submit' },
