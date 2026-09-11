@@ -270,6 +270,60 @@ describe('BillingService', () => {
     expect(tenant.status).toBe('active');
   });
 
+  it('keeps tenant active when Stripe subscription is incomplete (awaiting payment)', async () => {
+    const tenant = { id: 12, status: 'active' };
+    const local = {
+      id: 5,
+      status: SubscriptionStatus.ACTIVE,
+      tenant,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+    };
+    subscriptionRepo.findOne.mockResolvedValue(local);
+    subscriptionRepo.save.mockImplementation(async (value) => value);
+    tenantRepo.save.mockImplementation(async (value) => value);
+
+    await service.processStripeEvent(
+      stripeEvent('customer.subscription.created', {
+        id: 'sub_incomplete',
+        status: 'incomplete',
+        customer: 'cus_1',
+        cancel_at_period_end: false,
+        items: { data: [] },
+      }),
+    );
+
+    expect(local.status).toBe(SubscriptionStatus.INCOMPLETE);
+    expect(tenant.status).toBe('active');
+  });
+
+  it('suspends tenant when Stripe incomplete subscription expires', async () => {
+    const tenant = { id: 12, status: 'active' };
+    const local = {
+      id: 5,
+      status: SubscriptionStatus.INCOMPLETE,
+      tenant,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+    };
+    subscriptionRepo.findOne.mockResolvedValue(local);
+    subscriptionRepo.save.mockImplementation(async (value) => value);
+    tenantRepo.save.mockImplementation(async (value) => value);
+
+    await service.processStripeEvent(
+      stripeEvent('customer.subscription.updated', {
+        id: 'sub_expired',
+        status: 'incomplete_expired',
+        customer: 'cus_1',
+        cancel_at_period_end: false,
+        items: { data: [] },
+      }),
+    );
+
+    expect(local.status).toBe(SubscriptionStatus.CANCELLED);
+    expect(tenant.status).toBe('suspended');
+  });
+
   it('records cancel-at-period-end from Stripe without suspending yet', async () => {
     const tenant = { id: 12, status: 'active' };
     const local = {
