@@ -171,7 +171,7 @@ describe('TenantAuthService', () => {
     expect(result.account_type).toBe('tenant_user');
     expect(result.user.role.permissions).toEqual([
       {
-        module: { name: 'Form' },
+        module: { name: 'Task' },
         permissions: [
           { id: 46, name: 'View' },
           { id: 47, name: 'Submit' },

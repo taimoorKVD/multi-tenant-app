@@ -77,7 +77,7 @@ export const TenantJobPositionsSwagger = {
                                         ],
                                     },
                                     {
-                                        module: { name: 'Form' },
+                                        module: { name: 'Task' },
                                         permissions: [
                                             { id: 46, name: 'View' },
                                             { id: 47, name: 'Submit' },
