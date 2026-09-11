@@ -26,6 +26,7 @@ import {
   TenantAuthLogoutDocs,
   TenantAuthRefreshTokenDocs,
   TenantAuthResetPasswordDocs,
+  TenantAuthResyncSessionDocs,
   TenantAuthVerifyResetTokenDocs,
 } from './swagger/auth.swagger';
 import { createRateLimitGuard } from '../../common/guards/rate-limit.guard';
@@ -133,6 +134,22 @@ export class TenantAuthController {
   @TenantAuthRefreshTokenDocs()
   async refreshToken(@Req() req, @Body() dto: RefreshTokenDto) {
     return this.authService.refreshToken(req, dto);
+  }
+
+  @Post('resync-session')
+  @Post('tenant/resync-session')
+  @Post('tenant/:tenantId/resync-session')
+  @Post(':tenantId/resync-session')
+  @UseGuards(TenantAuthGuard)
+  @TenantAuthResyncSessionDocs()
+  async resyncSession(@Req() req) {
+    const user = req.user as { sub?: number; id?: number };
+    const userId = user?.sub ?? user?.id;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid session.');
+    }
+
+    return this.authService.resyncSession(req, userId);
   }
 
   @Get('me')

@@ -5,11 +5,24 @@ import {TenantAbstractService} from '../../common/abstract';
 import {Permission} from '../permission/entities';
 import {CreateJobPositionDto, UpdateJobPositionDto} from './dto';
 import {groupPermissionsByModule} from '../../common/utils/permission-module';
+import {PermissionSessionSyncService} from '../auth/permission-session-sync.service';
+import {User} from '../users/entities';
 
 @Injectable()
 export class JobPositionsService extends TenantAbstractService<JobPosition> {
-    constructor(private readonly dataSource: DataSource) {
+    constructor(
+        private readonly dataSource: DataSource,
+        private readonly permissionSessionSync: PermissionSessionSyncService,
+    ) {
         super(dataSource.getRepository(JobPosition));
+    }
+
+    private async findUserIdsByJobPosition(req: any, jobPositionId: number): Promise<number[]> {
+        const users = await req.tenantConnection.getRepository(User).find({
+            where: {jobPosition: {id: jobPositionId}} as any,
+            select: ['id'],
+        });
+        return users.map((user: User) => user.id);
     }
 
     private async resolvePermissions(req: any, permissionIds: number[] = []): Promise<Permission[]> {
@@ -132,7 +145,8 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
                 entity.description = data.description ?? null;
             }
 
-            if (data.permissionIds !== undefined) {
+            const permissionsChanged = data.permissionIds !== undefined;
+            if (permissionsChanged) {
                 entity.permissions = await this.resolvePermissions(req, data.permissionIds);
             }
 
@@ -141,6 +155,14 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
                 where: {id: saved.id} as any,
                 relations: ['permissions'],
             });
+
+            if (permissionsChanged) {
+                const userIds = await this.findUserIdsByJobPosition(req, saved.id);
+                await this.permissionSessionSync.syncUsers(req, userIds, {
+                    reason: 'job_position_permissions_updated',
+                    jobPositionId: saved.id,
+                });
+            }
 
             return {
                 success: true,

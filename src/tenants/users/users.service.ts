@@ -21,6 +21,7 @@ import {
   prepareEmailLogo,
   toNodemailerLogoAttachments,
 } from '../../mail/utils/email-logo.util';
+import { PermissionSessionSyncService } from '../auth/permission-session-sync.service';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -30,6 +31,7 @@ export class UsersService extends TenantAbstractService<User> {
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
     private readonly dynamicFields: DynamicFieldsService,
+    private readonly permissionSessionSync: PermissionSessionSyncService,
   ) {
     super(dataSource.getRepository(User));
   }
@@ -581,6 +583,9 @@ export class UsersService extends TenantAbstractService<User> {
       if (!user) throw new NotFoundException(`User with ID ${id} not found.`);
       if (user.isSystem) throw new BadRequestException('System users cannot be modified.');
 
+      const previousJobPositionId = user.jobPosition?.id ?? null;
+      const previousRoleId = user.role?.id ?? null;
+
       const normalizedDto = this.dynamicFields.resolvePayloadAliases(dto, context.aliasToCanonicalMap, context);
       let { staticPayload, dynamicPayload } = this.dynamicFields.splitPayload(
         normalizedDto,
@@ -626,6 +631,19 @@ export class UsersService extends TenantAbstractService<User> {
       });
 
       const dynamicData = await this.dynamicFields.loadDynamicRow(req, context.moduleId, updated.id, context);
+
+      const nextJobPositionId = payload?.jobPosition?.id ?? null;
+      const nextRoleId = payload?.role?.id ?? null;
+      const jobChanged = nextJobPositionId !== previousJobPositionId;
+      const roleChanged = nextRoleId !== previousRoleId;
+
+      if (jobChanged || roleChanged) {
+        await this.permissionSessionSync.syncUsers(req, [updated.id], {
+          reason: jobChanged ? 'user_job_position_changed' : 'user_role_changed',
+          jobPositionId: nextJobPositionId,
+          roleId: nextRoleId,
+        });
+      }
 
       /*
       void this.mailService

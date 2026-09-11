@@ -566,5 +566,49 @@ describe('TenantAuthService', () => {
     expect(result.success).toBe(true);
     expect(result.accessToken).toBe('tenant-access');
     expect(result.refreshToken).toBe('tenant-refresh');
+    expect(result.user.id).toBe(1);
+    expect(result.user.email).toBe('admin@test.com');
+  });
+
+  it('resyncSession reissues tokens from access session', async () => {
+    const user = {
+      id: 10,
+      email: 'staff@test.com',
+      name: 'Staff',
+      role: {
+        id: 2,
+        name: 'Employee',
+        permissions: [{ id: 1, name: 'view-user' }],
+      },
+      jobPosition: {
+        id: 3,
+        name: 'Clerk',
+        permissions: [{ id: 1, name: 'view-user' }],
+      },
+    };
+    const req = createReq(user);
+    jest.spyOn<any, any>(service as any, 'isEmailVerified').mockResolvedValue(true);
+    jest
+      .spyOn<any, any>(service as any, 'issueAuthTokens')
+      .mockResolvedValue({ accessToken: 'new-access', refreshToken: 'new-refresh' });
+
+    const result = await service.resyncSession(req, 10);
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('resynced');
+    expect(result.accessToken).toBe('new-access');
+    expect(result.user.job_position).toEqual({ id: 3, name: 'Clerk' });
+  });
+
+  it('revokeRefreshTokensForUsers deletes tokens for the given users', async () => {
+    const req = createReq({ id: 1 });
+    const deleteQb = createDeleteQueryBuilder();
+    req._refreshTokenRepo.createQueryBuilder.mockReturnValue(deleteQb);
+
+    await service.revokeRefreshTokensForUsers(req.tenantConnection, [1, 2, 2]);
+
+    expect(deleteQb.from).toHaveBeenCalledWith(RefreshToken);
+    expect(deleteQb.where).toHaveBeenCalledWith('user_id IN (:...userIds)', { userIds: [1, 2] });
+    expect(deleteQb.execute).toHaveBeenCalled();
   });
 });

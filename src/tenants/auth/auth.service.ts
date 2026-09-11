@@ -503,6 +503,26 @@ export class TenantAuthService {
       .execute();
   }
 
+  /** Public revoke used by permission session sync (job position / role / assignment changes). */
+  async revokeRefreshTokensForUsers(
+    tenantConnection: DataSource,
+    userIds: number[],
+  ): Promise<void> {
+    const uniqueIds = [
+      ...new Set(userIds.map(Number).filter((id) => Number.isFinite(id) && id > 0)),
+    ];
+    if (!uniqueIds.length) {
+      return;
+    }
+
+    await this.getRefreshTokenRepo(tenantConnection)
+      .createQueryBuilder()
+      .delete()
+      .from(RefreshToken)
+      .where('user_id IN (:...userIds)', { userIds: uniqueIds })
+      .execute();
+  }
+
   private async revokeRefreshToken(
     tenantConnection: DataSource,
     userId: number,
@@ -968,6 +988,55 @@ export class TenantAuthService {
     };
   }
 
+  private async buildAuthSessionResponse(
+    req: any,
+    tenantConnection: DataSource,
+    user: User,
+    message: string,
+  ) {
+    const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
+    const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
+    const permissionNames = resolvedPermissions.map((permission) => permission.name);
+    const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
+    const jobPosition = await this.resolveJobPositionSummary(tenantConnection, user);
+    const accountType = this.resolveAccountType(user, rolePermissionNames);
+    const tokens = await this.issueAuthTokens(
+      tenantConnection,
+      req,
+      user,
+      permissionNames,
+      emailVerified,
+    );
+    const entitlements = await this.resolveEntitlements(req);
+
+    return {
+      success: true,
+      message,
+      user_type: 'tenant' as const,
+      account_type: accountType,
+      tenant_slug: req.tenantId || null,
+      tenant: tenantConnection.options.database,
+      plan: entitlements.plan,
+      allowedModules: entitlements.allowedModules,
+      modules: entitlements.modules,
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        email_verified: emailVerified,
+        account_type: accountType,
+        job_position: jobPosition,
+        role: user.role
+          ? {
+              ...user.role,
+              permissions: groupPermissionsByModule(resolvedPermissions),
+            }
+          : null,
+      },
+    };
+  }
+
   async refreshToken(req: any, dto: RefreshTokenDto) {
     const tenantConnection: DataSource = req.tenantConnection;
     if (!tenantConnection) {
@@ -1016,32 +1085,39 @@ export class TenantAuthService {
       throw new UnauthorizedException('Invalid refresh token.');
     }
 
-    const rolePermissionNames = (user.role?.permissions ?? []).map((permission) => permission.name);
-    const resolvedPermissions = await this.resolveEffectivePermissions(tenantConnection, user);
-    const permissionNames = resolvedPermissions.map((permission) => permission.name);
-    const emailVerified = await this.isEmailVerified(tenantConnection, user.id);
-    const accountType = this.resolveAccountType(user, rolePermissionNames);
-    const tokens = await this.issueAuthTokens(
-      tenantConnection,
+    return this.buildAuthSessionResponse(
       req,
+      tenantConnection,
       user,
-      permissionNames,
-      emailVerified,
+      'Token refreshed successfully.',
     );
-    const entitlements = await this.resolveEntitlements(req);
+  }
 
-    return {
-      success: true,
-      message: 'Token refreshed successfully.',
-      user_type: 'tenant',
-      account_type: accountType,
-      tenant_slug: req.tenantId || null,
-      tenant: tenantConnection.options.database,
-      plan: entitlements.plan,
-      allowedModules: entitlements.allowedModules,
-      modules: entitlements.modules,
-      ...tokens,
-    };
+  /**
+   * Re-issue tokens from a still-valid access JWT after permission changes.
+   * Used when refresh tokens were revoked and the client received `permissions.changed`.
+   */
+  async resyncSession(req: any, userId: number) {
+    const tenantConnection: DataSource = req.tenantConnection;
+    if (!tenantConnection) {
+      throw new BadRequestException('Missing tenant connection');
+    }
+
+    const user = await tenantConnection.getRepository(User).findOne({
+      where: { id: userId },
+      relations: ['role', 'role.permissions', 'jobPosition', 'jobPosition.permissions'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid session.');
+    }
+
+    return this.buildAuthSessionResponse(
+      req,
+      tenantConnection,
+      user,
+      'Session permissions resynced successfully.',
+    );
   }
 
   async getProfile(req: any, userId: number) {

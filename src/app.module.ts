@@ -9,6 +9,7 @@ import { MailModule } from './mail/mail.module';
 import { TenantResetService } from './tenant-reset/tenant-reset.service';
 import { HealthController } from './health.controller';
 import { SystemModule } from './master/system/system.module';
+import { RealtimeModule } from './realtime';
 
 
 @Module({
@@ -17,7 +18,8 @@ import { SystemModule } from './master/system/system.module';
       MasterModule,
       TenantsModule,
         MailModule,
-        SystemModule
+        SystemModule,
+        RealtimeModule,
   ],
   controllers: [AppController, HealthController],
   providers: [TenantResetService],
