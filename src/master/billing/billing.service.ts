@@ -930,10 +930,12 @@ export class BillingService {
   }
 
   private tenantStatusFromSubscription(status: SubscriptionStatus) {
+    // incomplete = awaiting first payment (e.g. admin create with chargeNow:false).
+    // Keep workspace usable; suspend only when Stripe marks cancelled/unpaid
+    // (incomplete_expired is mapped to CANCELLED).
     if (
       status === SubscriptionStatus.CANCELLED ||
-      status === SubscriptionStatus.UNPAID ||
-      status === SubscriptionStatus.INCOMPLETE
+      status === SubscriptionStatus.UNPAID
     ) {
       return 'suspended';
     }
