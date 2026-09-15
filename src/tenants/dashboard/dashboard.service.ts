@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { In, MoreThanOrEqual, Not } from 'typeorm';
+import { Between, In, MoreThanOrEqual, Not } from 'typeorm';
 import { User } from '../users/entities';
 import { Item } from '../items/entities';
 import { Vendor } from '../vendors/entities';
@@ -35,10 +35,13 @@ export class DashboardService {
     return `${months} month${months === 1 ? '' : 's'} ago`;
   }
 
-  private startOfDay(date = new Date()): Date {
-    const next = new Date(date);
-    next.setHours(0, 0, 0, 0);
-    return next;
+  /** UTC midnight — matches how assignment dueAt values are materialized. */
+  private startOfDayUtc(date = new Date()): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  }
+
+  private endOfDayUtc(date = new Date()): Date {
+    return new Date(this.startOfDayUtc(date).getTime() + 24 * 60 * 60 * 1000 - 1);
   }
 
   private startOfMonth(date = new Date()): Date {
@@ -46,8 +49,8 @@ export class DashboardService {
   }
 
   private dayDiffFromToday(dueAt: Date, now = new Date()): number {
-    const due = this.startOfDay(dueAt).getTime();
-    const today = this.startOfDay(now).getTime();
+    const due = this.startOfDayUtc(dueAt).getTime();
+    const today = this.startOfDayUtc(now).getTime();
     return Math.round((due - today) / (24 * 60 * 60 * 1000));
   }
 
@@ -197,6 +200,8 @@ export class DashboardService {
     const submissionRepo = connection.getRepository(DataCollectionSubmission);
     const now = new Date();
     const monthStart = this.startOfMonth(now);
+    const startOfToday = this.startOfDayUtc(now);
+    const endOfToday = this.endOfDayUtc(now);
     const actorId = user.id;
 
     const openStatuses = [
@@ -230,6 +235,7 @@ export class DashboardService {
           where: {
             assigneeUserId: actorId,
             status: In(openStatuses),
+            dueAt: Between(startOfToday, endOfToday),
           },
           relations: ['template'],
           order: { dueAt: 'ASC' },
