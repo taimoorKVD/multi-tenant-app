@@ -114,9 +114,14 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   FindAll: () =>
     applyDecorators(
-      ApiOperation({ summary: 'List data collection templates', description: 'Returns paginated templates.' }),
+      ApiOperation({
+        summary: 'List data collection templates',
+        description:
+          'Returns paginated templates. By default excludes archived. Pass status=archived to list deleted forms for restore.',
+      }),
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
+      ApiQuery({ name: 'status', required: false, enum: TemplateStatus, description: 'Filter by template status.' }),
       ApiResponse({ status: 200, description: 'Templates fetched successfully.' }),
     ),
 
@@ -293,9 +298,13 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   Delete: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Delete template', description: 'Soft-deletes a template by ID.' }),
+      ApiOperation({
+        summary: 'Delete template',
+        description:
+          'Moves the template to ARCHIVED (not hard-deleted), cancels open employee assignments, and hides it from the employee portal. Use restore to bring it back.',
+      }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
-      ApiResponse({ status: 200, description: 'Template deleted successfully.' }),
+      ApiResponse({ status: 200, description: 'Template deleted and moved to archive.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
 
@@ -325,9 +334,26 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   Archive: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Archive template', description: 'Sets the template status to ARCHIVED.' }),
+      ApiOperation({
+        summary: 'Archive template',
+        description:
+          'Sets the template status to ARCHIVED, deactivates it, cancels open assignments, and hides it from the employee portal.',
+      }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template archived successfully.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  Restore: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Restore archived template',
+        description:
+          'Restores an archived template. If a published version exists, rematerializes employee assignments so the form reappears on the employee portal.',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template restored successfully.' }),
+      ApiResponse({ status: 400, description: 'Template is not archived.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
 

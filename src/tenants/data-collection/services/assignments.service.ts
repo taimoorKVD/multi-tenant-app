@@ -15,6 +15,7 @@ import {
   DataCollectionSubmission,
   DataCollectionTemplate,
   SubmissionStatus,
+  TemplateStatus,
   TemplateVersion,
 } from '../entities';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
@@ -245,14 +246,30 @@ export class AssignmentsService {
       const limit = Math.min(Math.max(1, query.limit ?? 15), 100);
       const skip = (page - 1) * limit;
       const actorId = this.getActorId(req);
+      const mineOnly = query.mine === true || query.mine === 'true' || query.mine === '1';
 
       const qb = repo
         .createQueryBuilder('assignment')
         .leftJoinAndSelect('assignment.template', 'template');
 
+      // Employee portal: only active (non-archived / non-deleted) template work.
+      if (mineOnly) {
+        qb.andWhere('template.id IS NOT NULL')
+          .andWhere('template.status = :templateStatus', {
+            templateStatus: TemplateStatus.ACTIVE,
+          })
+          .andWhere('template.isActive = true')
+          .andWhere('template.deletedAt IS NULL');
+      }
+
       const isTodayStatus = query.status === 'today';
       if (query.status && !isTodayStatus) {
         qb.andWhere('assignment.status = :status', { status: query.status });
+      } else if (mineOnly && !isTodayStatus) {
+        // Hide cancelled rows from my-work unless explicitly requested.
+        qb.andWhere('assignment.status != :cancelledStatus', {
+          cancelledStatus: AssignmentStatus.CANCELLED,
+        });
       }
 
       const dueDay = this.resolveDueDayFilter(query);
@@ -266,8 +283,6 @@ export class AssignmentsService {
       if (query.templateId) {
         qb.andWhere('assignment.templateId = :templateId', { templateId: query.templateId });
       }
-
-      const mineOnly = query.mine === true || query.mine === 'true' || query.mine === '1';
 
       if (query.assigneeUserId) {
         qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
@@ -334,6 +349,16 @@ export class AssignmentsService {
       }
       if (assignment.status === AssignmentStatus.CANCELLED) {
         throw new BadRequestException('Assignment is cancelled');
+      }
+
+      const template = assignment.template;
+      if (
+        !template ||
+        template.deletedAt ||
+        template.status === TemplateStatus.ARCHIVED ||
+        !template.isActive
+      ) {
+        throw new BadRequestException('This form is no longer available');
       }
 
       if (
@@ -526,6 +551,10 @@ export class AssignmentsService {
     }
   }
 
+  /**
+   * Cancel open future assignments when republishing (optionally excluding the new version).
+   * Used so employees do not keep stale schedule rows from a previous version.
+   */
   async cancelFutureForTemplate(req: any, templateId: number, fromVersionId?: number) {
     const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
     const qb = repo
@@ -534,7 +563,11 @@ export class AssignmentsService {
       .set({ status: AssignmentStatus.CANCELLED })
       .where('template_id = :templateId', { templateId })
       .andWhere('status IN (:...statuses)', {
-        statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
+        statuses: [
+          AssignmentStatus.PENDING,
+          AssignmentStatus.IN_PROGRESS,
+          AssignmentStatus.OVERDUE,
+        ],
       })
       .andWhere('due_at >= :now', { now: new Date() });
 
@@ -543,6 +576,27 @@ export class AssignmentsService {
     }
 
     await qb.execute();
+  }
+
+  /**
+   * Cancel every open assignment for a template (past + future).
+   * Used when archiving / deleting so the form disappears from the employee portal.
+   */
+  async cancelOpenAssignmentsForTemplate(req: any, templateId: number) {
+    const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    await repo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({ status: AssignmentStatus.CANCELLED })
+      .where('template_id = :templateId', { templateId })
+      .andWhere('status IN (:...statuses)', {
+        statuses: [
+          AssignmentStatus.PENDING,
+          AssignmentStatus.IN_PROGRESS,
+          AssignmentStatus.OVERDUE,
+        ],
+      })
+      .execute();
   }
 
   /** Ensure referenced users exist (best-effort). */

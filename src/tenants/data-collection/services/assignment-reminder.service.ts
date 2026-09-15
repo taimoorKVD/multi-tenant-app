@@ -8,6 +8,7 @@ import {
   AssignmentStatus,
   DataCollectionAssignment,
   DataCollectionTemplate,
+  TemplateStatus,
 } from '../entities';
 import { WorkflowActionsService } from './workflow-actions.service';
 
@@ -128,9 +129,18 @@ export class AssignmentReminderService {
       if (!assignee?.email) continue;
 
       const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
+      if (
+        !template ||
+        template.deletedAt ||
+        template.status === TemplateStatus.ARCHIVED ||
+        !template.isActive
+      ) {
+        continue;
+      }
+
       const result = await this.workflowActions.sendAssignmentDueReminder(req, {
         assignmentId: assignment.id,
-        templateName: template?.name || `Template #${assignment.templateId}`,
+        templateName: template.name || `Template #${assignment.templateId}`,
         dueAt: assignment.dueAt,
         status: assignment.status,
         recipient: assignee,

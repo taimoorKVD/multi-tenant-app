@@ -7,6 +7,7 @@ describe('TemplatesService', () => {
   let assignmentsService: {
     materializeFromTemplate: jest.Mock;
     cancelFutureForTemplate: jest.Mock;
+    cancelOpenAssignmentsForTemplate: jest.Mock;
   };
 
   beforeEach(() => {
@@ -14,6 +15,7 @@ describe('TemplatesService', () => {
     assignmentsService = {
       materializeFromTemplate: jest.fn().mockResolvedValue([{ id: 1 }]),
       cancelFutureForTemplate: jest.fn().mockResolvedValue(undefined),
+      cancelOpenAssignmentsForTemplate: jest.fn().mockResolvedValue(undefined),
     };
     const workflowActions = {
       notifyAssigneesOnPublish: jest.fn().mockResolvedValue({ sent: 0, failed: 0, skipped: 0 }),
@@ -26,6 +28,7 @@ describe('TemplatesService', () => {
       create: jest.fn().mockImplementation((e: any) => e),
       save: jest.fn().mockImplementation(async (e: any) => ({ id: 1, ...e })),
       findOne: jest.fn(),
+      findBy: jest.fn(),
       softRemove: jest.fn(),
       createQueryBuilder: jest.fn(),
     };
@@ -438,19 +441,127 @@ describe('TemplatesService', () => {
 
       await expect(service.activate(req, 1)).rejects.toThrow(BadRequestException);
     });
+
+    it('rejects activate for archived templates', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue({ id: 1, status: TemplateStatus.ARCHIVED });
+
+      await expect(service.activate(req, 1)).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('archive', () => {
-    it('sets status to ARCHIVED and cancels future assignments', async () => {
+    it('sets status to ARCHIVED, deactivates, and cancels open assignments', async () => {
       const req = createReq();
-      const template = { id: 1, status: 'active', updatedBy: null };
+      const template = { id: 1, status: 'active', isActive: true, updatedBy: null };
       req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.save.mockResolvedValue({
+        ...template,
+        status: TemplateStatus.ARCHIVED,
+        isActive: false,
+      });
 
       const result = await service.archive(req, 1);
 
       expect(result.success).toBe(true);
       expect(template.status).toBe(TemplateStatus.ARCHIVED);
-      expect(assignmentsService.cancelFutureForTemplate).toHaveBeenCalledWith(req, 1);
+      expect(template.isActive).toBe(false);
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
+    });
+  });
+
+  describe('remove', () => {
+    it('archives instead of soft-deleting and cancels open assignments', async () => {
+      const req = createReq();
+      const template = { id: 1, status: TemplateStatus.ACTIVE, isActive: true, updatedBy: null };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.save.mockResolvedValue({
+        ...template,
+        status: TemplateStatus.ARCHIVED,
+        isActive: false,
+      });
+
+      const result = await service.remove(req, 1);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('archive');
+      expect(req.templateRepo.softRemove).not.toHaveBeenCalled();
+      expect(template.status).toBe(TemplateStatus.ARCHIVED);
+      expect(template.isActive).toBe(false);
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
+    });
+  });
+
+  describe('bulkRemove', () => {
+    it('archives all templates and cancels open assignments', async () => {
+      const req = createReq();
+      const templates = [
+        { id: 1, status: TemplateStatus.ACTIVE, isActive: true },
+        { id: 2, status: TemplateStatus.DRAFT, isActive: true },
+      ];
+      req.templateRepo.findBy.mockResolvedValue(templates);
+      req.templateRepo.save.mockImplementation(async (e: any) => e);
+
+      const result = await service.bulkRemove(req, [1, 2]);
+
+      expect(result.success).toBe(true);
+      expect(result.data.deletedIds).toEqual([1, 2]);
+      expect(req.templateRepo.softRemove).not.toHaveBeenCalled();
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledTimes(2);
+      expect(templates.every((t) => t.status === TemplateStatus.ARCHIVED)).toBe(true);
+      expect(templates.every((t) => t.isActive === false)).toBe(true);
+    });
+  });
+
+  describe('restore', () => {
+    it('restores archived template with published version and rematerializes', async () => {
+      const req = createReq();
+      const template = {
+        id: 1,
+        name: 'Form',
+        schema: fullSchema,
+        status: TemplateStatus.ARCHIVED,
+        isActive: false,
+      };
+      const version = { id: 10, templateId: 1, isActive: true, schemaSnapshot: fullSchema };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.versionRepo.findOne.mockResolvedValue(version);
+      req.templateRepo.save.mockResolvedValue({
+        ...template,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+      });
+
+      const result = await service.restore(req, 1);
+
+      expect(result.success).toBe(true);
+      expect(result.data.status).toBe(TemplateStatus.ACTIVE);
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+    });
+
+    it('restores as draft when no published version exists', async () => {
+      const req = createReq();
+      const template = { id: 1, status: TemplateStatus.ARCHIVED, isActive: false };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.versionRepo.findOne.mockResolvedValue(null);
+      req.templateRepo.save.mockResolvedValue({
+        ...template,
+        status: TemplateStatus.DRAFT,
+        isActive: true,
+      });
+
+      const result = await service.restore(req, 1);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('draft');
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+    });
+
+    it('rejects restore when template is not archived', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue({ id: 1, status: TemplateStatus.ACTIVE });
+
+      await expect(service.restore(req, 1)).rejects.toThrow(BadRequestException);
     });
   });
 
