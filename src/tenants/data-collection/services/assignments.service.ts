@@ -37,6 +37,53 @@ export class AssignmentsService {
     return Number.isFinite(actorId) ? actorId : null;
   }
 
+  /** UTC midnight — matches how assignment dueAt values are materialized. */
+  private startOfDayUtc(date: Date): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  }
+
+  private endOfDayUtc(date: Date): Date {
+    return new Date(this.startOfDayUtc(date).getTime() + 24 * 60 * 60 * 1000 - 1);
+  }
+
+  /** Parse YYYY-MM-DD as a UTC calendar day, or null if invalid. */
+  private parseUtcDateOnly(value: string): Date | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return null;
+    }
+    return date;
+  }
+
+  /**
+   * Resolve due-date day filter for `status=today` and/or `date`.
+   * When both are present, `date` selects the day (status=today is a day-view filter, not a DB status).
+   */
+  private resolveDueDayFilter(query: QueryAssignmentDto): { start: Date; end: Date } | null {
+    const isTodayStatus = query.status === 'today';
+    if (!isTodayStatus && !query.date) return null;
+
+    let day: Date;
+    if (query.date) {
+      const parsed = this.parseUtcDateOnly(query.date);
+      if (!parsed) throw new BadRequestException('date must be a valid YYYY-MM-DD string');
+      day = parsed;
+    } else {
+      day = this.startOfDayUtc(new Date());
+    }
+
+    return { start: this.startOfDayUtc(day), end: this.endOfDayUtc(day) };
+  }
+
   private resolveFormName(template?: DataCollectionTemplate | null): string | null {
     if (!template) return null;
     const name = String(template.name || '').trim();
@@ -203,9 +250,19 @@ export class AssignmentsService {
         .createQueryBuilder('assignment')
         .leftJoinAndSelect('assignment.template', 'template');
 
-      if (query.status) {
+      const isTodayStatus = query.status === 'today';
+      if (query.status && !isTodayStatus) {
         qb.andWhere('assignment.status = :status', { status: query.status });
       }
+
+      const dueDay = this.resolveDueDayFilter(query);
+      if (dueDay) {
+        qb.andWhere('assignment.dueAt BETWEEN :dueStart AND :dueEnd', {
+          dueStart: dueDay.start,
+          dueEnd: dueDay.end,
+        });
+      }
+
       if (query.templateId) {
         qb.andWhere('assignment.templateId = :templateId', { templateId: query.templateId });
       }

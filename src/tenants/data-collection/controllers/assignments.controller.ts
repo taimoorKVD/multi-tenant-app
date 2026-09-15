@@ -27,11 +27,24 @@ export class AssignmentsController {
   @ApiOperation({
     summary: "Today's Work",
     description:
-      'Lists assignments for the authenticated employee. Each item includes `formName`, `assignmentType`, `submissionId`, `submission`, and `completion` (employee-facing title/message for shared vs individual completed states).',
+      'Lists assignments for the authenticated employee. Each item includes `formName`, `assignmentType`, `submissionId`, `submission`, and `completion` (employee-facing title/message for shared vs individual completed states). ' +
+      'Use `status=today` and/or `date=YYYY-MM-DD` to filter by due calendar day (UTC). When both are sent, `date` selects the day.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending', 'in_progress', 'completed', 'overdue', 'cancelled', 'today'],
+    description: 'Assignment status, or `today` for due-day filtering.',
+  })
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    type: String,
+    example: '2026-09-15',
+    description: 'Due date filter (YYYY-MM-DD, UTC). Combined with `status=today`, this date is used as the day.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Assignments fetched successfully.',
