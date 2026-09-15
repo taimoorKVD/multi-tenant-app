@@ -334,4 +334,17 @@ describe('AssignmentsService findAll / findMyWork (today + date filters)', () =>
     );
     expect(dueCall[1].dueStart.toISOString()).toBe('2026-09-15T00:00:00.000Z');
   });
+
+  it('filters my-work to active templates and excludes cancelled by default', async () => {
+    await service.findMyWork(req, { page: 1, limit: 15 });
+
+    expect(andWhereMock).toHaveBeenCalledWith('template.status = :templateStatus', {
+      templateStatus: 'active',
+    });
+    expect(andWhereMock).toHaveBeenCalledWith('template.isActive = true');
+    expect(andWhereMock).toHaveBeenCalledWith('template.deletedAt IS NULL');
+    expect(andWhereMock).toHaveBeenCalledWith('assignment.status != :cancelledStatus', {
+      cancelledStatus: AssignmentStatus.CANCELLED,
+    });
+  });
 });

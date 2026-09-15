@@ -12,6 +12,7 @@ import {
   DataCollectionSubmission,
   DataCollectionTemplate,
   SubmissionStatus,
+  TemplateStatus,
   TemplateVersion,
 } from '../entities';
 import { CreateSubmissionDto, UpdateSubmissionDto } from '../dto/submissions/submission.dto';
@@ -54,6 +55,17 @@ export class SubmissionsService {
     });
     if (missing.length) {
       throw new BadRequestException(`Missing required answers for fields: ${missing.join(', ')}`);
+    }
+  }
+
+  private assertTemplateAvailable(template?: DataCollectionTemplate | null) {
+    if (
+      !template ||
+      template.deletedAt ||
+      template.status === TemplateStatus.ARCHIVED ||
+      !template.isActive
+    ) {
+      throw new BadRequestException('This form is no longer available');
     }
   }
 
@@ -276,6 +288,9 @@ export class SubmissionsService {
         throw new BadRequestException('Assignment is already completed');
       }
 
+      const templateForGate = await templateRepo.findOne({ where: { id: assignment.templateId } });
+      this.assertTemplateAvailable(templateForGate);
+
       await this.assertSharedGroupOpen(assignmentRepo, assignment);
 
       const version = await versionRepo.findOne({ where: { id: assignment.templateVersionId } });
@@ -373,6 +388,8 @@ export class SubmissionsService {
         if (assignment.status === AssignmentStatus.COMPLETED) {
           throw new BadRequestException('Assignment is already completed');
         }
+        const templateForGate = await templateRepo.findOne({ where: { id: assignment.templateId } });
+        this.assertTemplateAvailable(templateForGate);
         await this.assertSharedGroupOpen(assignmentRepo, assignment);
         this.validateAnswers(version.schemaSnapshot, submission.answers || {}, true);
         submission.status = SubmissionStatus.SUBMITTED;

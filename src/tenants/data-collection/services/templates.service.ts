@@ -197,6 +197,13 @@ export class TemplatesService {
 
       const qb = templateRepo.createQueryBuilder('template');
 
+      if (query.status) {
+        qb.andWhere('template.status = :status', { status: query.status });
+      } else {
+        // Default list hides archived so deleted forms stay in the archive view.
+        qb.andWhere('template.status != :archived', { archived: TemplateStatus.ARCHIVED });
+      }
+
       qb.orderBy('template.createdAt', 'DESC').skip(skip).take(limit);
       const [data, total] = await qb.getManyAndCount();
       const lastPage = Math.ceil(total / limit) || 1;
@@ -301,13 +308,38 @@ export class TemplatesService {
     }
   }
 
+  private async archiveInternal(
+    req: any,
+    template: DataCollectionTemplate,
+    actorId: number | null,
+  ) {
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+
+    if (template.status === TemplateStatus.ARCHIVED && !template.isActive) {
+      await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+      return template;
+    }
+
+    template.status = TemplateStatus.ARCHIVED;
+    template.isActive = false;
+    template.updatedBy = actorId;
+    const saved = await templateRepo.save(template);
+    await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+    return saved;
+  }
+
   async remove(req: any, id: number) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
-      await templateRepo.softRemove(template);
-      return { success: true, message: 'Template deleted successfully', data: null };
+
+      const saved = await this.archiveInternal(req, template, this.getActorId(req));
+      return {
+        success: true,
+        message: 'Template deleted and moved to archive',
+        data: saved,
+      };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to delete template');
@@ -330,12 +362,16 @@ export class TemplatesService {
         throw new NotFoundException(`Templates not found for IDs: ${missingIds.join(', ')}`);
       }
 
-      await templateRepo.softRemove(templates);
+      const actorId = this.getActorId(req);
+      const archived: DataCollectionTemplate[] = [];
+      for (const template of templates) {
+        archived.push(await this.archiveInternal(req, template, actorId));
+      }
 
       return {
         success: true,
-        message: `${foundIds.length} template(s) deleted successfully`,
-        data: { deletedIds: foundIds, count: foundIds.length },
+        message: `${foundIds.length} template(s) deleted and moved to archive`,
+        data: { deletedIds: foundIds, count: foundIds.length, templates: archived },
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -348,6 +384,12 @@ export class TemplatesService {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
+
+      if (template.status === TemplateStatus.ARCHIVED) {
+        throw new BadRequestException(
+          'Archived templates must be restored before activating',
+        );
+      }
 
       // Prefer publish for full materialization; activate only re-enables an existing published template.
       const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
@@ -376,16 +418,69 @@ export class TemplatesService {
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
-      template.status = TemplateStatus.ARCHIVED;
-      template.updatedBy = this.getActorId(req);
-
-      const saved = await templateRepo.save(template);
-      await this.assignmentsService.cancelFutureForTemplate(req, id);
-
+      const saved = await this.archiveInternal(req, template, this.getActorId(req));
       return { success: true, message: 'Template archived successfully', data: saved };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to archive template');
+    }
+  }
+
+  /**
+   * Restore an archived template so it can appear on the employee portal again.
+   * Rematerializes assignments when a published version exists.
+   */
+  async restore(req: any, id: number) {
+    try {
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
+      const template = await templateRepo.findOne({ where: { id } });
+      if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
+
+      if (template.status !== TemplateStatus.ARCHIVED) {
+        throw new BadRequestException('Only archived templates can be restored');
+      }
+
+      const actorId = this.getActorId(req);
+      const activeVersion = await versionRepo.findOne({
+        where: { templateId: id, isActive: true },
+      });
+
+      if (activeVersion) {
+        template.status = TemplateStatus.ACTIVE;
+        template.isActive = true;
+        template.updatedBy = actorId;
+        const saved = await templateRepo.save(template);
+
+        const assignments = await this.assignmentsService.materializeFromTemplate(
+          req,
+          saved,
+          activeVersion,
+          actorId,
+        );
+
+        return {
+          success: true,
+          message: 'Template restored successfully',
+          data: saved,
+          version: activeVersion,
+          assignmentsCreated: assignments.length,
+        };
+      }
+
+      template.status = TemplateStatus.DRAFT;
+      template.isActive = true;
+      template.updatedBy = actorId;
+      const saved = await templateRepo.save(template);
+
+      return {
+        success: true,
+        message: 'Template restored as draft (no published version found)',
+        data: saved,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new InternalServerErrorException('Failed to restore template');
     }
   }
 

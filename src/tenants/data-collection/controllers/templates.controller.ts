@@ -96,4 +96,11 @@ export class TemplatesController {
     return this.templatesService.archive(req, id);
   }
 
+  @Post(':id/restore')
+  @TenantAccess('activate-dc-template')
+  @TenantDataCollectionTemplatesSwagger.Restore()
+  restore(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.templatesService.restore(req, id);
+  }
+
 }
