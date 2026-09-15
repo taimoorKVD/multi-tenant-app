@@ -43,6 +43,16 @@ describe('display helpers', () => {
     expect(formatPermissionActionName('view-dc-assignment')).toBe('View');
     expect(formatPermissionActionName('complete-dc-assignment')).toBe('Submit');
     expect(formatPermissionActionName('review-dc-submission')).toBe('Review');
+    expect(formatPermissionActionName('view-dc-submission')).toBe('View Submission');
+  });
+
+  it('does not confuse view-dc-submission denial with Task View', () => {
+    expect(formatPermissionDeniedMessage(['view-dc-submission'])).toBe(
+      'You do not have View Submission permission for Task.',
+    );
+    expect(formatPermissionDeniedMessage(['review-dc-submission'])).toBe(
+      'You do not have Review permission for Task.',
+    );
   });
 
   it('formats clear permission denied messages by module', () => {

@@ -162,6 +162,42 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       '10:20:2026-09-02T00:00:00.000Z:u:101',
       '10:20:2026-09-02T00:00:00.000Z:u:202',
     ]);
+    expect(created.every((a) => a.assignmentType === 'individual')).toBe(true);
+    expect(created.every((a) => a.sharedGroupKey == null)).toBe(true);
+  });
+
+  it('links shared assignees with the same sharedGroupKey per occurrence', async () => {
+    const sharedTemplate = {
+      ...template,
+      schema: {
+        assign: {
+          assignmentType: 'shared',
+          users: [101, 202],
+          jobPosition: [],
+        },
+        frequency: {
+          type: 'atOnce',
+          date: '2026-09-15',
+          recurring: null,
+        },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      sharedTemplate,
+      { id: 20, schemaSnapshot: sharedTemplate.schema } as any,
+      1,
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created.every((a) => a.assignmentType === 'shared')).toBe(true);
+    expect(created[0].sharedGroupKey).toBe('10:20:2026-09-15T00:00:00.000Z:shared');
+    expect(created[1].sharedGroupKey).toBe(created[0].sharedGroupKey);
+    expect(created.map((a) => a.occurrenceKey).sort()).toEqual([
+      '10:20:2026-09-15T00:00:00.000Z:u:101',
+      '10:20:2026-09-15T00:00:00.000Z:u:202',
+    ]);
   });
 
   it('throws when frequency produces no dates (atOnce without date)', async () => {
@@ -196,5 +232,106 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
 
     expect(created).toEqual([]);
     expect(saveMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('AssignmentsService findAll / findMyWork (today + date filters)', () => {
+  let service: AssignmentsService;
+  let qb: any;
+  let andWhereMock: jest.Mock;
+  let getManyAndCountMock: jest.Mock;
+  let req: any;
+
+  beforeEach(() => {
+    andWhereMock = jest.fn().mockReturnThis();
+    getManyAndCountMock = jest.fn().mockResolvedValue([[], 0]);
+    qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      andWhere: andWhereMock,
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: getManyAndCountMock,
+    };
+
+    service = new AssignmentsService(new FrequencyService());
+    (service as any).serializeAssignments = jest.fn().mockResolvedValue([]);
+
+    req = {
+      user: { id: 42 },
+      tenantConnection: {
+        getRepository: jest.fn(() => ({
+          createQueryBuilder: jest.fn(() => qb),
+        })),
+      },
+    };
+  });
+
+  it('filters by UTC due day when status=today', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-15T12:00:00.000Z'));
+
+    await service.findMyWork(req, { page: 1, limit: 15, status: 'today' });
+
+    const dueCall = andWhereMock.mock.calls.find(([sql]) =>
+      String(sql).includes('dueAt BETWEEN'),
+    );
+    expect(dueCall).toBeDefined();
+    expect(dueCall[1].dueStart.toISOString()).toBe('2026-09-15T00:00:00.000Z');
+    expect(dueCall[1].dueEnd.toISOString()).toBe('2026-09-15T23:59:59.999Z');
+
+    const statusCall = andWhereMock.mock.calls.find(
+      ([sql, params]) => String(sql).includes('assignment.status = :status') && params?.status === 'today',
+    );
+    expect(statusCall).toBeUndefined();
+
+    jest.useRealTimers();
+  });
+
+  it('filters by date when date is provided without status=today', async () => {
+    await service.findMyWork(req, { page: 1, limit: 15, date: '2026-09-15' });
+
+    const dueCall = andWhereMock.mock.calls.find(([sql]) =>
+      String(sql).includes('dueAt BETWEEN'),
+    );
+    expect(dueCall[1].dueStart.toISOString()).toBe('2026-09-15T00:00:00.000Z');
+    expect(dueCall[1].dueEnd.toISOString()).toBe('2026-09-15T23:59:59.999Z');
+  });
+
+  it('uses date (not clock today) when both status=today and date are set', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-20T12:00:00.000Z'));
+
+    await service.findMyWork(req, {
+      page: 1,
+      limit: 15,
+      status: 'today',
+      date: '2026-09-15',
+    });
+
+    const dueCall = andWhereMock.mock.calls.find(([sql]) =>
+      String(sql).includes('dueAt BETWEEN'),
+    );
+    expect(dueCall[1].dueStart.toISOString()).toBe('2026-09-15T00:00:00.000Z');
+    expect(dueCall[1].dueEnd.toISOString()).toBe('2026-09-15T23:59:59.999Z');
+
+    jest.useRealTimers();
+  });
+
+  it('applies real status and date together', async () => {
+    await service.findAll(req, {
+      page: 1,
+      limit: 15,
+      status: AssignmentStatus.PENDING,
+      date: '2026-09-15',
+    });
+
+    expect(andWhereMock).toHaveBeenCalledWith('assignment.status = :status', {
+      status: AssignmentStatus.PENDING,
+    });
+    const dueCall = andWhereMock.mock.calls.find(([sql]) =>
+      String(sql).includes('dueAt BETWEEN'),
+    );
+    expect(dueCall[1].dueStart.toISOString()).toBe('2026-09-15T00:00:00.000Z');
   });
 });

@@ -46,9 +46,7 @@ describe('Tenant DashboardService', () => {
 
   it('returns employee dashboard for tenant_user account type', async () => {
     const dueToday = new Date();
-    dueToday.setHours(18, 0, 0, 0);
-    const dueTomorrow = new Date(dueToday);
-    dueTomorrow.setDate(dueTomorrow.getDate() + 1);
+    dueToday.setUTCHours(0, 0, 0, 0);
 
     userRepo.findOne.mockResolvedValue({
       id: 10,
@@ -72,16 +70,6 @@ describe('Tenant DashboardService', () => {
           template: {
             name: 'Store Daily Checklist',
             schema: { category: 'Store Operations' },
-          },
-        },
-        {
-          id: 42,
-          templateId: 8,
-          status: AssignmentStatus.IN_PROGRESS,
-          dueAt: dueTomorrow,
-          template: {
-            name: 'Inventory Report',
-            schema: { category: 'Inventory Management' },
           },
         },
       ])
@@ -125,10 +113,15 @@ describe('Tenant DashboardService', () => {
     expect(data.stats.inProgress.value).toBe(3);
     expect(data.stats.completed.value).toBe(12);
     expect(data.stats.overdue.value).toBe(1);
+    expect(data.todaysAssignments).toHaveLength(1);
     expect(data.todaysAssignments[0].title).toBe('Store Daily Checklist');
     expect(data.todaysAssignments[0].dueLabel).toBe('Due Today');
     expect(data.todaysAssignments[0].priority).toBe('high');
     expect(data.recentActivity[0].type).toBe('submitted');
+
+    const todayAssignmentsQuery = assignmentRepo.find.mock.calls[0][0];
+    expect(todayAssignmentsQuery.where.dueAt).toBeDefined();
+    expect(todayAssignmentsQuery.where.assigneeUserId).toBe(10);
   });
 
   it('returns admin ops dashboard for tenant_admin account type', async () => {

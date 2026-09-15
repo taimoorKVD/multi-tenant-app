@@ -154,6 +154,8 @@ export function formatPermissionActionName(permissionName: string): string {
 
   if (name.includes('-dc-submission')) {
     if (name.startsWith('review-')) return 'Review';
+    // Hidden from UI; keep a distinct label so denial is not confused with Task → View.
+    if (name.startsWith('view-')) return 'View Submission';
     return titleCase(name.split('-')[0] || name);
   }
 

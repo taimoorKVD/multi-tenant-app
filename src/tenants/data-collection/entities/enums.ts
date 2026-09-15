@@ -12,6 +12,21 @@ export enum AssignmentStatus {
   CANCELLED = 'cancelled',
 }
 
+/** How assignees share responsibility for a form occurrence. */
+export enum AssignmentType {
+  /** Each assignee must complete their own copy. */
+  INDIVIDUAL = 'individual',
+  /** One submission completes the task for every assignee in the group. */
+  SHARED = 'shared',
+}
+
+/** Employee-facing completion state for shared (and individual) assignments. */
+export enum AssignmentCompletionState {
+  COMPLETED = 'completed',
+  COMPLETED_BY_ME = 'completed_by_me',
+  COMPLETED_BY_OTHER = 'completed_by_other',
+}
+
 export enum SubmissionStatus {
   DRAFT = 'draft',
   SUBMITTED = 'submitted',

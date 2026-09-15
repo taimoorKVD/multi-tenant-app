@@ -31,12 +31,20 @@ Matches the dual-column wizard:
 
 | UI | Schema | Meaning |
 |----|--------|---------|
+| **Assign** → Assignment Type | `assign.assignmentType` | `individual` (default) or `shared` |
 | **Assign** → Users | `assign.users[]` | Who should fill out this form |
 | **Assign** → Job Positions | `assign.jobPosition[]` | Assignees resolved from job position |
 | **Report To** → Users | `report.users[]` | Who receives submission results |
 | **Report To** → Job Positions | `report.jobPosition[]` | Report recipients from job position |
 
 Both columns support searching users and job positions (IDs stored in schema).
+
+**Assignment type**
+
+| Type | Behavior |
+|------|----------|
+| `individual` | Each assignee gets their own task and must submit separately. Job positions expand to every user in that position. |
+| `shared` | Assignees share one logical task per occurrence. Any one final submit completes the group. Other assignees see `Completed by another user` (not a personal “Completed”). |
 
 ### 3. Frequency (Create Form — step 3)
 
@@ -92,7 +100,7 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
 
 ```json
 {
-  "assign": { "users": [1], "jobPosition": [2] },
+  "assign": { "assignmentType": "individual", "users": [1], "jobPosition": [2] },
   "report": { "users": [3], "jobPosition": [1] },
   "frequency": {
     "type": "atOnce",
@@ -234,6 +242,8 @@ Tables: `dc_templates`, `dc_template_versions`.
 | `FrequencyService` | Expands one-time / recurring dates; supports `dayOfMonth` incl. `-1`, `nthWeekday` |
 | Materialization | One `dc_assignments` row per occurrence × assignee |
 | Assignees | Explicit `assign.users` + users resolved from `assign.jobPosition` (via users module dynamic data) |
+| Shared group | `assignmentType=shared` sets `sharedGroupKey`; one submit marks the whole group completed |
+| Completion UX | Assignment responses include `completion` (`title` / `message` / `state`) for employee portals |
 | Idempotency | Unique `occurrenceKey` prevents duplicate rows |
 
 Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `cancelled`.
@@ -245,7 +255,7 @@ Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `
 | Today’s Work | `GET /api/data-collection/assignments/my-work` |
 | Start assignment | `POST /api/data-collection/assignments/:id/start` |
 | Submit / draft answers | `POST /api/data-collection/assignments/:assignmentId/submissions` |
-| Manager review list | `GET /api/data-collection/submissions` |
+| Manager review list | `GET /api/data-collection/submissions` (requires Task → **Review** / `review-dc-submission`; Task → View alone is not enough) |
 | Mark overdue | `POST /api/data-collection/assignments/mark-overdue` |
 
 Answers are keyed by field `id` and validated against the **pinned template version** (required fields enforced on final submit).
@@ -296,7 +306,8 @@ What it does each run: for every tenant, mark past-due open assignments as overd
 Seeded and granted to tenant Admin on provision / `013-data-collection-permissions`:
 
 - Template: `create-dc-template`, `view-dc-template`, `edit-dc-template`, `delete-dc-template`, `activate-dc-template`, `archive-dc-template`
-- Work: `view-dc-assignment`, `complete-dc-assignment`, `view-dc-submission`, `review-dc-submission`
+- Work (UI Task module): `view-dc-assignment` (View), `complete-dc-assignment` (Submit), `review-dc-submission` (Review)
+- Legacy/hidden: `view-dc-submission` (not shown in job-position UI; submissions list/detail use **Review**)
 
 ### Module layout
 

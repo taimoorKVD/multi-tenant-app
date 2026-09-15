@@ -18,7 +18,7 @@ export class TemplateSchemaDto {
   @IsString()
   formName?: string;
 
-  @ApiPropertyOptional({ type: AssignReportTargetsDto, description: 'Who should fill out this form.' })
+  @ApiPropertyOptional({ type: AssignReportTargetsDto, description: 'Who should fill out this form. Supports assignmentType individual|shared.' })
   @IsOptional()
   @ValidateNested()
   @Type(() => AssignReportTargetsDto)

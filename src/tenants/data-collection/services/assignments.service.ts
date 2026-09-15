@@ -10,6 +10,7 @@ import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
 import { User } from '../../users/entities';
 import {
   AssignmentStatus,
+  AssignmentType,
   DataCollectionAssignment,
   DataCollectionSubmission,
   DataCollectionTemplate,
@@ -17,6 +18,10 @@ import {
   TemplateVersion,
 } from '../entities';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
+import {
+  buildAssignmentCompletion,
+  resolveAssignmentType,
+} from '../utils/assignment-completion.util';
 import { FrequencyService } from './frequency.service';
 
 @Injectable()
@@ -30,6 +35,53 @@ export class AssignmentsService {
     if (candidate === null || candidate === undefined) return null;
     const actorId = Number(candidate);
     return Number.isFinite(actorId) ? actorId : null;
+  }
+
+  /** UTC midnight — matches how assignment dueAt values are materialized. */
+  private startOfDayUtc(date: Date): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  }
+
+  private endOfDayUtc(date: Date): Date {
+    return new Date(this.startOfDayUtc(date).getTime() + 24 * 60 * 60 * 1000 - 1);
+  }
+
+  /** Parse YYYY-MM-DD as a UTC calendar day, or null if invalid. */
+  private parseUtcDateOnly(value: string): Date | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return null;
+    }
+    return date;
+  }
+
+  /**
+   * Resolve due-date day filter for `status=today` and/or `date`.
+   * When both are present, `date` selects the day (status=today is a day-view filter, not a DB status).
+   */
+  private resolveDueDayFilter(query: QueryAssignmentDto): { start: Date; end: Date } | null {
+    const isTodayStatus = query.status === 'today';
+    if (!isTodayStatus && !query.date) return null;
+
+    let day: Date;
+    if (query.date) {
+      const parsed = this.parseUtcDateOnly(query.date);
+      if (!parsed) throw new BadRequestException('date must be a valid YYYY-MM-DD string');
+      day = parsed;
+    } else {
+      day = this.startOfDayUtc(new Date());
+    }
+
+    return { start: this.startOfDayUtc(day), end: this.endOfDayUtc(day) };
   }
 
   private resolveFormName(template?: DataCollectionTemplate | null): string | null {
@@ -106,19 +158,84 @@ export class AssignmentsService {
     return map;
   }
 
+  private async loadUserNamesByIds(
+    req: any,
+    userIds: number[],
+  ): Promise<Map<number, string>> {
+    const map = new Map<number, string>();
+    const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) return map;
+
+    const userRepo = req.tenantConnection.getRepository(User);
+    const users: User[] = await userRepo.find({
+      where: { id: In(uniqueIds) },
+      select: ['id', 'name'],
+    });
+    for (const user of users) {
+      map.set(user.id, (user.name || '').trim() || `User #${user.id}`);
+    }
+    return map;
+  }
+
   private serializeAssignment(
     assignment: DataCollectionAssignment,
     submission?: DataCollectionSubmission | null,
+    options?: {
+      viewerUserId?: number | null;
+      completedByName?: string | null;
+    },
   ) {
     const formName = this.resolveFormName(assignment.template);
     const submissionPayload = this.serializeSubmission(submission);
+    const completedAt = assignment.completedAt || submissionPayload?.submittedAt || null;
+    const completedByUserId =
+      assignment.completedByUserId ?? submissionPayload?.submittedBy ?? null;
+    const completion = buildAssignmentCompletion({
+      status: assignment.status,
+      assignmentType: assignment.assignmentType || AssignmentType.INDIVIDUAL,
+      completedByUserId,
+      completedAt,
+      completedByName: options?.completedByName ?? null,
+      viewerUserId: options?.viewerUserId ?? null,
+    });
+
     return {
       ...assignment,
       formName,
       templateName: formName,
       submissionId: submissionPayload?.id ?? null,
       submission: submissionPayload,
+      completion,
     };
+  }
+
+  private async serializeAssignments(
+    req: any,
+    rows: DataCollectionAssignment[],
+    viewerUserId?: number | null,
+  ) {
+    const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
+      req,
+      rows.map((row) => row.id),
+    );
+
+    const completedByIds = rows
+      .map((row) => {
+        const submission = submissionsByAssignment.get(row.id);
+        return row.completedByUserId ?? submission?.submittedBy ?? null;
+      })
+      .filter((id): id is number => id != null && Number.isFinite(id));
+
+    const namesById = await this.loadUserNamesByIds(req, completedByIds);
+
+    return rows.map((row) => {
+      const submission = submissionsByAssignment.get(row.id) || null;
+      const completedByUserId = row.completedByUserId ?? submission?.submittedBy ?? null;
+      return this.serializeAssignment(row, submission, {
+        viewerUserId,
+        completedByName: completedByUserId != null ? namesById.get(completedByUserId) || null : null,
+      });
+    });
   }
 
   async findAll(req: any, query: QueryAssignmentDto) {
@@ -133,9 +250,19 @@ export class AssignmentsService {
         .createQueryBuilder('assignment')
         .leftJoinAndSelect('assignment.template', 'template');
 
-      if (query.status) {
+      const isTodayStatus = query.status === 'today';
+      if (query.status && !isTodayStatus) {
         qb.andWhere('assignment.status = :status', { status: query.status });
       }
+
+      const dueDay = this.resolveDueDayFilter(query);
+      if (dueDay) {
+        qb.andWhere('assignment.dueAt BETWEEN :dueStart AND :dueEnd', {
+          dueStart: dueDay.start,
+          dueEnd: dueDay.end,
+        });
+      }
+
       if (query.templateId) {
         qb.andWhere('assignment.templateId = :templateId', { templateId: query.templateId });
       }
@@ -153,13 +280,7 @@ export class AssignmentsService {
       qb.orderBy('assignment.dueAt', 'ASC').skip(skip).take(limit);
       const [rows, total] = await qb.getManyAndCount();
       const lastPage = Math.ceil(total / limit) || 1;
-      const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
-        req,
-        rows.map((row) => row.id),
-      );
-      const data = rows.map((row) =>
-        this.serializeAssignment(row, submissionsByAssignment.get(row.id) || null),
-      );
+      const data = await this.serializeAssignments(req, rows, actorId);
 
       return { success: true, meta: { total, page, lastPage }, data };
     } catch (error) {
@@ -188,13 +309,10 @@ export class AssignmentsService {
       });
       if (!assignment) throw new NotFoundException(`Assignment with ID ${id} not found`);
 
-      const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(req, [assignment.id]);
+      const [data] = await this.serializeAssignments(req, [assignment], this.getActorId(req));
       return {
         success: true,
-        data: this.serializeAssignment(
-          assignment,
-          submissionsByAssignment.get(assignment.id) || null,
-        ),
+        data,
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -218,18 +336,30 @@ export class AssignmentsService {
         throw new BadRequestException('Assignment is cancelled');
       }
 
+      if (
+        assignment.assignmentType === AssignmentType.SHARED &&
+        assignment.sharedGroupKey
+      ) {
+        const siblingCompleted = await repo.findOne({
+          where: {
+            sharedGroupKey: assignment.sharedGroupKey,
+            status: AssignmentStatus.COMPLETED,
+          },
+        });
+        if (siblingCompleted) {
+          throw new BadRequestException('This shared task was already completed by another user');
+        }
+      }
+
       assignment.status = AssignmentStatus.IN_PROGRESS;
       assignment.updatedBy = this.getActorId(req);
       const saved = await repo.save(assignment);
-      const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(req, [saved.id]);
+      const [data] = await this.serializeAssignments(req, [saved], this.getActorId(req));
 
       return {
         success: true,
         message: 'Assignment started',
-        data: this.serializeAssignment(
-          saved,
-          submissionsByAssignment.get(saved.id) || null,
-        ),
+        data,
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -240,6 +370,10 @@ export class AssignmentsService {
   /**
    * Materialize assignments from template schema.assign + schema.frequency.
    * Idempotent via occurrenceKey unique constraint.
+   *
+   * Individual: one open task per assignee × occurrence.
+   * Shared: one row per assignee × occurrence, linked by sharedGroupKey so any
+   * one submission completes the whole group.
    */
   async materializeFromTemplate(
     req: any,
@@ -250,6 +384,7 @@ export class AssignmentsService {
     const schema = (template.schema || version.schemaSnapshot || {}) as Record<string, any>;
     const assign = schema.assign || {};
     const frequency = schema.frequency;
+    const assignmentType = resolveAssignmentType(assign.assignmentType);
 
     const userIds = new Set<number>((assign.users || []).map(Number).filter(Number.isFinite));
     const jobPositionIds: number[] = (assign.jobPosition || []).map(Number).filter(Number.isFinite);
@@ -292,6 +427,10 @@ export class AssignmentsService {
           dueIso,
           target.userId != null ? `u:${target.userId}` : `jp:${target.jobPositionId}`,
         ].join(':');
+        const sharedGroupKey =
+          assignmentType === AssignmentType.SHARED
+            ? [template.id, version.id, dueIso, 'shared'].join(':')
+            : null;
 
         const existing = await assignmentRepo.findOne({ where: { occurrenceKey } });
         if (existing) {
@@ -306,6 +445,10 @@ export class AssignmentsService {
           jobPositionId: target.jobPositionId,
           dueAt,
           status: AssignmentStatus.PENDING,
+          assignmentType,
+          sharedGroupKey,
+          completedByUserId: null,
+          completedAt: null,
           occurrenceKey,
           createdBy: actorId,
           updatedBy: actorId,

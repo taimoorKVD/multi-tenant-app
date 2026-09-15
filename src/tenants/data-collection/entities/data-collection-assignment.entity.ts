@@ -9,13 +9,14 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { AssignmentStatus } from './enums';
+import { AssignmentStatus, AssignmentType } from './enums';
 import { DataCollectionTemplate } from './data-collection-template.entity';
 import { TemplateVersion } from './template-version.entity';
 
 @Entity('dc_assignments')
 @Index('idx_dc_assignments_assignee_due', ['assigneeUserId', 'dueAt'])
 @Index('idx_dc_assignments_template_status', ['templateId', 'status'])
+@Index('idx_dc_assignments_shared_group', ['sharedGroupKey'])
 @Index('uq_dc_assignments_occurrence', ['occurrenceKey'], { unique: true })
 export class DataCollectionAssignment {
   @PrimaryGeneratedColumn()
@@ -49,6 +50,28 @@ export class DataCollectionAssignment {
 
   @Column({ type: 'enum', enum: AssignmentStatus, default: AssignmentStatus.PENDING })
   status!: AssignmentStatus;
+
+  @Column({
+    type: 'enum',
+    enum: AssignmentType,
+    name: 'assignment_type',
+    default: AssignmentType.INDIVIDUAL,
+  })
+  assignmentType!: AssignmentType;
+
+  /**
+   * Links all assignee rows for the same shared occurrence.
+   * Null for individual assignments.
+   */
+  @Column({ type: 'varchar', length: 200, name: 'shared_group_key', nullable: true })
+  sharedGroupKey!: string | null;
+
+  /** User who finalized the shared (or individual) submission. */
+  @Column({ type: 'int', name: 'completed_by_user_id', nullable: true })
+  completedByUserId!: number | null;
+
+  @Column({ type: 'timestamptz', name: 'completed_at', nullable: true })
+  completedAt!: Date | null;
 
   /** Unique key: templateId:versionId:dueAtISO:userId|jp:jobPositionId */
   @Column({ type: 'varchar', length: 200, name: 'occurrence_key' })
