@@ -255,7 +255,7 @@ Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `
 | Today’s Work | `GET /api/data-collection/assignments/my-work` |
 | Start assignment | `POST /api/data-collection/assignments/:id/start` |
 | Submit / draft answers | `POST /api/data-collection/assignments/:assignmentId/submissions` |
-| Manager review list | `GET /api/data-collection/submissions` |
+| Manager review list | `GET /api/data-collection/submissions` (requires Task → **Review** / `review-dc-submission`; Task → View alone is not enough) |
 | Mark overdue | `POST /api/data-collection/assignments/mark-overdue` |
 
 Answers are keyed by field `id` and validated against the **pinned template version** (required fields enforced on final submit).
@@ -306,7 +306,8 @@ What it does each run: for every tenant, mark past-due open assignments as overd
 Seeded and granted to tenant Admin on provision / `013-data-collection-permissions`:
 
 - Template: `create-dc-template`, `view-dc-template`, `edit-dc-template`, `delete-dc-template`, `activate-dc-template`, `archive-dc-template`
-- Work: `view-dc-assignment`, `complete-dc-assignment`, `view-dc-submission`, `review-dc-submission`
+- Work (UI Task module): `view-dc-assignment` (View), `complete-dc-assignment` (Submit), `review-dc-submission` (Review)
+- Legacy/hidden: `view-dc-submission` (not shown in job-position UI; submissions list/detail use **Review**)
 
 ### Module layout
 

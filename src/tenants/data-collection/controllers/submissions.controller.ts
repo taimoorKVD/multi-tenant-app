@@ -39,15 +39,23 @@ export class SubmissionsController {
   }
 
   @Get('submissions')
-  @TenantAccess('view-dc-submission')
-  @ApiOperation({ summary: 'List submissions (manager review)' })
+  @TenantAccess('review-dc-submission')
+  @ApiOperation({
+    summary: 'List submissions (manager review)',
+    description:
+      'Requires Task → Review (`review-dc-submission`). Task → View is for assignments only and will not unlock this endpoint.',
+  })
   findAll(@Req() req: any, @Query() query: QuerySubmissionDto) {
     return this.submissionsService.findAll(req, query);
   }
 
   @Get('submissions/:id')
-  @TenantAccess('view-dc-submission')
-  @ApiOperation({ summary: 'Get submission by ID' })
+  @TenantAccess('review-dc-submission')
+  @ApiOperation({
+    summary: 'Get submission by ID',
+    description:
+      'Requires Task → Review (`review-dc-submission`). Returns the submission including employee `answers`.',
+  })
   @ApiParam({ name: 'id', type: Number })
   findOne(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.submissionsService.findOne(req, id);
