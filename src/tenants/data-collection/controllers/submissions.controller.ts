@@ -43,7 +43,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: 'List submissions (manager review)',
     description:
-      'Requires Task → Review (`review-dc-submission`). Task → View is for assignments only and will not unlock this endpoint.',
+      'Requires Task → Review (`review-dc-submission`). Each item includes employee `answers` plus the full `template` (schema from the pinned template version when available).',
   })
   findAll(@Req() req: any, @Query() query: QuerySubmissionDto) {
     return this.submissionsService.findAll(req, query);
@@ -54,7 +54,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: 'Get submission by ID',
     description:
-      'Requires Task → Review (`review-dc-submission`). Returns the submission including employee `answers`.',
+      'Requires Task → Review (`review-dc-submission`). Returns the submission including employee `answers` and the full `template`.',
   })
   @ApiParam({ name: 'id', type: Number })
   findOne(@Req() req: any, @Param('id', ParseIntPipe) id: number) {

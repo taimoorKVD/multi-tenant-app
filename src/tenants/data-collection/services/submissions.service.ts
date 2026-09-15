@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { In } from 'typeorm';
 import {
   AssignmentStatus,
   AssignmentType,
@@ -54,6 +55,137 @@ export class SubmissionsService {
     if (missing.length) {
       throw new BadRequestException(`Missing required answers for fields: ${missing.join(', ')}`);
     }
+  }
+
+  private resolveFormName(template?: DataCollectionTemplate | null): string | null {
+    if (!template) return null;
+    const name = String(template.name || '').trim();
+    const schemaName =
+      template.schema && typeof (template.schema as any).formName === 'string'
+        ? String((template.schema as any).formName).trim()
+        : '';
+    return name || schemaName || null;
+  }
+
+  /**
+   * Enrich a submission with the full template payload for review UIs.
+   * Prefers the pinned version schemaSnapshot so historical answers match the form layout.
+   */
+  private serializeSubmissionResponse(
+    submission: DataCollectionSubmission,
+    template?: DataCollectionTemplate | null,
+    version?: TemplateVersion | null,
+  ) {
+    const schema = (version?.schemaSnapshot ?? template?.schema ?? null) as Record<
+      string,
+      any
+    > | null;
+    const templatePayload = template
+      ? {
+          id: template.id,
+          name: template.name,
+          schema,
+          status: template.status,
+          isActive: template.isActive,
+          createdBy: template.createdBy,
+          updatedBy: template.updatedBy,
+          createdAt: template.createdAt,
+          updatedAt: template.updatedAt,
+          deletedAt: template.deletedAt,
+        }
+      : null;
+    const formName = this.resolveFormName(
+      templatePayload
+        ? ({ name: templatePayload.name, schema: templatePayload.schema } as DataCollectionTemplate)
+        : null,
+    );
+
+    return {
+      id: submission.id,
+      assignmentId: submission.assignmentId,
+      templateVersionId: submission.templateVersionId,
+      submittedBy: submission.submittedBy,
+      answers: submission.answers || {},
+      response: submission.answers || {},
+      status: submission.status,
+      submittedAt: submission.submittedAt,
+      createdBy: submission.createdBy,
+      updatedBy: submission.updatedBy,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
+      deletedAt: submission.deletedAt,
+      templateId: template?.id ?? version?.templateId ?? null,
+      templateName: formName,
+      formName,
+      template: templatePayload,
+    };
+  }
+
+  private async loadTemplateContext(
+    req: any,
+    submissions: DataCollectionSubmission[],
+  ): Promise<{
+    templatesById: Map<number, DataCollectionTemplate>;
+    versionsById: Map<number, TemplateVersion>;
+    templateIdByAssignmentId: Map<number, number>;
+  }> {
+    const templatesById = new Map<number, DataCollectionTemplate>();
+    const versionsById = new Map<number, TemplateVersion>();
+    const templateIdByAssignmentId = new Map<number, number>();
+
+    if (!submissions.length) {
+      return { templatesById, versionsById, templateIdByAssignmentId };
+    }
+
+    const assignmentIds = [
+      ...new Set(submissions.map((s) => s.assignmentId).filter((id) => Number.isFinite(id))),
+    ];
+    const versionIds = [
+      ...new Set(submissions.map((s) => s.templateVersionId).filter((id) => Number.isFinite(id))),
+    ];
+
+    const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+
+    const assignments: DataCollectionAssignment[] = assignmentIds.length
+      ? await assignmentRepo.find({ where: { id: In(assignmentIds) } })
+      : [];
+    for (const assignment of assignments) {
+      templateIdByAssignmentId.set(assignment.id, assignment.templateId);
+    }
+
+    const templateIds = [
+      ...new Set(
+        assignments.map((a) => a.templateId).filter((id) => Number.isFinite(id)),
+      ),
+    ];
+
+    const [templates, versions] = await Promise.all([
+      templateIds.length
+        ? templateRepo.find({ where: { id: In(templateIds) } })
+        : Promise.resolve([] as DataCollectionTemplate[]),
+      versionIds.length
+        ? versionRepo.find({ where: { id: In(versionIds) } })
+        : Promise.resolve([] as TemplateVersion[]),
+    ]);
+
+    for (const template of templates) templatesById.set(template.id, template);
+    for (const version of versions) versionsById.set(version.id, version);
+
+    return { templatesById, versionsById, templateIdByAssignmentId };
+  }
+
+  private async enrichSubmissions(req: any, submissions: DataCollectionSubmission[]) {
+    const { templatesById, versionsById, templateIdByAssignmentId } =
+      await this.loadTemplateContext(req, submissions);
+
+    return submissions.map((submission) => {
+      const templateId = templateIdByAssignmentId.get(submission.assignmentId);
+      const template = templateId != null ? templatesById.get(templateId) || null : null;
+      const version = versionsById.get(submission.templateVersionId) || null;
+      return this.serializeSubmissionResponse(submission, template, version);
+    });
   }
 
   private async assertSharedGroupOpen(
@@ -172,6 +304,7 @@ export class SubmissionsService {
       });
 
       const saved = await submissionRepo.save(submission);
+      const [data] = await this.enrichSubmissions(req, [saved]);
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
       if (shouldSubmit) {
@@ -192,7 +325,7 @@ export class SubmissionsService {
       return {
         success: true,
         message: shouldSubmit ? 'Submission saved' : 'Draft submission saved',
-        data: saved,
+        data,
         workflow: workflowResult,
       };
     } catch (error) {
@@ -249,6 +382,7 @@ export class SubmissionsService {
 
       submission.updatedBy = actorId;
       const saved = await submissionRepo.save(submission);
+      const [data] = await this.enrichSubmissions(req, [saved]);
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
       if (shouldSubmit && assignment) {
@@ -269,7 +403,7 @@ export class SubmissionsService {
       return {
         success: true,
         message: shouldSubmit ? 'Submission submitted' : 'Submission updated',
-        data: saved,
+        data,
         workflow: workflowResult,
       };
     } catch (error) {
@@ -302,8 +436,9 @@ export class SubmissionsService {
       }
 
       qb.orderBy('submission.createdAt', 'DESC').skip(skip).take(limit);
-      const [data, total] = await qb.getManyAndCount();
+      const [rows, total] = await qb.getManyAndCount();
       const lastPage = Math.ceil(total / limit) || 1;
+      const data = await this.enrichSubmissions(req, rows);
 
       return { success: true, meta: { total, page, lastPage }, data };
     } catch (error) {
@@ -317,7 +452,8 @@ export class SubmissionsService {
       const submissionRepo = req.tenantConnection.getRepository(DataCollectionSubmission);
       const submission = await submissionRepo.findOne({ where: { id } });
       if (!submission) throw new NotFoundException(`Submission with ID ${id} not found`);
-      return { success: true, data: submission };
+      const [data] = await this.enrichSubmissions(req, [submission]);
+      return { success: true, data };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to retrieve submission');
