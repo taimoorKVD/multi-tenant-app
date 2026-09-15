@@ -45,7 +45,7 @@ export const TenantDataCollectionTemplateVersionsSwagger = {
               templateId: 1,
               versionNumber: 2,
               schemaSnapshot: {
-                assign: { users: [1], jobPosition: [2] },
+                assign: { assignmentType: 'individual', users: [1], jobPosition: [2] },
                 report: { users: [3], jobPosition: [1] },
                 frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12 } },
                 sections: [{ id: 'sec_001', type: 'responseForm', name: 'Response Form', sortOrder: 1, rows: [] }],

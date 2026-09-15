@@ -162,6 +162,42 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       '10:20:2026-09-02T00:00:00.000Z:u:101',
       '10:20:2026-09-02T00:00:00.000Z:u:202',
     ]);
+    expect(created.every((a) => a.assignmentType === 'individual')).toBe(true);
+    expect(created.every((a) => a.sharedGroupKey == null)).toBe(true);
+  });
+
+  it('links shared assignees with the same sharedGroupKey per occurrence', async () => {
+    const sharedTemplate = {
+      ...template,
+      schema: {
+        assign: {
+          assignmentType: 'shared',
+          users: [101, 202],
+          jobPosition: [],
+        },
+        frequency: {
+          type: 'atOnce',
+          date: '2026-09-15',
+          recurring: null,
+        },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      sharedTemplate,
+      { id: 20, schemaSnapshot: sharedTemplate.schema } as any,
+      1,
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created.every((a) => a.assignmentType === 'shared')).toBe(true);
+    expect(created[0].sharedGroupKey).toBe('10:20:2026-09-15T00:00:00.000Z:shared');
+    expect(created[1].sharedGroupKey).toBe(created[0].sharedGroupKey);
+    expect(created.map((a) => a.occurrenceKey).sort()).toEqual([
+      '10:20:2026-09-15T00:00:00.000Z:u:101',
+      '10:20:2026-09-15T00:00:00.000Z:u:202',
+    ]);
   });
 
   it('throws when frequency produces no dates (atOnce without date)', async () => {

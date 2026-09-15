@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   AssignmentStatus,
+  AssignmentType,
   DataCollectionAssignment,
   DataCollectionSubmission,
   DataCollectionTemplate,
@@ -55,6 +56,77 @@ export class SubmissionsService {
     }
   }
 
+  private async assertSharedGroupOpen(
+    assignmentRepo: any,
+    assignment: DataCollectionAssignment,
+  ) {
+    if (
+      assignment.assignmentType !== AssignmentType.SHARED ||
+      !assignment.sharedGroupKey
+    ) {
+      return;
+    }
+
+    const siblingCompleted = await assignmentRepo.findOne({
+      where: {
+        sharedGroupKey: assignment.sharedGroupKey,
+        status: AssignmentStatus.COMPLETED,
+      },
+    });
+    if (siblingCompleted) {
+      throw new BadRequestException('This shared task was already completed by another user');
+    }
+  }
+
+  /**
+   * Mark the assignment (and shared siblings) completed by the submitting user.
+   */
+  private async markAssignmentCompleted(
+    assignmentRepo: any,
+    assignment: DataCollectionAssignment,
+    actorId: number | null,
+    completedAt: Date,
+  ) {
+    if (
+      assignment.assignmentType === AssignmentType.SHARED &&
+      assignment.sharedGroupKey
+    ) {
+      await assignmentRepo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({
+          status: AssignmentStatus.COMPLETED,
+          completedByUserId: actorId,
+          completedAt,
+          updatedBy: actorId,
+        })
+        .where('shared_group_key = :sharedGroupKey', {
+          sharedGroupKey: assignment.sharedGroupKey,
+        })
+        .andWhere('status IN (:...statuses)', {
+          statuses: [
+            AssignmentStatus.PENDING,
+            AssignmentStatus.IN_PROGRESS,
+            AssignmentStatus.OVERDUE,
+          ],
+        })
+        .execute();
+
+      // Keep in-memory row consistent for callers.
+      assignment.status = AssignmentStatus.COMPLETED;
+      assignment.completedByUserId = actorId;
+      assignment.completedAt = completedAt;
+      assignment.updatedBy = actorId;
+      return;
+    }
+
+    assignment.status = AssignmentStatus.COMPLETED;
+    assignment.completedByUserId = actorId;
+    assignment.completedAt = completedAt;
+    assignment.updatedBy = actorId;
+    await assignmentRepo.save(assignment);
+  }
+
   async create(req: any, assignmentId: number, dto: CreateSubmissionDto) {
     try {
       const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
@@ -71,6 +143,8 @@ export class SubmissionsService {
       if (assignment.status === AssignmentStatus.COMPLETED) {
         throw new BadRequestException('Assignment is already completed');
       }
+
+      await this.assertSharedGroupOpen(assignmentRepo, assignment);
 
       const version = await versionRepo.findOne({ where: { id: assignment.templateVersionId } });
       if (!version) throw new NotFoundException('Template version for assignment not found');
@@ -101,9 +175,8 @@ export class SubmissionsService {
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
       if (shouldSubmit) {
-        assignment.status = AssignmentStatus.COMPLETED;
-        assignment.updatedBy = actorId;
-        await assignmentRepo.save(assignment);
+        const completedAt = saved.submittedAt || new Date();
+        await this.markAssignmentCompleted(assignmentRepo, assignment, actorId, completedAt);
 
         const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
         workflowResult = await this.workflowActions.runAfterSubmit(req, {
@@ -155,7 +228,19 @@ export class SubmissionsService {
       if (dto.answers !== undefined) submission.answers = dto.answers;
 
       const shouldSubmit = dto.submit === true;
+      let assignment: DataCollectionAssignment | null = null;
       if (shouldSubmit) {
+        assignment = await assignmentRepo.findOne({ where: { id: submission.assignmentId } });
+        if (!assignment) {
+          throw new NotFoundException(`Assignment with ID ${submission.assignmentId} not found`);
+        }
+        if (assignment.status === AssignmentStatus.CANCELLED) {
+          throw new BadRequestException('Cannot submit a cancelled assignment');
+        }
+        if (assignment.status === AssignmentStatus.COMPLETED) {
+          throw new BadRequestException('Assignment is already completed');
+        }
+        await this.assertSharedGroupOpen(assignmentRepo, assignment);
         this.validateAnswers(version.schemaSnapshot, submission.answers || {}, true);
         submission.status = SubmissionStatus.SUBMITTED;
         submission.submittedAt = new Date();
@@ -166,23 +251,19 @@ export class SubmissionsService {
       const saved = await submissionRepo.save(submission);
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
-      if (shouldSubmit) {
-        const assignment = await assignmentRepo.findOne({ where: { id: submission.assignmentId } });
-        if (assignment) {
-          assignment.status = AssignmentStatus.COMPLETED;
-          assignment.updatedBy = actorId;
-          await assignmentRepo.save(assignment);
+      if (shouldSubmit && assignment) {
+        const completedAt = saved.submittedAt || new Date();
+        await this.markAssignmentCompleted(assignmentRepo, assignment, actorId, completedAt);
 
-          const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
-          workflowResult = await this.workflowActions.runAfterSubmit(req, {
-            templateId: assignment.templateId,
-            templateName: template?.name || '',
-            assignmentId: assignment.id,
-            submissionId: saved.id,
-            schema: (version.schemaSnapshot || template?.schema || {}) as Record<string, any>,
-            submittedBy: actorId,
-          });
-        }
+        const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
+        workflowResult = await this.workflowActions.runAfterSubmit(req, {
+          templateId: assignment.templateId,
+          templateName: template?.name || '',
+          assignmentId: assignment.id,
+          submissionId: saved.id,
+          schema: (version.schemaSnapshot || template?.schema || {}) as Record<string, any>,
+          submittedBy: actorId,
+        });
       }
 
       return {

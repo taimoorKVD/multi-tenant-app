@@ -879,6 +879,7 @@ export function buildRestaurantTemplateSchema(
   return {
     formName: seed.formName,
     assign: {
+      assignmentType: 'individual',
       users: context.assignUserIds,
       jobPosition: context.assignJobPositionIds,
     },
