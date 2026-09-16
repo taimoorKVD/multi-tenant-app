@@ -7,6 +7,7 @@ import {
   buildAssignmentCompletion,
   formatAssignmentCompletedAt,
   normalizeIdList,
+  parseExclusiveAssignReportTargets,
   resolveAssignReportMode,
   resolveAssignmentType,
 } from './assignment-completion.util';
@@ -25,6 +26,18 @@ describe('assignment-completion.util', () => {
     );
     expect(normalizeIdList(null)).toEqual([]);
     expect(normalizeIdList([4, '5', 'x'])).toEqual([4, 5]);
+    expect(parseExclusiveAssignReportTargets({ users: [1], jobPosition: null })).toEqual({
+      users: [1],
+      jobPosition: [],
+      hasUsers: true,
+      hasJobPositions: false,
+    });
+    expect(parseExclusiveAssignReportTargets({ users: null, jobPosition: [4] })).toEqual({
+      users: [],
+      jobPosition: [4],
+      hasUsers: false,
+      hasJobPositions: true,
+    });
   });
 
   it('formats completed-at for employee copy', () => {

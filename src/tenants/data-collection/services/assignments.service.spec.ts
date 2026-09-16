@@ -57,9 +57,15 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       user: { id: 1 },
       tenantConnection: {
         getRepository: jest.fn((entity) => {
-          // Assignment repo is requested first / by entity name usage in materialize
-          if (entity?.name === 'DynamicModule' || entity?.name === 'EntityDynamicData') {
-            return { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
+          if (entity?.name === 'User') {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                select: jest.fn().mockReturnThis(),
+                addSelect: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawMany: jest.fn().mockResolvedValue([]),
+              })),
+            };
           }
           return assignmentRepo;
         }),
@@ -211,17 +217,18 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
   });
 
   it('accepts frontend payload with users:null and assign.mode=individual', async () => {
-    const jpUsers = [
-      { entityId: 11, data: { jobPosition: 4 } },
-      { entityId: 12, data: { jobPosition: 4 } },
-      { entityId: 99, data: { jobPosition: 9 } },
-    ];
+    const qb = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([
+        { id: 11, jobPositionId: 4 },
+        { id: 12, jobPositionId: 4 },
+      ]),
+    };
     req.tenantConnection.getRepository = jest.fn((entity) => {
-      if (entity?.name === 'DynamicModule') {
-        return { findOne: jest.fn().mockResolvedValue({ id: 1, slug: 'users' }) };
-      }
-      if (entity?.name === 'EntityDynamicData') {
-        return { find: jest.fn().mockResolvedValue(jpUsers) };
+      if (entity?.name === 'User') {
+        return { createQueryBuilder: jest.fn(() => qb) };
       }
       return assignmentRepo;
     });
@@ -256,21 +263,24 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
 
     expect(created).toHaveLength(2);
     expect(created.map((a) => a.assigneeUserId).sort()).toEqual([11, 12]);
+    expect(created.every((a) => a.jobPositionId === 4)).toBe(true);
     expect(created.every((a) => a.assignmentType === 'individual')).toBe(true);
     expect(created.every((a) => a.sharedGroupKey == null)).toBe(true);
   });
 
   it('uses assign.mode=shared with users:null + jobPosition', async () => {
-    const jpUsers = [
-      { entityId: 11, data: { jobPosition: 4 } },
-      { entityId: 12, data: { jobPosition: 4 } },
-    ];
+    const qb = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([
+        { id: 11, jobPositionId: 4 },
+        { id: 12, jobPositionId: 4 },
+      ]),
+    };
     req.tenantConnection.getRepository = jest.fn((entity) => {
-      if (entity?.name === 'DynamicModule') {
-        return { findOne: jest.fn().mockResolvedValue({ id: 1, slug: 'users' }) };
-      }
-      if (entity?.name === 'EntityDynamicData') {
-        return { find: jest.fn().mockResolvedValue(jpUsers) };
+      if (entity?.name === 'User') {
+        return { createQueryBuilder: jest.fn(() => qb) };
       }
       return assignmentRepo;
     });
@@ -293,9 +303,29 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
 
     expect(created).toHaveLength(2);
     expect(created.every((a) => a.assignmentType === 'shared')).toBe(true);
+    expect(created.every((a) => a.jobPositionId === 4)).toBe(true);
     expect(created.every((a) => a.sharedGroupKey === '10:20:2026-09-15T00:00:00.000Z:shared')).toBe(
       true,
     );
+  });
+
+  it('rejects Assign when both users and jobPosition are set', async () => {
+    const bothTemplate = {
+      ...template,
+      schema: {
+        assign: { users: [101], jobPosition: [4], mode: 'individual' },
+        frequency: { type: 'atOnce', date: '2026-09-15', recurring: null },
+      },
+    } as any;
+
+    await expect(
+      service.materializeFromTemplate(
+        req,
+        bothTemplate,
+        { id: 20, schemaSnapshot: bothTemplate.schema } as any,
+        1,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('throws when frequency produces no dates (atOnce without date)', async () => {
@@ -368,8 +398,15 @@ describe('AssignmentsService materializeFromTemplate (restore rules)', () => {
       user: { id: 1 },
       tenantConnection: {
         getRepository: jest.fn((entity) => {
-          if (entity?.name === 'DynamicModule' || entity?.name === 'EntityDynamicData') {
-            return { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
+          if (entity?.name === 'User') {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                select: jest.fn().mockReturnThis(),
+                addSelect: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawMany: jest.fn().mockResolvedValue([]),
+              })),
+            };
           }
           return assignmentRepo;
         }),

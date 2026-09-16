@@ -69,8 +69,8 @@ describe('TemplatesService', () => {
   }
 
   const fullSchema = {
-    assign: { users: [1], jobPosition: [2] },
-    report: { users: [3], jobPosition: [1] },
+    assign: { users: [1], jobPosition: null },
+    report: { users: [3], jobPosition: null },
     frequency: {
       type: 'atOnce',
       date: '2026-08-21',

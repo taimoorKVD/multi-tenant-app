@@ -6,7 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { In } from 'typeorm';
-import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
 import { User } from '../../users/entities';
 import {
   AssignmentCancelReason,
@@ -22,7 +21,7 @@ import {
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
 import {
   buildAssignmentCompletion,
-  normalizeIdList,
+  parseExclusiveAssignReportTargets,
   resolveAssignReportMode,
 } from '../utils/assignment-completion.util';
 import { FrequencyService } from './frequency.service';
@@ -420,15 +419,34 @@ export class AssignmentsService {
     const frequency = schema.frequency;
     const assignmentType = resolveAssignReportMode(assign);
 
-    const userIds = new Set<number>(normalizeIdList(assign.users));
-    const jobPositionIds = normalizeIdList(assign.jobPosition);
-
-    for (const jpId of jobPositionIds) {
-      const resolved = await this.resolveUsersByJobPosition(req, jpId);
-      resolved.forEach((id) => userIds.add(id));
+    const targetsSelection = parseExclusiveAssignReportTargets(assign);
+    if (targetsSelection.hasUsers && targetsSelection.hasJobPositions) {
+      throw new BadRequestException(
+        'Choose either Users or Job Positions for Assign — not both.',
+      );
     }
 
-    if (!userIds.size && !jobPositionIds.length) {
+    const targets: Array<{ userId: number | null; jobPositionId: number | null }> = [];
+
+    if (targetsSelection.hasUsers) {
+      for (const userId of targetsSelection.users) {
+        targets.push({ userId, jobPositionId: null });
+      }
+    } else if (targetsSelection.hasJobPositions) {
+      // Expand each selected job position to every user currently in that position.
+      const resolved = await this.resolveUsersByJobPositions(req, targetsSelection.jobPosition);
+      for (const row of resolved) {
+        targets.push({ userId: row.userId, jobPositionId: row.jobPositionId });
+      }
+      // Keep job-position placeholders when no users are assigned to those positions yet.
+      if (!targets.length) {
+        for (const jpId of targetsSelection.jobPosition) {
+          targets.push({ userId: null, jobPositionId: jpId });
+        }
+      }
+    }
+
+    if (!targets.length) {
       this.logger.warn(`Template ${template.id}: no assignees; skipping assignment materialization`);
       return [];
     }
@@ -440,17 +458,6 @@ export class AssignmentsService {
 
     const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
     const created: DataCollectionAssignment[] = [];
-
-    const targets: Array<{ userId: number | null; jobPositionId: number | null }> = [];
-    for (const userId of userIds) {
-      targets.push({ userId, jobPositionId: null });
-    }
-    // When no users resolve from job positions, keep job-position-targeted rows.
-    if (!userIds.size) {
-      for (const jpId of jobPositionIds) {
-        targets.push({ userId: null, jobPositionId: jpId });
-      }
-    }
 
     for (const dueAt of dueDates) {
       for (const target of targets) {
@@ -647,42 +654,33 @@ export class AssignmentsService {
     return reopenExisting;
   }
 
-  private async resolveUsersByJobPosition(req: any, jobPositionId: number): Promise<number[]> {
+  /**
+   * Resolve active users that belong to the selected job positions via users.job_position_id.
+   */
+  private async resolveUsersByJobPositions(
+    req: any,
+    jobPositionIds: number[],
+  ): Promise<Array<{ userId: number; jobPositionId: number }>> {
+    if (!jobPositionIds.length) return [];
     try {
-      const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
-      const dynamicRepo = req.tenantConnection.getRepository(EntityDynamicData);
-      const usersModule = await moduleRepo.findOne({ where: { slug: 'users' } });
-      if (!usersModule) return [];
+      const userRepo = req.tenantConnection.getRepository(User);
+      const rows: Array<{ id: number; jobPositionId: number | string }> = await userRepo
+        .createQueryBuilder('u')
+        .select('u.id', 'id')
+        .addSelect('u.job_position_id', 'jobPositionId')
+        .where('u.job_position_id IN (:...jobPositionIds)', { jobPositionIds })
+        .getRawMany();
 
-      const rows: EntityDynamicData[] = await dynamicRepo.find({
-        where: { moduleId: usersModule.id },
-      });
-
-      const matched: number[] = [];
-      for (const row of rows) {
-        const data = row.data || {};
-        const values = Object.values(data);
-        const hit = values.some((v) => {
-          if (v === jobPositionId || v === String(jobPositionId)) return true;
-          if (v && typeof v === 'object' && !Array.isArray(v)) {
-            const obj = v as Record<string, unknown>;
-            return obj.id === jobPositionId || obj.id === String(jobPositionId);
-          }
-          if (Array.isArray(v)) {
-            return v.some(
-              (item) =>
-                item === jobPositionId ||
-                item === String(jobPositionId) ||
-                (item && typeof item === 'object' && (item as any).id == jobPositionId),
-            );
-          }
-          return false;
-        });
-        if (hit) matched.push(row.entityId);
-      }
-      return matched;
+      return rows
+        .map((row) => ({
+          userId: Number(row.id),
+          jobPositionId: Number(row.jobPositionId),
+        }))
+        .filter((row) => Number.isFinite(row.userId) && Number.isFinite(row.jobPositionId));
     } catch (error) {
-      this.logger.warn(`Failed to resolve users for job position ${jobPositionId}: ${(error as Error).message}`);
+      this.logger.warn(
+        `Failed to resolve users for job positions ${jobPositionIds.join(',')}: ${(error as Error).message}`,
+      );
       return [];
     }
   }

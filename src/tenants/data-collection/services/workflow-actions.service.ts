@@ -1,8 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { In } from 'typeorm';
 import * as nodemailer from 'nodemailer';
 import { User } from '../../users/entities';
-import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
 import { emailEscape, renderEmailLayout } from '../../../mail/utils/email-layout.util';
 import {
   prepareEmailLogo,
@@ -11,7 +10,7 @@ import {
 } from '../../../mail/utils/email-logo.util';
 import { AssignmentType } from '../entities/enums';
 import {
-  normalizeIdList,
+  parseExclusiveAssignReportTargets,
   resolveAssignReportMode,
 } from '../utils/assignment-completion.util';
 
@@ -442,14 +441,23 @@ export class WorkflowActionsService {
     req: any,
     report: { users?: number[] | null; jobPosition?: number[] | null },
   ): Promise<DcMailRecipient[]> {
-    const userIds = new Set<number>(normalizeIdList(report.users));
-
-    for (const jpId of normalizeIdList(report.jobPosition)) {
-      const resolved = await this.resolveUsersByJobPosition(req, jpId);
-      resolved.forEach((id) => userIds.add(id));
+    const selection = parseExclusiveAssignReportTargets(report);
+    if (selection.hasUsers && selection.hasJobPositions) {
+      throw new BadRequestException(
+        'Choose either Users or Job Positions for Report To — not both.',
+      );
     }
 
-    return this.resolveUsersByIds(req, [...userIds]);
+    if (selection.hasUsers) {
+      return this.resolveUsersByIds(req, selection.users);
+    }
+
+    if (selection.hasJobPositions) {
+      const userIds = await this.resolveUserIdsByJobPositions(req, selection.jobPosition);
+      return this.resolveUsersByIds(req, userIds);
+    }
+
+    return [];
   }
 
   async resolveUsersByIds(req: any, userIds: number[]): Promise<DcMailRecipient[]> {
@@ -467,27 +475,16 @@ export class WorkflowActionsService {
     return users[0] || null;
   }
 
-  private async resolveUsersByJobPosition(req: any, jobPositionId: number): Promise<number[]> {
+  private async resolveUserIdsByJobPositions(req: any, jobPositionIds: number[]): Promise<number[]> {
+    if (!jobPositionIds.length) return [];
     try {
-      const moduleRepo = req.tenantConnection.getRepository(DynamicModule);
-      const dynamicRepo = req.tenantConnection.getRepository(EntityDynamicData);
-      const usersModule = await moduleRepo.findOne({ where: { slug: 'users' } });
-      if (!usersModule) return [];
-
-      const rows: EntityDynamicData[] = await dynamicRepo.find({
-        where: { moduleId: usersModule.id },
-      });
-
-      return rows
-        .filter((row) => {
-          const values = Object.values(row.data || {});
-          return values.some(
-            (v) =>
-              v == jobPositionId ||
-              (v && typeof v === 'object' && (v as any).id == jobPositionId),
-          );
-        })
-        .map((row) => row.entityId);
+      const userRepo = req.tenantConnection.getRepository(User);
+      const rows: Array<{ id: number }> = await userRepo
+        .createQueryBuilder('u')
+        .select('u.id', 'id')
+        .where('u.job_position_id IN (:...jobPositionIds)', { jobPositionIds })
+        .getRawMany();
+      return rows.map((row) => Number(row.id)).filter(Number.isFinite);
     } catch {
       return [];
     }

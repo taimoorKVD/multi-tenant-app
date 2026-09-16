@@ -19,7 +19,7 @@ export const TenantDataCollectionTemplatesSwagger = {
               name: 'Manager Report',
               schema: {
                 formName: 'Manager Report',
-                assign: { mode: 'individual', users: [1], jobPosition: [2] },
+                assign: { mode: 'individual', users: null, jobPosition: [2] },
                 report: { mode: 'shared', users: null, jobPosition: [1] },
                 frequency: {
                   type: 'atOnce',
@@ -376,7 +376,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                 name: 'Manager Report',
                 status: 'active',
                 isActive: true,
-                schema: { assign: { mode: 'shared', users: [1], jobPosition: [2] }, sections: [] },
+                schema: { assign: { mode: 'shared', users: null, jobPosition: [2] }, sections: [] },
                 createdBy: 1,
                 createdAt: '2026-07-15T10:00:00.000Z',
               },
