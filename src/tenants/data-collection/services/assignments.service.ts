@@ -267,8 +267,9 @@ export class AssignmentsService {
       const isTodayStatus = query.status === 'today';
       if (query.status && !isTodayStatus) {
         qb.andWhere('assignment.status = :status', { status: query.status });
-      } else if (mineOnly && !isTodayStatus) {
-        // Hide cancelled rows from my-work unless explicitly requested.
+      } else if (mineOnly) {
+        // Hide cancelled from default my-work and from status=today (due-day view).
+        // Cancelled only appears when status=cancelled is requested explicitly.
         qb.andWhere('assignment.status != :cancelledStatus', {
           cancelledStatus: AssignmentStatus.CANCELLED,
         });

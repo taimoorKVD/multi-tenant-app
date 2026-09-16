@@ -605,6 +605,11 @@ describe('AssignmentsService findAll / findMyWork (today + date filters)', () =>
     );
     expect(statusCall).toBeUndefined();
 
+    // Today is a due-day filter, not a status — cancelled still belong on the cancelled tab.
+    expect(andWhereMock).toHaveBeenCalledWith('assignment.status != :cancelledStatus', {
+      cancelledStatus: AssignmentStatus.CANCELLED,
+    });
+
     jest.useRealTimers();
   });
 
