@@ -69,6 +69,9 @@ describe('Tenant DashboardService', () => {
           dueAt: dueToday,
           template: {
             name: 'Store Daily Checklist',
+            status: 'active',
+            isActive: true,
+            deletedAt: null,
             schema: { category: 'Store Operations' },
           },
         },
@@ -77,14 +80,24 @@ describe('Tenant DashboardService', () => {
         {
           id: 42,
           updatedAt: new Date('2026-08-12T12:05:00.000Z'),
-          template: { name: 'Inventory Report' },
+          template: {
+            name: 'Inventory Report',
+            status: 'active',
+            isActive: true,
+            deletedAt: null,
+          },
         },
       ])
       .mockResolvedValueOnce([
         {
           id: 45,
           createdAt: new Date('2026-08-12T11:30:00.000Z'),
-          template: { name: 'Store Weekly Audit' },
+          template: {
+            name: 'Store Weekly Audit',
+            status: 'active',
+            isActive: true,
+            deletedAt: null,
+          },
         },
       ]);
 
