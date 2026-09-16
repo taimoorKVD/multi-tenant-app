@@ -143,7 +143,7 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
     const multiUserTemplate = {
       ...template,
       schema: {
-        assign: { users: [101, 202], jobPosition: [] },
+        assign: { mode: 'individual', users: [101, 202], jobPosition: null },
         frequency: {
           type: 'recurring',
           date: '2026-09-01',
@@ -171,14 +171,19 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
     expect(created.every((a) => a.sharedGroupKey == null)).toBe(true);
   });
 
-  it('links shared assignees with the same sharedGroupKey per occurrence', async () => {
+  it('links shared assignees with the same sharedGroupKey when assign.mode=shared', async () => {
     const sharedTemplate = {
       ...template,
       schema: {
         assign: {
-          assignmentType: 'shared',
+          mode: 'shared',
           users: [101, 202],
-          jobPosition: [],
+          jobPosition: null,
+        },
+        report: {
+          mode: 'shared',
+          users: null,
+          jobPosition: [4],
         },
         frequency: {
           type: 'atOnce',
@@ -203,6 +208,94 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       '10:20:2026-09-15T00:00:00.000Z:u:101',
       '10:20:2026-09-15T00:00:00.000Z:u:202',
     ]);
+  });
+
+  it('accepts frontend payload with users:null and assign.mode=individual', async () => {
+    const jpUsers = [
+      { entityId: 11, data: { jobPosition: 4 } },
+      { entityId: 12, data: { jobPosition: 4 } },
+      { entityId: 99, data: { jobPosition: 9 } },
+    ];
+    req.tenantConnection.getRepository = jest.fn((entity) => {
+      if (entity?.name === 'DynamicModule') {
+        return { findOne: jest.fn().mockResolvedValue({ id: 1, slug: 'users' }) };
+      }
+      if (entity?.name === 'EntityDynamicData') {
+        return { find: jest.fn().mockResolvedValue(jpUsers) };
+      }
+      return assignmentRepo;
+    });
+
+    const frontendPayloadTemplate = {
+      ...template,
+      schema: {
+        assign: {
+          jobPosition: [4],
+          users: null,
+          mode: 'individual',
+        },
+        report: {
+          jobPosition: [4],
+          users: null,
+          mode: 'shared',
+        },
+        frequency: {
+          type: 'atOnce',
+          date: '2026-09-15',
+          recurring: null,
+        },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      frontendPayloadTemplate,
+      { id: 20, schemaSnapshot: frontendPayloadTemplate.schema } as any,
+      1,
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created.map((a) => a.assigneeUserId).sort()).toEqual([11, 12]);
+    expect(created.every((a) => a.assignmentType === 'individual')).toBe(true);
+    expect(created.every((a) => a.sharedGroupKey == null)).toBe(true);
+  });
+
+  it('uses assign.mode=shared with users:null + jobPosition', async () => {
+    const jpUsers = [
+      { entityId: 11, data: { jobPosition: 4 } },
+      { entityId: 12, data: { jobPosition: 4 } },
+    ];
+    req.tenantConnection.getRepository = jest.fn((entity) => {
+      if (entity?.name === 'DynamicModule') {
+        return { findOne: jest.fn().mockResolvedValue({ id: 1, slug: 'users' }) };
+      }
+      if (entity?.name === 'EntityDynamicData') {
+        return { find: jest.fn().mockResolvedValue(jpUsers) };
+      }
+      return assignmentRepo;
+    });
+
+    const sharedJpTemplate = {
+      ...template,
+      schema: {
+        assign: { jobPosition: [4], users: null, mode: 'shared' },
+        report: { jobPosition: [4], users: null, mode: 'individual' },
+        frequency: { type: 'atOnce', date: '2026-09-15', recurring: null },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      sharedJpTemplate,
+      { id: 20, schemaSnapshot: sharedJpTemplate.schema } as any,
+      1,
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created.every((a) => a.assignmentType === 'shared')).toBe(true);
+    expect(created.every((a) => a.sharedGroupKey === '10:20:2026-09-15T00:00:00.000Z:shared')).toBe(
+      true,
+    );
   });
 
   it('throws when frequency produces no dates (atOnce without date)', async () => {

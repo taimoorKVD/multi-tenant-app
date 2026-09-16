@@ -22,7 +22,8 @@ import {
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
 import {
   buildAssignmentCompletion,
-  resolveAssignmentType,
+  normalizeIdList,
+  resolveAssignReportMode,
 } from '../utils/assignment-completion.util';
 import { FrequencyService } from './frequency.service';
 
@@ -203,6 +204,7 @@ export class AssignmentsService {
 
     return {
       ...assignment,
+      mode: assignment.assignmentType || AssignmentType.INDIVIDUAL,
       formName,
       templateName: formName,
       submissionId: submissionPayload?.id ?? null,
@@ -416,10 +418,10 @@ export class AssignmentsService {
     const schema = (template.schema || version.schemaSnapshot || {}) as Record<string, any>;
     const assign = schema.assign || {};
     const frequency = schema.frequency;
-    const assignmentType = resolveAssignmentType(assign.assignmentType);
+    const assignmentType = resolveAssignReportMode(assign);
 
-    const userIds = new Set<number>((assign.users || []).map(Number).filter(Number.isFinite));
-    const jobPositionIds: number[] = (assign.jobPosition || []).map(Number).filter(Number.isFinite);
+    const userIds = new Set<number>(normalizeIdList(assign.users));
+    const jobPositionIds = normalizeIdList(assign.jobPosition);
 
     for (const jpId of jobPositionIds) {
       const resolved = await this.resolveUsersByJobPosition(req, jpId);

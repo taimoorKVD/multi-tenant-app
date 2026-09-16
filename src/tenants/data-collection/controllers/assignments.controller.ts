@@ -63,6 +63,7 @@ export class AssignmentsController {
             dueAt: '2026-09-15T00:00:00.000Z',
             status: 'completed',
             assignmentType: 'shared',
+            mode: 'shared',
             sharedGroupKey: '1:1:2026-09-15T00:00:00.000Z:shared',
             completedByUserId: 9,
             completedAt: '2026-09-15T14:10:00.000Z',
