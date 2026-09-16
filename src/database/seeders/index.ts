@@ -17,3 +17,6 @@ export * from './016-billing-plans.seeder';
 export * from './017-data-collection-restaurant-templates.seeder';
 export * from './018-reporting-category-permissions.seeder';
 export * from './019-tenant.seeder';
+export * from './020-tenant-job-positions.seeder';
+export * from './021-vendors.seeder';
+export * from './022-items.seeder';

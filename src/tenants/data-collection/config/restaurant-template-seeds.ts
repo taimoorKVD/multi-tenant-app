@@ -39,8 +39,8 @@ export const RESTAURANT_DC_TEMPLATE_SEEDS: readonly RestaurantTemplateSeed[] = [
   {
     name: 'Daily Kitchen Checklist',
     formName: 'Daily Kitchen Checklist',
-    assignJobPositions: ['Line Cook', 'Head Chef'],
-    reportJobPositions: ['Restaurant Manager', 'Head Chef'],
+    assignJobPositions: ['Kitchen Staff', 'Kitchen Manager'],
+    reportJobPositions: ['General Manager', 'Kitchen Manager'],
     sections: [
       {
         id: 'sec_kitchen_ops',
