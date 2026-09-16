@@ -64,7 +64,7 @@ describe('AuditLogService', () => {
       });
 
       expect(req._repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ ipAddress: '10.0.0.1, 10.0.0.2' }),
+        expect.objectContaining({ ipAddress: '10.0.0.1' }),
       );
     });
 

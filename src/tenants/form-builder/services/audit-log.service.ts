@@ -30,8 +30,19 @@ export class AuditLogService {
     if (!req?.tenantConnection) return;
 
     const repo = req.tenantConnection.getRepository(FormAuditLog);
+    const forwarded = req.headers?.['x-forwarded-for'];
+    const forwardedIp = Array.isArray(forwarded)
+      ? forwarded[0]
+      : typeof forwarded === 'string'
+        ? forwarded.split(',')[0]
+        : null;
     const ipAddress =
-      req.ip || req.headers?.['x-forwarded-for'] || req.connection?.remoteAddress || null;
+      forwardedIp ||
+      req.headers?.['x-real-ip'] ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      req.connection?.remoteAddress ||
+      null;
 
     await repo.save(
       repo.create({
@@ -40,7 +51,7 @@ export class AuditLogService {
         action: payload.action,
         oldValue: payload.oldValue ?? null,
         newValue: payload.newValue ?? null,
-        ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+        ipAddress: ipAddress ? String(ipAddress).trim().slice(0, 80) : null,
         createdBy: this.getActorId(req, payload.createdBy ?? null),
         updatedBy: this.getActorId(req, payload.createdBy ?? null),
       }),

@@ -150,7 +150,7 @@ describe('FormsService', () => {
       expect(result.success).toBe(true);
       expect(result.message).toBe('Form created successfully');
       expect(result.data.type).toBe('dynamic');
-      expect(auditLogService.log).toHaveBeenCalled();
+      expect(auditLogService.log).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when module not found', async () => {
@@ -174,7 +174,7 @@ describe('FormsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.message).toBe('Form updated successfully');
-      expect(auditLogService.log).toHaveBeenCalled();
+      expect(auditLogService.log).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when form not found', async () => {
@@ -198,7 +198,7 @@ describe('FormsService', () => {
       expect(result.message).toBe('Form deleted successfully');
       expect(result.deletedId).toBe(1);
       expect(r.formRepo.softDelete).toHaveBeenCalledWith({ id: 1 });
-      expect(auditLogService.log).toHaveBeenCalled();
+      expect(auditLogService.log).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when form not found', async () => {

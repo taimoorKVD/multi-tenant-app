@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { tenantDatabaseConfig } from '../../config/tenant-database.config';
+import { installTenantAuditTriggers } from '../helpers/tenant-audit';
 
 export const tenantConnections: Record<string, DataSource> = {};
 
@@ -59,6 +60,8 @@ export async function getTenantDataSource(dbName: string): Promise<DataSource> {
   } catch {
     // Table may not exist yet on very first sync.
   }
+
+  await installTenantAuditTriggers(dataSource);
 
   tenantConnections[dbName] = dataSource;
   console.log(`✅ Tenant DB connected: ${dbName}`);
