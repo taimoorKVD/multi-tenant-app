@@ -40,6 +40,7 @@ describe('display helpers', () => {
     expect(formatModuleDisplayName('data-collection')).toBe('Form Template');
     expect(formatPermissionActionName('create-user')).toBe('Create');
     expect(formatPermissionActionName('archive-dc-template')).toBe('Archive');
+    expect(formatPermissionActionName('activate-dc-template')).toBe('Restore');
     expect(formatPermissionActionName('view-dc-assignment')).toBe('View');
     expect(formatPermissionActionName('complete-dc-assignment')).toBe('Submit');
     expect(formatPermissionActionName('review-dc-submission')).toBe('Review');

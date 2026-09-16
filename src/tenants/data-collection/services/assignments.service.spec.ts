@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { AssignmentStatus } from '../entities/enums';
+import { AssignmentCancelReason, AssignmentStatus } from '../entities/enums';
 import { AssignmentsService } from './assignments.service';
 import { FrequencyService } from './frequency.service';
 
@@ -81,7 +81,12 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       '2026-09-06',
     ]);
     expect(created.every((a) => a.assigneeUserId === 101)).toBe(true);
-    expect(created.every((a) => a.status === AssignmentStatus.PENDING)).toBe(true);
+    expect(
+      created.every(
+        (a) =>
+          a.status === AssignmentStatus.PENDING || a.status === AssignmentStatus.OVERDUE,
+      ),
+    ).toBe(true);
     expect(created[0].occurrenceKey).toBe('10:20:2026-09-02T00:00:00.000Z:u:101');
     expect(created[4].occurrenceKey).toBe('10:20:2026-09-06T00:00:00.000Z:u:101');
   });
@@ -232,6 +237,191 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
 
     expect(created).toEqual([]);
     expect(saveMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('AssignmentsService materializeFromTemplate (restore rules)', () => {
+  const frequencyService = new FrequencyService();
+  let service: AssignmentsService;
+  let findOneMock: jest.Mock;
+  let createMock: jest.Mock;
+  let saveMock: jest.Mock;
+  let assignmentRepo: any;
+  let req: any;
+
+  const dueAt = new Date('2027-09-15T00:00:00.000Z');
+  const occurrenceKey = '10:20:2027-09-15T00:00:00.000Z:u:101';
+
+  const template = {
+    id: 10,
+    schema: {
+      assign: { users: [101], jobPosition: [] },
+      frequency: { type: 'atOnce', date: '2027-09-15', recurring: null },
+    },
+  } as any;
+
+  const version = { id: 20, schemaSnapshot: template.schema } as any;
+
+  beforeEach(() => {
+    findOneMock = jest.fn().mockResolvedValue(null);
+    createMock = jest.fn((row) => ({ ...row }));
+    saveMock = jest.fn(async (row) => ({ id: row.id ?? 1, ...row }));
+    assignmentRepo = {
+      findOne: findOneMock,
+      create: createMock,
+      save: saveMock,
+    };
+    req = {
+      user: { id: 1 },
+      tenantConnection: {
+        getRepository: jest.fn((entity) => {
+          if (entity?.name === 'DynamicModule' || entity?.name === 'EntityDynamicData') {
+            return { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
+          }
+          return assignmentRepo;
+        }),
+      },
+    };
+    service = new AssignmentsService(frequencyService);
+  });
+
+  it('reactivates template_archived cancelled assignments', async () => {
+    findOneMock.mockResolvedValue({
+      id: 5,
+      occurrenceKey,
+      status: AssignmentStatus.CANCELLED,
+      cancelReason: AssignmentCancelReason.TEMPLATE_ARCHIVED,
+      dueAt,
+      completedByUserId: null,
+      completedAt: null,
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created).toHaveLength(1);
+    expect(saveMock).toHaveBeenCalled();
+    expect(created[0].status).toBe(AssignmentStatus.PENDING);
+    expect(created[0].cancelReason).toBeNull();
+    expect(created[0].occurrenceKey).toBe(occurrenceKey);
+  });
+
+  it('reactivates legacy cancelled rows with null cancelReason', async () => {
+    findOneMock.mockResolvedValue({
+      id: 5,
+      occurrenceKey,
+      status: AssignmentStatus.CANCELLED,
+      cancelReason: null,
+      dueAt,
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created[0].status).toBe(AssignmentStatus.PENDING);
+    expect(created[0].cancelReason).toBeNull();
+  });
+
+  it('does not resurrect completed assignments', async () => {
+    findOneMock.mockResolvedValue({
+      id: 5,
+      occurrenceKey,
+      status: AssignmentStatus.COMPLETED,
+      cancelReason: null,
+      dueAt,
+      completedByUserId: 101,
+      completedAt: dueAt,
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created[0].status).toBe(AssignmentStatus.COMPLETED);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses open assignments without creating duplicates', async () => {
+    findOneMock.mockResolvedValue({
+      id: 5,
+      occurrenceKey,
+      status: AssignmentStatus.IN_PROGRESS,
+      cancelReason: null,
+      dueAt,
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created[0].id).toBe(5);
+    expect(created[0].status).toBe(AssignmentStatus.IN_PROGRESS);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('creates :reopen key when manual-cancelled blocks the occurrence', async () => {
+    findOneMock.mockImplementation(async ({ where }: any) => {
+      if (where.occurrenceKey === occurrenceKey) {
+        return {
+          id: 5,
+          occurrenceKey,
+          status: AssignmentStatus.CANCELLED,
+          cancelReason: AssignmentCancelReason.MANUAL,
+          dueAt,
+        };
+      }
+      return null;
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created[0].occurrenceKey).toBe(`${occurrenceKey}:reopen`);
+    expect(created[0].status).toBe(AssignmentStatus.PENDING);
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ occurrenceKey: `${occurrenceKey}:reopen` }),
+    );
+  });
+
+  it('reuses existing :reopen open assignment on second rematerialize (idempotent)', async () => {
+    findOneMock.mockImplementation(async ({ where }: any) => {
+      if (where.occurrenceKey === occurrenceKey) {
+        return {
+          id: 5,
+          occurrenceKey,
+          status: AssignmentStatus.CANCELLED,
+          cancelReason: AssignmentCancelReason.MANUAL,
+          dueAt,
+        };
+      }
+      if (where.occurrenceKey === `${occurrenceKey}:reopen`) {
+        return {
+          id: 9,
+          occurrenceKey: `${occurrenceKey}:reopen`,
+          status: AssignmentStatus.PENDING,
+          cancelReason: null,
+          dueAt,
+        };
+      }
+      return null;
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created[0].id).toBe(9);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('does not resurrect republish-cancelled rows on the same key', async () => {
+    findOneMock.mockImplementation(async ({ where }: any) => {
+      if (where.occurrenceKey === occurrenceKey) {
+        return {
+          id: 5,
+          occurrenceKey,
+          status: AssignmentStatus.CANCELLED,
+          cancelReason: AssignmentCancelReason.REPUBLISH,
+          dueAt,
+        };
+      }
+      return null;
+    });
+
+    const created = await service.materializeFromTemplate(req, template, version, 1);
+
+    expect(created[0].occurrenceKey).toBe(`${occurrenceKey}:reopen`);
   });
 });
 

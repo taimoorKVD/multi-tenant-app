@@ -5,6 +5,7 @@ export { DataCollectionSubmission } from './data-collection-submission.entity';
 export {
   TemplateStatus,
   AssignmentStatus,
+  AssignmentCancelReason,
   AssignmentType,
   AssignmentCompletionState,
   SubmissionStatus,

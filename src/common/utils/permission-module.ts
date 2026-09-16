@@ -159,6 +159,9 @@ export function formatPermissionActionName(permissionName: string): string {
     return titleCase(name.split('-')[0] || name);
   }
 
+  // activate-dc-template also gates restore; show Restore in Job Position / role UIs.
+  if (name === 'activate-dc-template') return 'Restore';
+
   const action = name.split('-')[0] || name;
   return titleCase(action);
 }

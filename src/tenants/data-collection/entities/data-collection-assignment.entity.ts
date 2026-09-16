@@ -9,7 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { AssignmentStatus, AssignmentType } from './enums';
+import { AssignmentCancelReason, AssignmentStatus, AssignmentType } from './enums';
 import { DataCollectionTemplate } from './data-collection-template.entity';
 import { TemplateVersion } from './template-version.entity';
 
@@ -50,6 +50,18 @@ export class DataCollectionAssignment {
 
   @Column({ type: 'enum', enum: AssignmentStatus, default: AssignmentStatus.PENDING })
   status!: AssignmentStatus;
+
+  /**
+   * Set when status becomes cancelled. Null for non-cancelled rows.
+   * Restore rematerialize may reactivate only `template_archived` (and legacy null).
+   */
+  @Column({
+    type: 'enum',
+    enum: AssignmentCancelReason,
+    name: 'cancel_reason',
+    nullable: true,
+  })
+  cancelReason!: AssignmentCancelReason | null;
 
   @Column({
     type: 'enum',

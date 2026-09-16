@@ -349,7 +349,7 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiOperation({
         summary: 'Restore archived template',
         description:
-          'Restores an archived template. If a published version exists, rematerializes employee assignments so the form reappears on the employee portal.',
+          'Restores an archived template to active (or draft if unpublished). Rematerializes the current schedule: reactivates archive-cancelled occurrences, never reopens completed or manually cancelled rows, and is idempotent (no duplicate open assignments).',
       }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template restored successfully.' }),
