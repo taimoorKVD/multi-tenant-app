@@ -27,7 +27,7 @@ export class AssignmentsController {
   @ApiOperation({
     summary: "Today's Work",
     description:
-      'Lists assignments for the authenticated employee. Each item includes `formName`, `assignmentType`, `submissionId`, `submission`, and `completion` (employee-facing title/message for shared vs individual completed states). ' +
+      'Lists assignments for the authenticated employee. Each item includes `formName`, `mode`, `submissionId`, `submission`, and `completion` (employee-facing title/message for shared vs individual completed states). ' +
       'Use `status=today` and/or `date=YYYY-MM-DD` to filter by due calendar day (UTC). When both are sent, `date` selects the day.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -62,7 +62,6 @@ export class AssignmentsController {
             locationId: null,
             dueAt: '2026-09-15T00:00:00.000Z',
             status: 'completed',
-            assignmentType: 'shared',
             mode: 'shared',
             sharedGroupKey: '1:1:2026-09-15T00:00:00.000Z:shared',
             completedByUserId: 9,

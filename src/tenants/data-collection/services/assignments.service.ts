@@ -192,24 +192,28 @@ export class AssignmentsService {
     const completedAt = assignment.completedAt || submissionPayload?.submittedAt || null;
     const completedByUserId =
       assignment.completedByUserId ?? submissionPayload?.submittedBy ?? null;
+    const mode = assignment.assignmentType || AssignmentType.INDIVIDUAL;
     const completion = buildAssignmentCompletion({
       status: assignment.status,
-      assignmentType: assignment.assignmentType || AssignmentType.INDIVIDUAL,
+      assignmentType: mode,
       completedByUserId,
       completedAt,
       completedByName: options?.completedByName ?? null,
       viewerUserId: options?.viewerUserId ?? null,
     });
 
-    return {
+    // Expose `mode` only; drop legacy `assignmentType` from API payloads.
+    const payload = {
       ...assignment,
-      mode: assignment.assignmentType || AssignmentType.INDIVIDUAL,
+      mode,
       formName,
       templateName: formName,
       submissionId: submissionPayload?.id ?? null,
       submission: submissionPayload,
       completion,
     };
+    delete (payload as { assignmentType?: AssignmentType }).assignmentType;
+    return payload;
   }
 
   private async serializeAssignments(
