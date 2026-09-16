@@ -95,3 +95,19 @@ export function buildAssignmentCompletion(params: {
 export function resolveAssignmentType(raw: unknown): AssignmentType {
   return raw === AssignmentType.SHARED ? AssignmentType.SHARED : AssignmentType.INDIVIDUAL;
 }
+
+/**
+ * Resolve individual|shared from assign/report targets.
+ * Prefers frontend `mode`; falls back to legacy `assignmentType`.
+ */
+export function resolveAssignReportMode(
+  target: { mode?: unknown; assignmentType?: unknown } | null | undefined,
+): AssignmentType {
+  return resolveAssignmentType(target?.mode ?? target?.assignmentType);
+}
+
+/** Normalize users / jobPosition arrays when frontend sends null. */
+export function normalizeIdList(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter(Number.isFinite);
+}

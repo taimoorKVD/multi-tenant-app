@@ -9,6 +9,11 @@ import {
   toNodemailerLogoAttachments,
   type PreparedEmailLogo,
 } from '../../../mail/utils/email-logo.util';
+import { AssignmentType } from '../entities/enums';
+import {
+  normalizeIdList,
+  resolveAssignReportMode,
+} from '../utils/assignment-completion.util';
 
 export type DcMailRecipient = {
   id: number;
@@ -231,14 +236,16 @@ export class WorkflowActionsService {
       ? schema.workflow.actions
       : [{ type: 'notify', targets: 'report' }];
 
-    const results: Array<{ type: string; status: string; detail?: string }> = [];
+    const results: Array<{ type: string; status: string; detail?: string; mode?: string }> = [];
     const submitter = await this.resolveUser(req, context.submittedBy);
     const submittedAt = new Date().toISOString();
     const templateName = context.templateName || `Template #${context.templateId}`;
 
     for (const action of configured) {
       if (action.type === 'notify') {
-        const recipients = await this.resolveReportRecipients(req, schema.report || {});
+        const report = schema.report || {};
+        const reportMode = resolveAssignReportMode(report);
+        const recipients = await this.resolveReportRecipients(req, report);
         const withEmail = recipients.filter((r) => !!r.email);
 
         if (!withEmail.length) {
@@ -246,6 +253,7 @@ export class WorkflowActionsService {
             type: 'notify',
             status: 'skipped',
             detail: 'No report recipients with email',
+            mode: reportMode,
           });
           continue;
         }
@@ -254,37 +262,59 @@ export class WorkflowActionsService {
         let failed = 0;
         const preparedLogo = await prepareEmailLogo();
         const workspaceUrl = this.getTenantLoginUrl(req);
-        for (const recipient of withEmail) {
+        const fields = [
+          { label: 'Form', value: templateName },
+          {
+            label: 'Submitted by',
+            value: submitter?.name || submitter?.email || 'Unknown',
+          },
+          { label: 'Submitted at', value: submittedAt },
+          { label: 'Assignment ID', value: String(context.assignmentId) },
+          { label: 'Submission ID', value: String(context.submissionId) },
+        ];
+
+        if (reportMode === AssignmentType.SHARED) {
+          // One shared notification to the whole report group.
           const result = await this.sendDirectSmtpMail({
-            to: recipient.email!,
+            to: withEmail.map((r) => r.email!).join(', '),
             subject: `New submission: ${templateName}`,
             logo: preparedLogo,
             html: this.wrapHtml(
               'New Data Collection Submission',
-              `Hi ${emailEscape(recipient.name || recipient.email || '')}, a form was submitted and you were listed as a report recipient.`,
-              [
-                { label: 'Form', value: templateName },
-                {
-                  label: 'Submitted by',
-                  value: submitter?.name || submitter?.email || 'Unknown',
-                },
-                { label: 'Submitted at', value: submittedAt },
-                { label: 'Assignment ID', value: String(context.assignmentId) },
-                { label: 'Submission ID', value: String(context.submissionId) },
-              ],
+              `A form was submitted and your group was listed as shared report recipients.`,
+              fields,
               'Open Workspace',
               preparedLogo.logoSrc,
               workspaceUrl,
             ),
           });
-          if (result.status === 'failed') failed += 1;
-          else sent += 1;
+          if (result.status === 'failed') failed = withEmail.length;
+          else sent = withEmail.length;
+        } else {
+          for (const recipient of withEmail) {
+            const result = await this.sendDirectSmtpMail({
+              to: recipient.email!,
+              subject: `New submission: ${templateName}`,
+              logo: preparedLogo,
+              html: this.wrapHtml(
+                'New Data Collection Submission',
+                `Hi ${emailEscape(recipient.name || recipient.email || '')}, a form was submitted and you were listed as a report recipient.`,
+                fields,
+                'Open Workspace',
+                preparedLogo.logoSrc,
+                workspaceUrl,
+              ),
+            });
+            if (result.status === 'failed') failed += 1;
+            else sent += 1;
+          }
         }
 
         results.push({
           type: 'notify',
           status: failed && !sent ? 'failed' : failed ? 'partial' : 'sent',
-          detail: `Recipients emailed: ${sent}, failed: ${failed}`,
+          detail: `mode=${reportMode}; recipients emailed: ${sent}, failed: ${failed}`,
+          mode: reportMode,
         });
         continue;
       }
@@ -410,12 +440,12 @@ export class WorkflowActionsService {
 
   async resolveReportRecipients(
     req: any,
-    report: { users?: number[]; jobPosition?: number[] },
+    report: { users?: number[] | null; jobPosition?: number[] | null },
   ): Promise<DcMailRecipient[]> {
-    const userIds = new Set<number>((report.users || []).map(Number).filter(Number.isFinite));
+    const userIds = new Set<number>(normalizeIdList(report.users));
 
-    for (const jpId of report.jobPosition || []) {
-      const resolved = await this.resolveUsersByJobPosition(req, Number(jpId));
+    for (const jpId of normalizeIdList(report.jobPosition)) {
+      const resolved = await this.resolveUsersByJobPosition(req, jpId);
       resolved.forEach((id) => userIds.add(id));
     }
 

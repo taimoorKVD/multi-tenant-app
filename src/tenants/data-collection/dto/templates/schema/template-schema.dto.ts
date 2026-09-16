@@ -18,13 +18,13 @@ export class TemplateSchemaDto {
   @IsString()
   formName?: string;
 
-  @ApiPropertyOptional({ type: AssignReportTargetsDto, description: 'Who should fill out this form. Supports assignmentType individual|shared.' })
+  @ApiPropertyOptional({ type: AssignReportTargetsDto, description: 'Who should fill out this form. Supports mode individual|shared.' })
   @IsOptional()
   @ValidateNested()
   @Type(() => AssignReportTargetsDto)
   assign?: AssignReportTargetsDto;
 
-  @ApiPropertyOptional({ type: AssignReportTargetsDto, description: 'Who should receive the results.' })
+  @ApiPropertyOptional({ type: AssignReportTargetsDto, description: 'Who should receive the results. Supports mode individual|shared.' })
   @IsOptional()
   @ValidateNested()
   @Type(() => AssignReportTargetsDto)

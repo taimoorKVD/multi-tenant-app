@@ -6,6 +6,8 @@ import {
 import {
   buildAssignmentCompletion,
   formatAssignmentCompletedAt,
+  normalizeIdList,
+  resolveAssignReportMode,
   resolveAssignmentType,
 } from './assignment-completion.util';
 
@@ -15,6 +17,14 @@ describe('assignment-completion.util', () => {
   it('defaults unknown types to individual', () => {
     expect(resolveAssignmentType(undefined)).toBe(AssignmentType.INDIVIDUAL);
     expect(resolveAssignmentType('shared')).toBe(AssignmentType.SHARED);
+    expect(resolveAssignReportMode({ mode: 'shared' })).toBe(AssignmentType.SHARED);
+    expect(resolveAssignReportMode({ mode: 'individual' })).toBe(AssignmentType.INDIVIDUAL);
+    expect(resolveAssignReportMode({ assignmentType: 'shared' })).toBe(AssignmentType.SHARED);
+    expect(resolveAssignReportMode({ mode: 'individual', assignmentType: 'shared' })).toBe(
+      AssignmentType.INDIVIDUAL,
+    );
+    expect(normalizeIdList(null)).toEqual([]);
+    expect(normalizeIdList([4, '5', 'x'])).toEqual([4, 5]);
   });
 
   it('formats completed-at for employee copy', () => {

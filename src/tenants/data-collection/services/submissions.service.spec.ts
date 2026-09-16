@@ -146,3 +146,170 @@ describe('SubmissionsService findAll / findOne template enrichment', () => {
     await expect(service.findOne(req, 999)).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('SubmissionsService assign.mode shared completion', () => {
+  it('marks shared siblings completed when one assignee submits', async () => {
+    const runAfterSubmit = jest.fn().mockResolvedValue({ actions: [] });
+    const service = new SubmissionsService({ runAfterSubmit } as any);
+
+    const assignment = {
+      id: 5,
+      templateId: 1,
+      templateVersionId: 6,
+      status: 'pending',
+      assignmentType: 'shared',
+      sharedGroupKey: '1:6:2026-09-15T00:00:00.000Z:shared',
+    };
+
+    const updateExecute = jest.fn().mockResolvedValue({ affected: 2 });
+    const assignmentRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(assignment) // load assignment
+        .mockResolvedValueOnce(null), // assertSharedGroupOpen — no sibling completed
+      find: jest.fn().mockResolvedValue([{ id: 5, templateId: 1 }]),
+      createQueryBuilder: jest.fn(() => ({
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: updateExecute,
+      })),
+      save: jest.fn(),
+    };
+    const submissionRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((row) => row),
+      save: jest.fn(async (row) => ({ id: 77, ...row })),
+    };
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 6,
+        templateId: 1,
+        schemaSnapshot: { sections: [] },
+      }),
+      find: jest.fn().mockResolvedValue([
+        { id: 6, templateId: 1, schemaSnapshot: { sections: [] } },
+      ]),
+    };
+    const templateRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 1,
+        name: 'Shared Form',
+        schema: {},
+        status: 'active',
+        isActive: true,
+        deletedAt: null,
+      }),
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          name: 'Shared Form',
+          schema: {},
+          status: 'active',
+          isActive: true,
+          deletedAt: null,
+        },
+      ]),
+    };
+
+    const req = {
+      user: { id: 11 },
+      tenantConnection: {
+        getRepository: (entity: any) => {
+          if (entity === DataCollectionAssignment) return assignmentRepo;
+          if (entity === DataCollectionSubmission) return submissionRepo;
+          if (entity === TemplateVersion) return versionRepo;
+          if (entity === DataCollectionTemplate) return templateRepo;
+          return {};
+        },
+      },
+    };
+
+    const result = await service.create(req, 5, { answers: {}, submit: true } as any);
+
+    expect(result.success).toBe(true);
+    expect(updateExecute).toHaveBeenCalled();
+    expect(assignmentRepo.save).not.toHaveBeenCalled();
+    expect(runAfterSubmit).toHaveBeenCalled();
+  });
+
+  it('completes only the current assignment when assign.mode is individual', async () => {
+    const runAfterSubmit = jest.fn().mockResolvedValue({ actions: [] });
+    const service = new SubmissionsService({ runAfterSubmit } as any);
+
+    const assignment = {
+      id: 5,
+      templateId: 1,
+      templateVersionId: 6,
+      status: 'pending',
+      assignmentType: 'individual',
+      sharedGroupKey: null,
+    };
+
+    const assignmentRepo = {
+      findOne: jest.fn().mockResolvedValue(assignment),
+      find: jest.fn().mockResolvedValue([{ id: 5, templateId: 1 }]),
+      createQueryBuilder: jest.fn(),
+      save: jest.fn(async (row) => row),
+    };
+    const submissionRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((row) => row),
+      save: jest.fn(async (row) => ({ id: 77, ...row })),
+    };
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 6,
+        templateId: 1,
+        schemaSnapshot: { sections: [] },
+      }),
+      find: jest.fn().mockResolvedValue([
+        { id: 6, templateId: 1, schemaSnapshot: { sections: [] } },
+      ]),
+    };
+    const templateRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 1,
+        name: 'Individual Form',
+        schema: {},
+        status: 'active',
+        isActive: true,
+        deletedAt: null,
+      }),
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          name: 'Individual Form',
+          schema: {},
+          status: 'active',
+          isActive: true,
+          deletedAt: null,
+        },
+      ]),
+    };
+
+    const req = {
+      user: { id: 11 },
+      tenantConnection: {
+        getRepository: (entity: any) => {
+          if (entity === DataCollectionAssignment) return assignmentRepo;
+          if (entity === DataCollectionSubmission) return submissionRepo;
+          if (entity === TemplateVersion) return versionRepo;
+          if (entity === DataCollectionTemplate) return templateRepo;
+          return {};
+        },
+      },
+    };
+
+    await service.create(req, 5, { answers: {}, submit: true } as any);
+
+    expect(assignmentRepo.createQueryBuilder).not.toHaveBeenCalled();
+    expect(assignmentRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        completedByUserId: 11,
+      }),
+    );
+  });
+});

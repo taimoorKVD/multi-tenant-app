@@ -19,8 +19,8 @@ export const TenantDataCollectionTemplatesSwagger = {
               name: 'Manager Report',
               schema: {
                 formName: 'Manager Report',
-                assign: { assignmentType: 'individual', users: [1], jobPosition: [2] },
-                report: { users: [3], jobPosition: [1] },
+                assign: { mode: 'individual', users: [1], jobPosition: [2] },
+                report: { mode: 'shared', users: null, jobPosition: [1] },
                 frequency: {
                   type: 'atOnce',
                   date: '2026-08-21',
@@ -142,8 +142,8 @@ export const TenantDataCollectionTemplatesSwagger = {
               isActive: true,
               schema: {
                 formName: 'Form 1',
-                assign: { assignmentType: 'individual', users: [3], jobPosition: null },
-                report: { users: [3], jobPosition: null },
+                assign: { mode: 'individual', users: [3], jobPosition: null },
+                report: { mode: 'individual', users: [3], jobPosition: null },
                 frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
                 sections: [
                   {
@@ -206,8 +206,8 @@ export const TenantDataCollectionTemplatesSwagger = {
               name: 'Form 1',
               schema: {
                 formName: 'Form 1',
-                assign: { assignmentType: 'individual', users: [3], jobPosition: null },
-                report: { users: [3], jobPosition: null },
+                assign: { mode: 'individual', users: [3], jobPosition: null },
+                report: { mode: 'individual', users: [3], jobPosition: null },
                 frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
                 sections: [
                   {
@@ -259,8 +259,8 @@ export const TenantDataCollectionTemplatesSwagger = {
               status: 'active',
               schema: {
                 formName: 'Form 1',
-                assign: { assignmentType: 'individual', users: [3], jobPosition: null },
-                report: { users: [3], jobPosition: null },
+                assign: { mode: 'individual', users: [3], jobPosition: null },
+                report: { mode: 'individual', users: [3], jobPosition: null },
                 frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
                 sections: [
                   {
@@ -376,7 +376,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                 name: 'Manager Report',
                 status: 'active',
                 isActive: true,
-                schema: { assign: { assignmentType: 'shared', users: [1], jobPosition: [2] }, sections: [] },
+                schema: { assign: { mode: 'shared', users: [1], jobPosition: [2] }, sections: [] },
                 createdBy: 1,
                 createdAt: '2026-07-15T10:00:00.000Z',
               },

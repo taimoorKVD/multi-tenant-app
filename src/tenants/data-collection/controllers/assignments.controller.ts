@@ -63,6 +63,7 @@ export class AssignmentsController {
             dueAt: '2026-09-15T00:00:00.000Z',
             status: 'completed',
             assignmentType: 'shared',
+            mode: 'shared',
             sharedGroupKey: '1:1:2026-09-15T00:00:00.000Z:shared',
             completedByUserId: 9,
             completedAt: '2026-09-15T14:10:00.000Z',
@@ -96,7 +97,12 @@ export class AssignmentsController {
 
   @Post('mark-overdue')
   @TenantAccess('edit-dc-template')
-  @ApiOperation({ summary: 'Mark past-due pending/in-progress assignments as overdue' })
+  @ApiOperation({
+    summary: 'Mark past-due pending/in-progress assignments as overdue',
+    description:
+      'Marks open assignments overdue only after their due calendar day (UTC) has ended. ' +
+      'Also heals same-day rows that were incorrectly marked overdue earlier.',
+  })
   markOverdue(@Req() req: any) {
     return this.assignmentsService.markOverdue(req);
   }
