@@ -10,6 +10,7 @@ import {
   DataCollectionSubmission,
   DataCollectionTemplate,
   SubmissionStatus,
+  TemplateStatus,
 } from '../data-collection/entities';
 import { ReportingGroup } from '../reporting-groups/entities';
 
@@ -134,6 +135,15 @@ export class DashboardService {
       schema.sections?.[0]?.name;
     if (typeof category === 'string' && category.trim()) return category.trim();
     return 'Data Collection';
+  }
+
+  private isEmployeeVisibleTemplate(template?: DataCollectionTemplate | null): boolean {
+    return Boolean(
+      template &&
+        !template.deletedAt &&
+        template.isActive &&
+        template.status === TemplateStatus.ACTIVE,
+    );
   }
 
   private humanizeAction(action: string, entityType: string): { title: string; description: string } {
@@ -265,7 +275,9 @@ export class DashboardService {
         }),
       ]);
 
-    const todaysAssignments = todayAssignments.map((assignment) => {
+    const todaysAssignments = todayAssignments
+      .filter((assignment) => this.isEmployeeVisibleTemplate(assignment.template))
+      .map((assignment) => {
       const title = assignment.template?.name || 'Assignment';
       return {
         id: assignment.id,
@@ -316,6 +328,7 @@ export class DashboardService {
     }
 
     for (const assignment of recentStarted) {
+      if (!this.isEmployeeVisibleTemplate(assignment.template)) continue;
       const title = assignment.template?.name || 'assignment';
       activityMap.set(`started-${assignment.id}`, {
         id: `started-${assignment.id}`,
@@ -328,6 +341,7 @@ export class DashboardService {
     }
 
     for (const assignment of recentAssigned) {
+      if (!this.isEmployeeVisibleTemplate(assignment.template)) continue;
       const title = assignment.template?.name || 'assignment';
       activityMap.set(`assigned-${assignment.id}`, {
         id: `assigned-${assignment.id}`,

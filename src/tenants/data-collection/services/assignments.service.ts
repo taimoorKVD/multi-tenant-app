@@ -9,6 +9,7 @@ import { In } from 'typeorm';
 import { DynamicModule, EntityDynamicData } from '../../form-builder/entities';
 import { User } from '../../users/entities';
 import {
+  AssignmentCancelReason,
   AssignmentStatus,
   AssignmentType,
   DataCollectionAssignment,
@@ -396,6 +397,12 @@ export class AssignmentsService {
    * Materialize assignments from template schema.assign + schema.frequency.
    * Idempotent via occurrenceKey unique constraint.
    *
+   * Restore / republish rules for an existing occurrenceKey:
+   * - open → reuse
+   * - completed → leave unchanged (do not create a duplicate open row)
+   * - cancelled + template_archived (or legacy null) → reactivate
+   * - cancelled + manual / republish → keep cancelled; create `:reopen` key if needed
+   *
    * Individual: one open task per assignee × occurrence.
    * Shared: one row per assignee × occurrence, linked by sharedGroupKey so any
    * one submission completes the whole group.
@@ -457,33 +464,179 @@ export class AssignmentsService {
             ? [template.id, version.id, dueIso, 'shared'].join(':')
             : null;
 
-        const existing = await assignmentRepo.findOne({ where: { occurrenceKey } });
-        if (existing) {
-          created.push(existing);
-          continue;
-        }
-
-        const row = assignmentRepo.create({
+        const resolved = await this.resolveOrCreateOccurrence(assignmentRepo, {
+          occurrenceKey,
+          sharedGroupKey,
           templateId: template.id,
           templateVersionId: version.id,
           assigneeUserId: target.userId,
           jobPositionId: target.jobPositionId,
           dueAt,
-          status: AssignmentStatus.PENDING,
           assignmentType,
-          sharedGroupKey,
-          completedByUserId: null,
-          completedAt: null,
-          occurrenceKey,
-          createdBy: actorId,
-          updatedBy: actorId,
+          actorId,
         });
-        const saved = await assignmentRepo.save(row);
-        created.push(saved);
+        created.push(resolved);
       }
     }
 
     return created;
+  }
+
+  private reopenOccurrenceKey(occurrenceKey: string): string {
+    return `${occurrenceKey}:reopen`;
+  }
+
+  private isOpenAssignmentStatus(status: AssignmentStatus): boolean {
+    return (
+      status === AssignmentStatus.PENDING ||
+      status === AssignmentStatus.IN_PROGRESS ||
+      status === AssignmentStatus.OVERDUE
+    );
+  }
+
+  /** Archive-cancelled (and legacy null) may be reactivated; manual/republish may not. */
+  private canReactivateCancelled(assignment: DataCollectionAssignment): boolean {
+    if (assignment.status !== AssignmentStatus.CANCELLED) return false;
+    return (
+      assignment.cancelReason == null ||
+      assignment.cancelReason === AssignmentCancelReason.TEMPLATE_ARCHIVED
+    );
+  }
+
+  private openStatusForDueAt(dueAt: Date): AssignmentStatus {
+    return dueAt.getTime() < Date.now() ? AssignmentStatus.OVERDUE : AssignmentStatus.PENDING;
+  }
+
+  private async reactivateAssignment(
+    assignmentRepo: any,
+    assignment: DataCollectionAssignment,
+    actorId: number | null,
+    sharedGroupKey: string | null,
+    assignmentType: AssignmentType,
+  ): Promise<DataCollectionAssignment> {
+    assignment.status = this.openStatusForDueAt(assignment.dueAt);
+    assignment.cancelReason = null;
+    assignment.assignmentType = assignmentType;
+    assignment.sharedGroupKey = sharedGroupKey;
+    assignment.completedByUserId = null;
+    assignment.completedAt = null;
+    assignment.updatedBy = actorId;
+    return assignmentRepo.save(assignment);
+  }
+
+  private async createAssignmentRow(
+    assignmentRepo: any,
+    params: {
+      occurrenceKey: string;
+      sharedGroupKey: string | null;
+      templateId: number;
+      templateVersionId: number;
+      assigneeUserId: number | null;
+      jobPositionId: number | null;
+      dueAt: Date;
+      assignmentType: AssignmentType;
+      actorId: number | null;
+    },
+  ): Promise<DataCollectionAssignment> {
+    const row = assignmentRepo.create({
+      templateId: params.templateId,
+      templateVersionId: params.templateVersionId,
+      assigneeUserId: params.assigneeUserId,
+      jobPositionId: params.jobPositionId,
+      dueAt: params.dueAt,
+      status: this.openStatusForDueAt(params.dueAt),
+      cancelReason: null,
+      assignmentType: params.assignmentType,
+      sharedGroupKey: params.sharedGroupKey,
+      completedByUserId: null,
+      completedAt: null,
+      occurrenceKey: params.occurrenceKey,
+      createdBy: params.actorId,
+      updatedBy: params.actorId,
+    });
+    return assignmentRepo.save(row);
+  }
+
+  /**
+   * Resolve a required schedule occurrence without duplicating open work or
+   * resurrecting completed / manually cancelled rows.
+   */
+  private async resolveOrCreateOccurrence(
+    assignmentRepo: any,
+    params: {
+      occurrenceKey: string;
+      sharedGroupKey: string | null;
+      templateId: number;
+      templateVersionId: number;
+      assigneeUserId: number | null;
+      jobPositionId: number | null;
+      dueAt: Date;
+      assignmentType: AssignmentType;
+      actorId: number | null;
+    },
+  ): Promise<DataCollectionAssignment> {
+    const existing = await assignmentRepo.findOne({
+      where: { occurrenceKey: params.occurrenceKey },
+    });
+
+    if (!existing) {
+      return this.createAssignmentRow(assignmentRepo, params);
+    }
+
+    if (this.isOpenAssignmentStatus(existing.status)) {
+      return existing;
+    }
+
+    if (existing.status === AssignmentStatus.COMPLETED) {
+      // Occurrence already fulfilled — leave history intact.
+      return existing;
+    }
+
+    if (this.canReactivateCancelled(existing)) {
+      return this.reactivateAssignment(
+        assignmentRepo,
+        existing,
+        params.actorId,
+        params.sharedGroupKey,
+        params.assignmentType,
+      );
+    }
+
+    // Manual / republish cancelled — keep cancelled; use deterministic reopen key.
+    const reopenKey = this.reopenOccurrenceKey(params.occurrenceKey);
+    const reopenSharedGroupKey = params.sharedGroupKey
+      ? this.reopenOccurrenceKey(params.sharedGroupKey)
+      : null;
+    const reopenExisting = await assignmentRepo.findOne({ where: { occurrenceKey: reopenKey } });
+
+    if (!reopenExisting) {
+      return this.createAssignmentRow(assignmentRepo, {
+        ...params,
+        occurrenceKey: reopenKey,
+        sharedGroupKey: reopenSharedGroupKey,
+      });
+    }
+
+    if (this.isOpenAssignmentStatus(reopenExisting.status)) {
+      return reopenExisting;
+    }
+
+    if (reopenExisting.status === AssignmentStatus.COMPLETED) {
+      return reopenExisting;
+    }
+
+    if (this.canReactivateCancelled(reopenExisting)) {
+      return this.reactivateAssignment(
+        assignmentRepo,
+        reopenExisting,
+        params.actorId,
+        reopenSharedGroupKey,
+        params.assignmentType,
+      );
+    }
+
+    // Reopen slot itself was manually cancelled again — leave it; no further clones.
+    return reopenExisting;
   }
 
   private async resolveUsersByJobPosition(req: any, jobPositionId: number): Promise<number[]> {
@@ -560,7 +713,10 @@ export class AssignmentsService {
     const qb = repo
       .createQueryBuilder()
       .update(DataCollectionAssignment)
-      .set({ status: AssignmentStatus.CANCELLED })
+      .set({
+        status: AssignmentStatus.CANCELLED,
+        cancelReason: AssignmentCancelReason.REPUBLISH,
+      })
       .where('template_id = :templateId', { templateId })
       .andWhere('status IN (:...statuses)', {
         statuses: [
@@ -587,7 +743,10 @@ export class AssignmentsService {
     await repo
       .createQueryBuilder()
       .update(DataCollectionAssignment)
-      .set({ status: AssignmentStatus.CANCELLED })
+      .set({
+        status: AssignmentStatus.CANCELLED,
+        cancelReason: AssignmentCancelReason.TEMPLATE_ARCHIVED,
+      })
       .where('template_id = :templateId', { templateId })
       .andWhere('status IN (:...statuses)', {
         statuses: [

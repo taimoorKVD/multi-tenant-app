@@ -12,6 +12,16 @@ export enum AssignmentStatus {
   CANCELLED = 'cancelled',
 }
 
+/** Why an assignment was cancelled — drives restore rematerialization rules. */
+export enum AssignmentCancelReason {
+  /** Open work cancelled because the template was archived/deleted. */
+  TEMPLATE_ARCHIVED = 'template_archived',
+  /** Cancelled by an explicit admin/employee action. */
+  MANUAL = 'manual',
+  /** Cancelled when a newer template version was published. */
+  REPUBLISH = 'republish',
+}
+
 /** How assignees share responsibility for a form occurrence. */
 export enum AssignmentType {
   /** Each assignee must complete their own copy. */

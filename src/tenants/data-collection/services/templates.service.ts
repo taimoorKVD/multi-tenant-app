@@ -428,7 +428,8 @@ export class TemplatesService {
 
   /**
    * Restore an archived template so it can appear on the employee portal again.
-   * Rematerializes assignments when a published version exists.
+   * Rematerializes from the published version using restore-safe occurrence rules
+   * (reactivate archive-cancelled; never reopen completed or manually cancelled).
    */
   async restore(req: any, id: number) {
     try {
