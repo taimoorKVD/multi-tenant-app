@@ -29,7 +29,8 @@ export class AssignReportTargetsDto {
     type: [Number],
     nullable: true,
     example: [1, 5],
-    description: 'User IDs who should fill out or receive results. Null/empty when using job positions.',
+    description:
+      'User IDs. Mutually exclusive with jobPosition — send users OR jobPosition, not both.',
   })
   @IsOptional()
   @IsArray()
@@ -42,7 +43,7 @@ export class AssignReportTargetsDto {
     nullable: true,
     example: [2],
     description:
-      'Job position IDs (users with matching position are included). Null/empty when using explicit users.',
+      'Job position IDs. Mutually exclusive with users. Expands to every user with that job_position_id.',
   })
   @IsOptional()
   @IsArray()

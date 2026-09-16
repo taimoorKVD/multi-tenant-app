@@ -13,8 +13,8 @@ export class CreateTemplateDto {
     description:
       'Complete template schema: assign, report, frequency, and sections (Form Details → Assign & Report → Frequency). Stored as JSON — field props like `value` are preserved.',
     example: {
-      assign: { users: [1], jobPosition: [2] },
-      report: { users: [3], jobPosition: [1] },
+      assign: { mode: 'individual', users: [1], jobPosition: null },
+      report: { mode: 'shared', users: null, jobPosition: [1] },
       frequency: {
         type: 'atOnce',
         date: '2026-08-21',

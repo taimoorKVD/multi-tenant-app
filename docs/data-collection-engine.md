@@ -38,7 +38,9 @@ Matches the dual-column wizard:
 | **Report To** → Users | `report.users[]` | Who receives submission results |
 | **Report To** → Job Positions | `report.jobPosition[]` | Report recipients from job position |
 
-Both columns support searching users and job positions (IDs stored in schema).
+Both columns support searching users and job positions (IDs stored in schema). **Users and Job Positions are mutually exclusive** (selecting one disables the other in the UI; backend rejects both).
+
+When **Job Positions** are selected, the backend expands them via `users.job_position_id` and creates a task for **every user** in those positions (individual = one task each; shared = one linked group).
 
 **Modes**
 

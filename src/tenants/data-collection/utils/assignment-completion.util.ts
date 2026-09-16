@@ -111,3 +111,31 @@ export function normalizeIdList(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.map(Number).filter(Number.isFinite);
 }
+
+/**
+ * Assign / Report To are mutually exclusive: Users XOR Job Positions.
+ * Matches the frontend (selecting one disables the other).
+ */
+export function parseExclusiveAssignReportTargets(
+  target: { users?: unknown; jobPosition?: unknown } | null | undefined,
+): { users: number[]; jobPosition: number[]; hasUsers: boolean; hasJobPositions: boolean } {
+  const users = normalizeIdList(target?.users);
+  const jobPosition = normalizeIdList(target?.jobPosition);
+  return {
+    users,
+    jobPosition,
+    hasUsers: users.length > 0,
+    hasJobPositions: jobPosition.length > 0,
+  };
+}
+
+export function assertExclusiveAssignReportTargets(
+  target: { users?: unknown; jobPosition?: unknown } | null | undefined,
+  label: 'Assign' | 'Report To',
+): { users: number[]; jobPosition: number[] } {
+  const parsed = parseExclusiveAssignReportTargets(target);
+  if (parsed.hasUsers && parsed.hasJobPositions) {
+    throw new Error(`Choose either Users or Job Positions for ${label} — not both.`);
+  }
+  return { users: parsed.users, jobPosition: parsed.jobPosition };
+}

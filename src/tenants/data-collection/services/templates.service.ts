@@ -9,6 +9,7 @@ import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../enti
 import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
 import { AssignmentsService } from './assignments.service';
 import { WorkflowActionsService } from './workflow-actions.service';
+import { parseExclusiveAssignReportTargets } from '../utils/assignment-completion.util';
 
 @Injectable()
 export class TemplatesService {
@@ -86,10 +87,25 @@ export class TemplatesService {
    * Mutates schema.frequency in place so the stored snapshot keeps a concrete start date.
    */
   private ensurePublishableSchema(schema: Record<string, any>) {
-    if (!schema.assign || (!(schema.assign.users?.length) && !(schema.assign.jobPosition?.length))) {
+    const assign = parseExclusiveAssignReportTargets(schema.assign);
+    if (assign.hasUsers && assign.hasJobPositions) {
+      throw new BadRequestException(
+        'Choose either Users or Job Positions for Assign — not both.',
+      );
+    }
+    if (!assign.hasUsers && !assign.hasJobPositions) {
       throw new BadRequestException(
         'Assign step requires at least one user or job position before publishing',
       );
+    }
+
+    if (schema.report) {
+      const report = parseExclusiveAssignReportTargets(schema.report);
+      if (report.hasUsers && report.hasJobPositions) {
+        throw new BadRequestException(
+          'Choose either Users or Job Positions for Report To — not both.',
+        );
+      }
     }
 
     if (!schema.frequency || typeof schema.frequency !== 'object') {
