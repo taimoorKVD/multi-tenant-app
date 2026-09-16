@@ -631,3 +631,63 @@ describe('AssignmentsService findAll / findMyWork (today + date filters)', () =>
     });
   });
 });
+
+describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', () => {
+  let service: AssignmentsService;
+
+  beforeEach(() => {
+    service = new AssignmentsService(new FrequencyService());
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('keeps same-day UTC midnight dueAts as pending, not overdue', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-16T17:25:00.000Z'));
+
+    const dueToday = new Date('2026-09-16T00:00:00.000Z');
+    const dueYesterday = new Date('2026-09-15T00:00:00.000Z');
+
+    expect((service as any).openStatusForDueAt(dueToday)).toBe(AssignmentStatus.PENDING);
+    expect((service as any).openStatusForDueAt(dueYesterday)).toBe(AssignmentStatus.OVERDUE);
+  });
+
+  it('marks overdue only when due_at is before start of today UTC', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-16T17:25:00.000Z'));
+
+    const executeMock = jest.fn().mockResolvedValue({ affected: 2 });
+    const andWhereMock = jest.fn().mockReturnThis();
+    const whereMock = jest.fn().mockReturnThis();
+    const setMock = jest.fn().mockReturnThis();
+    const updateMock = jest.fn().mockReturnThis();
+    const qb = {
+      update: updateMock,
+      set: setMock,
+      where: whereMock,
+      andWhere: andWhereMock,
+      execute: executeMock,
+    };
+
+    const req = {
+      tenantConnection: {
+        getRepository: jest.fn(() => ({
+          createQueryBuilder: jest.fn(() => qb),
+        })),
+      },
+    };
+
+    const result = await service.markOverdue(req);
+
+    expect(andWhereMock).toHaveBeenCalledWith('due_at < :startOfToday', {
+      startOfToday: new Date('2026-09-16T00:00:00.000Z'),
+    });
+    expect(andWhereMock).toHaveBeenCalledWith('due_at >= :startOfToday', {
+      startOfToday: new Date('2026-09-16T00:00:00.000Z'),
+    });
+    expect(result.data.affected).toBe(2);
+    expect(executeMock).toHaveBeenCalledTimes(3);
+  });
+});

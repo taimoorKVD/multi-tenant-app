@@ -55,8 +55,9 @@ export class DashboardService {
     return Math.round((due - today) / (24 * 60 * 60 * 1000));
   }
 
-  private formatDueLabel(dueAt: Date, status: AssignmentStatus, now = new Date()): string {
-    if (status === AssignmentStatus.OVERDUE || this.dayDiffFromToday(dueAt, now) < 0) {
+  private formatDueLabel(dueAt: Date, _status: AssignmentStatus, now = new Date()): string {
+    // Prefer calendar day over stored status — dueAt is UTC midnight of the due day.
+    if (this.dayDiffFromToday(dueAt, now) < 0) {
       return 'Overdue';
     }
     const diff = this.dayDiffFromToday(dueAt, now);
@@ -66,8 +67,8 @@ export class DashboardService {
     return 'Due Today';
   }
 
-  private resolvePriority(dueAt: Date, status: AssignmentStatus, now = new Date()): AssignmentPriority {
-    if (status === AssignmentStatus.OVERDUE || this.dayDiffFromToday(dueAt, now) < 0) {
+  private resolvePriority(dueAt: Date, _status: AssignmentStatus, now = new Date()): AssignmentPriority {
+    if (this.dayDiffFromToday(dueAt, now) < 0) {
       return 'high';
     }
     const diff = this.dayDiffFromToday(dueAt, now);

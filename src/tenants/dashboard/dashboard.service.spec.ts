@@ -164,4 +164,106 @@ describe('Tenant DashboardService', () => {
     expect(data.overview.totalForms).toBe(19);
     expect(data.welcome).toBeUndefined();
   });
+
+  it('labels same-day UTC midnight dueAts as Due Today even when status is overdue', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-16T12:25:00.000Z'));
+
+    userRepo.findOne.mockResolvedValue({
+      id: 10,
+      name: 'Omais Ahmed',
+      role: { name: 'Employee', permissions: [{ name: 'view-dc-assignment' }] },
+    });
+
+    assignmentRepo.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+
+    assignmentRepo.find
+      .mockResolvedValueOnce([
+        {
+          id: 41,
+          templateId: 7,
+          status: AssignmentStatus.OVERDUE,
+          dueAt: new Date('2026-09-16T00:00:00.000Z'),
+          template: {
+            name: 'Daily Kitchen Checklist',
+            status: 'active',
+            isActive: true,
+            deletedAt: null,
+            schema: { category: 'Kitchen' },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    submissionRepo.find.mockResolvedValue([]);
+
+    const result = await service.getDashboard({
+      tenantConnection: connection,
+      tenantId: 'brian',
+      user: { id: 10 },
+    });
+    const data = result.data as any;
+
+    expect(data.todaysAssignments).toHaveLength(1);
+    expect(data.todaysAssignments[0].dueLabel).toBe('Due Today');
+    expect(data.todaysAssignments[0].status).toBe(AssignmentStatus.OVERDUE);
+    expect(data.todaysAssignments[0].priority).toBe('high');
+
+    jest.useRealTimers();
+  });
+
+  it('labels past calendar-day dueAts as Overdue', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-16T12:25:00.000Z'));
+
+    userRepo.findOne.mockResolvedValue({
+      id: 10,
+      name: 'Omais Ahmed',
+      role: { name: 'Employee', permissions: [{ name: 'view-dc-assignment' }] },
+    });
+
+    assignmentRepo.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+
+    assignmentRepo.find
+      .mockResolvedValueOnce([
+        {
+          id: 42,
+          templateId: 8,
+          status: AssignmentStatus.PENDING,
+          dueAt: new Date('2026-09-15T00:00:00.000Z'),
+          template: {
+            name: 'Yesterday Checklist',
+            status: 'active',
+            isActive: true,
+            deletedAt: null,
+            schema: { category: 'Kitchen' },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    submissionRepo.find.mockResolvedValue([]);
+
+    const result = await service.getDashboard({
+      tenantConnection: connection,
+      tenantId: 'brian',
+      user: { id: 10 },
+    });
+    const data = result.data as any;
+
+    expect(data.todaysAssignments[0].dueLabel).toBe('Overdue');
+    expect(data.todaysAssignments[0].priority).toBe('high');
+
+    jest.useRealTimers();
+  });
 });

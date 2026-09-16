@@ -505,8 +505,14 @@ export class AssignmentsService {
     );
   }
 
-  private openStatusForDueAt(dueAt: Date): AssignmentStatus {
-    return dueAt.getTime() < Date.now() ? AssignmentStatus.OVERDUE : AssignmentStatus.PENDING;
+  /**
+   * dueAt is stored as UTC midnight of the due calendar day, so overdue is
+   * "due day has fully passed", not "any time after midnight today".
+   */
+  private openStatusForDueAt(dueAt: Date, now = new Date()): AssignmentStatus {
+    return this.startOfDayUtc(dueAt).getTime() < this.startOfDayUtc(now).getTime()
+      ? AssignmentStatus.OVERDUE
+      : AssignmentStatus.PENDING;
   }
 
   private async reactivateAssignment(
@@ -684,7 +690,9 @@ export class AssignmentsService {
   async markOverdue(req: any) {
     try {
       const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
-      const now = new Date();
+      // Compare against start of today so same-day (UTC midnight) dueAts stay open all day.
+      const startOfToday = this.startOfDayUtc(new Date());
+
       const result = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
@@ -692,13 +700,35 @@ export class AssignmentsService {
         .where('status IN (:...statuses)', {
           statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
         })
-        .andWhere('due_at < :now', { now })
+        .andWhere('due_at < :startOfToday', { startOfToday })
+        .execute();
+
+      // Heal rows marked overdue too early under the old due_at < now rule.
+      const startedHealed = await repo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({ status: AssignmentStatus.IN_PROGRESS })
+        .where('status = :status', { status: AssignmentStatus.OVERDUE })
+        .andWhere('due_at >= :startOfToday', { startOfToday })
+        .andWhere('updated_at > created_at')
+        .execute();
+
+      const pendingHealed = await repo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({ status: AssignmentStatus.PENDING })
+        .where('status = :status', { status: AssignmentStatus.OVERDUE })
+        .andWhere('due_at >= :startOfToday', { startOfToday })
         .execute();
 
       return {
         success: true,
         message: 'Overdue assignments updated',
-        data: { affected: result.affected ?? 0 },
+        data: {
+          affected: result.affected ?? 0,
+          healed:
+            (startedHealed.affected ?? 0) + (pendingHealed.affected ?? 0),
+        },
       };
     } catch (error) {
       this.logger.error('markOverdue failed', error);
