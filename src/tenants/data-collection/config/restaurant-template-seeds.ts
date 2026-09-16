@@ -49,7 +49,7 @@ export const RESTAURANT_DC_TEMPLATE_SEEDS: readonly RestaurantTemplateSeed[] = [
         sortOrder: 1,
         rows: [
           {
-            id: 'row_food_item',
+            id: 'row_kitchen_ops',
             fields: [
               {
                 id: 'fld_food_item',
@@ -59,11 +59,6 @@ export const RESTAURANT_DC_TEMPLATE_SEEDS: readonly RestaurantTemplateSeed[] = [
                 required: true,
                 width: '100%',
               },
-            ],
-          },
-          {
-            id: 'row_shift',
-            fields: [
               {
                 id: 'fld_shift',
                 label: 'What is your shift?',
@@ -78,11 +73,6 @@ export const RESTAURANT_DC_TEMPLATE_SEEDS: readonly RestaurantTemplateSeed[] = [
                   { label: 'Night', value: 'night' },
                 ],
               },
-            ],
-          },
-          {
-            id: 'row_areas_cleaned',
-            fields: [
               {
                 id: 'fld_areas_cleaned',
                 label: 'Which areas were cleaned today?',
@@ -97,11 +87,6 @@ export const RESTAURANT_DC_TEMPLATE_SEEDS: readonly RestaurantTemplateSeed[] = [
                   { label: 'Washing Area', value: 'washing_area' },
                 ],
               },
-            ],
-          },
-          {
-            id: 'row_damaged_photo',
-            fields: [
               {
                 id: 'fld_damaged_photo',
                 label: 'Please upload a photo of any damaged or expired food item.',
