@@ -197,6 +197,8 @@ export class ItemsService extends TenantAbstractService<Item> {
       resolvedDynamic,
       {
         id: item.id,
+        // Dropdown optionSource uses labelKey: 'name'.
+        name: item.itemName,
         created_at: item.createdAt,
         updated_at: item.updatedAt,
       },

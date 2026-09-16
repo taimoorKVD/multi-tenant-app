@@ -10,6 +10,8 @@ import { TenantResetService } from './tenant-reset/tenant-reset.service';
 import { HealthController } from './health.controller';
 import { SystemModule } from './master/system/system.module';
 import { RealtimeModule } from './realtime';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { TenantAuditContextInterceptor } from './common/interceptors/tenant-audit-context.interceptor';
 
 
 @Module({
@@ -22,7 +24,13 @@ import { RealtimeModule } from './realtime';
         RealtimeModule,
   ],
   controllers: [AppController, HealthController],
-  providers: [TenantResetService],
+  providers: [
+    TenantResetService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantAuditContextInterceptor,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

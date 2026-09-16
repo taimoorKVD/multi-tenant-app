@@ -115,6 +115,8 @@ export class VendorsService extends TenantAbstractService<Vendor> {
       dynamicData,
       {
         id: vendor.id,
+        // Dropdown optionSource uses labelKey: 'name' (e.g. Item → Select Vendor).
+        name: vendor.vendorName,
         created_by: vendor.createdBy,
         updated_by: vendor.updatedBy,
         created_at: vendor.createdAt,

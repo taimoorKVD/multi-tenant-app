@@ -704,14 +704,6 @@ export class FormsService {
     );
     data.module = moduleEntity;
 
-    await this.auditLogService.log(req, {
-      entityType: 'form',
-      entityId: data.id,
-      action: 'create',
-      newValue: data as any,
-      createdBy: actor,
-    });
-
     return { success: true, message: 'Form created successfully', data: this.withFormType(data) };
   }
 
@@ -745,19 +737,10 @@ export class FormsService {
       throw new NotFoundException('Form not found');
     }
 
-    const oldValue = { ...entity } as any;
     entity.name = dto.name ?? entity.name;
     entity.updatedBy = this.getActorId(req, dto.updatedBy || null);
 
     const data = await repo.save(entity);
-    await this.auditLogService.log(req, {
-      entityType: 'form',
-      entityId: entity.id,
-      action: 'update',
-      oldValue,
-      newValue: data as any,
-      createdBy: this.getActorId(req),
-    });
 
     return { success: true, message: 'Form updated successfully', data: this.withFormType(data) };
   }
@@ -770,13 +753,6 @@ export class FormsService {
     }
 
     await repo.softDelete({ id });
-    await this.auditLogService.log(req, {
-      entityType: 'form',
-      entityId: entity.id,
-      action: 'soft_delete',
-      oldValue: entity as any,
-      createdBy: this.getActorId(req),
-    });
 
     return { success: true, message: 'Form deleted successfully', deletedId: id };
   }
@@ -797,17 +773,6 @@ export class FormsService {
     }
 
     await repo.softDelete({ id: In(foundIds) });
-
-    const actorId = this.getActorId(req);
-    for (const entity of entities) {
-      await this.auditLogService.log(req, {
-        entityType: 'form',
-        entityId: entity.id,
-        action: 'soft_delete',
-        oldValue: entity as any,
-        createdBy: actorId,
-      });
-    }
 
     return {
       success: true,

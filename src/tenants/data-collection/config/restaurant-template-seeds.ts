@@ -34,51 +34,81 @@ export type RestaurantTemplateSeed = {
   sections: TemplateSectionSeed[];
 };
 
-/** Simple sample data-collection template (1 Data Entry section). */
+/** Daily Kitchen Checklist template (1 section). */
 export const RESTAURANT_DC_TEMPLATE_SEEDS: readonly RestaurantTemplateSeed[] = [
   {
-    name: 'Sample Checklist',
-    formName: 'Sample Checklist',
-    assignJobPositions: ['Line Cook', 'Head Chef'],
-    reportJobPositions: ['Restaurant Manager', 'Head Chef'],
+    name: 'Daily Kitchen Checklist',
+    formName: 'Daily Kitchen Checklist',
+    assignJobPositions: ['Kitchen Staff', 'Kitchen Manager'],
+    reportJobPositions: ['General Manager', 'Kitchen Manager'],
     sections: [
       {
-        id: 'sec_data_entry',
-        type: SectionType.DATA_ENTRY,
-        name: 'Data Entry',
+        id: 'sec_kitchen_ops',
+        type: SectionType.CHECKLIST,
+        name: 'Daily Kitchen Operations Checklist',
         sortOrder: 1,
         rows: [
           {
-            id: 'row_data_entry',
+            id: 'row_food_item',
             fields: [
               {
-                id: 'fld_title',
-                label: 'Title',
-                name: 'title',
+                id: 'fld_food_item',
+                label: 'What food item was prepared today?',
+                name: 'food_item_prepared',
                 type: 'text',
                 required: true,
-                width: '25%',
+                width: '100%',
               },
+            ],
+          },
+          {
+            id: 'row_shift',
+            fields: [
               {
-                id: 'fld_category',
-                label: 'Category',
-                name: 'category',
-                type: 'select',
+                id: 'fld_shift',
+                label: 'What is your shift?',
+                name: 'shift',
+                type: 'radio',
                 required: true,
-                width: '25%',
+                width: '100%',
                 options: [
-                  { label: 'Kitchen', value: 'kitchen' },
-                  { label: 'Dining', value: 'dining' },
-                  { label: 'Bar', value: 'bar' },
+                  { label: 'Morning', value: 'morning' },
+                  { label: 'Afternoon', value: 'afternoon' },
+                  { label: 'Evening', value: 'evening' },
+                  { label: 'Night', value: 'night' },
                 ],
               },
+            ],
+          },
+          {
+            id: 'row_areas_cleaned',
+            fields: [
               {
-                id: 'fld_description',
-                label: 'Description',
-                name: 'description',
-                type: 'textarea',
+                id: 'fld_areas_cleaned',
+                label: 'Which areas were cleaned today?',
+                name: 'areas_cleaned',
+                type: 'checkbox',
+                required: true,
+                width: '100%',
+                options: [
+                  { label: 'Cooking Area', value: 'cooking_area' },
+                  { label: 'Preparation Area', value: 'preparation_area' },
+                  { label: 'Storage Area', value: 'storage_area' },
+                  { label: 'Washing Area', value: 'washing_area' },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'row_damaged_photo',
+            fields: [
+              {
+                id: 'fld_damaged_photo',
+                label: 'Please upload a photo of any damaged or expired food item.',
+                name: 'damaged_or_expired_photo',
+                type: 'image',
                 required: false,
-                width: '50%',
+                width: '100%',
               },
             ],
           },

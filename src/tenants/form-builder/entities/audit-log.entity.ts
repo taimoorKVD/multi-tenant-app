@@ -15,8 +15,11 @@ export class FormAuditLog {
   @Column({ type: 'varchar', name: 'entity_type', length: 120 })
   entityType!: string;
 
-  @Column({ type: 'int', name: 'entity_id' })
-  entityId!: number;
+  @Column({ type: 'int', name: 'entity_id', nullable: true })
+  entityId!: number | null;
+
+  @Column({ type: 'jsonb', name: 'entity_key', nullable: true })
+  entityKey!: Record<string, unknown> | null;
 
   @Column({ type: 'varchar', length: 80 })
   action!: string;
