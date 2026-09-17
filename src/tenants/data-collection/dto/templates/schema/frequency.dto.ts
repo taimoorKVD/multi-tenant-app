@@ -99,7 +99,11 @@ export class FrequencyRecurringDto {
   @Allow()
   repeat?: number | string | boolean;
 
-  /** UI: number of occurrences (maps to `repeat`). */
+  /**
+   * UI: number of occurrences (maps to `repeat`).
+   * `1` (Frequency card default) is treated as open-ended up to the expand cap —
+   * use type `atOnce` for a single due date, or set `repeatCount` ≥ 2 for a finite series.
+   */
   @IsOptional()
   @Allow()
   repeatCount?: number | string;

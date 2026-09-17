@@ -118,6 +118,7 @@ export class FrequencyService {
    * - `{ type: "atOnce", date: "2026-08-21", recurring: null }`
    * - Canonical `{ recurring: { interval, unit, repeat, monthlyRule? } }`
    * - UI Frequency card `{ recurring: { every, interval: "day", repeatCount, daysOfWeek, monthMode, ... } }`
+   *   (`repeatCount: 1` / omitted → open-ended up to maxOccurrences; use ≥2 for a finite series)
    * - Legacy `{ type: "one_time"|"recurring", startDate, schedule }`
    * Recurring without `date`/`startDate` anchors to today (UTC).
    */
@@ -231,14 +232,22 @@ export class FrequencyService {
   }
 
   private resolveRepeat(raw: FrequencyScheduleRaw, maxOccurrences: number): number {
-    if (raw.repeatCount != null && raw.repeatCount !== '') {
-      const n = Number(raw.repeatCount);
-      if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), maxOccurrences);
+    // Explicit open-ended (seeds / UI "Ends: Never").
+    if (
+      raw.repeat === true ||
+      String(raw.ends || raw.endType || '').toLowerCase() === 'never'
+    ) {
+      return maxOccurrences;
     }
 
-    // Seeds / open-ended: repeat: true → fill up to maxOccurrences.
-    if (raw.repeat === true) {
-      return maxOccurrences;
+    if (raw.repeatCount != null && raw.repeatCount !== '') {
+      const n = Number(raw.repeatCount);
+      if (Number.isFinite(n) && n >= 1) {
+        // Frequency UI defaults "Ends after" to 1 while configuring "every N days/weeks".
+        // A true one-shot belongs on atOnce — recurring × 1 means open-ended until capped.
+        if (Math.floor(n) === 1) return maxOccurrences;
+        return Math.min(Math.floor(n), maxOccurrences);
+      }
     }
 
     if (raw.repeat != null && raw.repeat !== '') {
@@ -246,7 +255,8 @@ export class FrequencyService {
       if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), maxOccurrences);
     }
 
-    return 1;
+    // Recurring with no end count → open-ended (capped).
+    return maxOccurrences;
   }
 
   private resolveDaysOfWeek(raw: FrequencyScheduleRaw): string[] {
@@ -321,15 +331,18 @@ export class FrequencyService {
         ? String(raw.yearMonth || raw.onTheMonth || raw.month || 'january').toLowerCase()
         : undefined;
 
-    // Only attach a rule when UI provided month-specific fields or unit is year.
+    // Only attach a rule when UI provided month-specific fields or an explicit monthlyRule.
     const hasUiMonthFields =
       raw.dayOfMonth != null ||
       raw.yearDay != null ||
       raw.yearMonth != null ||
       raw.monthMode != null ||
-      raw.month != null;
+      raw.month != null ||
+      raw.onTheMonth != null;
 
-    if (!hasUiMonthFields && unitKey === FrequencyUnit.MONTH) {
+    // Canonical `{ unit: "month"|"year", interval, repeat }` with no rule fields
+    // should keep the start date's day/month and only advance by interval.
+    if (!hasUiMonthFields) {
       return undefined;
     }
 
