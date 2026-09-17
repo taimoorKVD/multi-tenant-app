@@ -17,6 +17,8 @@ import {
 } from '../entities';
 import { CreateSubmissionDto, UpdateSubmissionDto } from '../dto/submissions/submission.dto';
 import { QuerySubmissionDto } from '../dto/submissions/query-submission.dto';
+import { buildAssignmentCompletion } from '../utils/assignment-completion.util';
+import { User } from '../../users/entities';
 import { WorkflowActionsService } from './workflow-actions.service';
 
 @Injectable()
@@ -79,14 +81,39 @@ export class SubmissionsService {
     return name || schemaName || null;
   }
 
+  private async loadUserNamesByIds(
+    req: any,
+    userIds: number[],
+  ): Promise<Map<number, string>> {
+    const map = new Map<number, string>();
+    const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) return map;
+
+    const userRepo = req.tenantConnection.getRepository(User);
+    const users: User[] = await userRepo.find({
+      where: { id: In(uniqueIds) },
+      select: ['id', 'name'],
+    });
+    for (const user of users) {
+      map.set(user.id, (user.name || '').trim() || `User #${user.id}`);
+    }
+    return map;
+  }
+
   /**
    * Enrich a submission with the full template payload for review UIs.
    * Prefers the pinned version schemaSnapshot so historical answers match the form layout.
+   * Also includes assignment `mode` and employee-facing `completion` (shared vs individual).
    */
   private serializeSubmissionResponse(
     submission: DataCollectionSubmission,
     template?: DataCollectionTemplate | null,
     version?: TemplateVersion | null,
+    assignment?: DataCollectionAssignment | null,
+    options?: {
+      viewerUserId?: number | null;
+      completedByName?: string | null;
+    },
   ) {
     const schema = (version?.schemaSnapshot ?? template?.schema ?? null) as Record<
       string,
@@ -112,6 +139,22 @@ export class SubmissionsService {
         : null,
     );
 
+    const mode = assignment?.assignmentType || AssignmentType.INDIVIDUAL;
+    const completedByUserId =
+      assignment?.completedByUserId ?? submission.submittedBy ?? null;
+    const completedAt =
+      assignment?.completedAt || submission.submittedAt || null;
+    const completion = assignment
+      ? buildAssignmentCompletion({
+          status: assignment.status,
+          assignmentType: mode,
+          completedByUserId,
+          completedAt,
+          completedByName: options?.completedByName ?? null,
+          viewerUserId: options?.viewerUserId ?? null,
+        })
+      : null;
+
     return {
       id: submission.id,
       assignmentId: submission.assignmentId,
@@ -130,6 +173,8 @@ export class SubmissionsService {
       templateName: formName,
       formName,
       template: templatePayload,
+      mode,
+      completion,
     };
   }
 
@@ -139,14 +184,14 @@ export class SubmissionsService {
   ): Promise<{
     templatesById: Map<number, DataCollectionTemplate>;
     versionsById: Map<number, TemplateVersion>;
-    templateIdByAssignmentId: Map<number, number>;
+    assignmentsById: Map<number, DataCollectionAssignment>;
   }> {
     const templatesById = new Map<number, DataCollectionTemplate>();
     const versionsById = new Map<number, TemplateVersion>();
-    const templateIdByAssignmentId = new Map<number, number>();
+    const assignmentsById = new Map<number, DataCollectionAssignment>();
 
     if (!submissions.length) {
-      return { templatesById, versionsById, templateIdByAssignmentId };
+      return { templatesById, versionsById, assignmentsById };
     }
 
     const assignmentIds = [
@@ -164,7 +209,7 @@ export class SubmissionsService {
       ? await assignmentRepo.find({ where: { id: In(assignmentIds) } })
       : [];
     for (const assignment of assignments) {
-      templateIdByAssignmentId.set(assignment.id, assignment.templateId);
+      assignmentsById.set(assignment.id, assignment);
     }
 
     const templateIds = [
@@ -185,18 +230,35 @@ export class SubmissionsService {
     for (const template of templates) templatesById.set(template.id, template);
     for (const version of versions) versionsById.set(version.id, version);
 
-    return { templatesById, versionsById, templateIdByAssignmentId };
+    return { templatesById, versionsById, assignmentsById };
   }
 
   private async enrichSubmissions(req: any, submissions: DataCollectionSubmission[]) {
-    const { templatesById, versionsById, templateIdByAssignmentId } =
+    const { templatesById, versionsById, assignmentsById } =
       await this.loadTemplateContext(req, submissions);
+    const viewerUserId = this.getActorId(req);
+
+    const completedByIds = submissions
+      .map((submission) => {
+        const assignment = assignmentsById.get(submission.assignmentId);
+        return assignment?.completedByUserId ?? submission.submittedBy ?? null;
+      })
+      .filter((id): id is number => id != null && Number.isFinite(id));
+
+    const namesById = await this.loadUserNamesByIds(req, completedByIds);
 
     return submissions.map((submission) => {
-      const templateId = templateIdByAssignmentId.get(submission.assignmentId);
+      const assignment = assignmentsById.get(submission.assignmentId) || null;
+      const templateId = assignment?.templateId;
       const template = templateId != null ? templatesById.get(templateId) || null : null;
       const version = versionsById.get(submission.templateVersionId) || null;
-      return this.serializeSubmissionResponse(submission, template, version);
+      const completedByUserId =
+        assignment?.completedByUserId ?? submission.submittedBy ?? null;
+      return this.serializeSubmissionResponse(submission, template, version, assignment, {
+        viewerUserId,
+        completedByName:
+          completedByUserId != null ? namesById.get(completedByUserId) || null : null,
+      });
     });
   }
 
@@ -319,7 +381,6 @@ export class SubmissionsService {
       });
 
       const saved = await submissionRepo.save(submission);
-      const [data] = await this.enrichSubmissions(req, [saved]);
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
       if (shouldSubmit) {
@@ -336,6 +397,9 @@ export class SubmissionsService {
           submittedBy: actorId,
         });
       }
+
+      // Enrich after completion so `mode` / `completion` reflect the final assignment state.
+      const [data] = await this.enrichSubmissions(req, [saved]);
 
       return {
         success: true,
@@ -399,7 +463,6 @@ export class SubmissionsService {
 
       submission.updatedBy = actorId;
       const saved = await submissionRepo.save(submission);
-      const [data] = await this.enrichSubmissions(req, [saved]);
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
       if (shouldSubmit && assignment) {
@@ -416,6 +479,9 @@ export class SubmissionsService {
           submittedBy: actorId,
         });
       }
+
+      // Enrich after completion so `mode` / `completion` reflect the final assignment state.
+      const [data] = await this.enrichSubmissions(req, [saved]);
 
       return {
         success: true,
