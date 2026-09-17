@@ -15,36 +15,36 @@ type JobPositionSeed = {
 /** Permission names aligned with tenant Admin role (019-tenant.seeder). */
 const ADMIN_PERMISSION_NAMES = [
   'create-user',
-  'edit-user',
   'view-user',
+  'edit-user',
   'delete-user',
   'create-role',
-  'edit-role',
   'view-role',
+  'edit-role',
   'delete-role',
   'create-job-position',
-  'edit-job-position',
   'view-job-position',
+  'edit-job-position',
   'delete-job-position',
   'create-location',
-  'edit-location',
   'view-location',
+  'edit-location',
   'delete-location',
   'create-vendor',
-  'edit-vendor',
   'view-vendor',
+  'edit-vendor',
   'delete-vendor',
   'create-reporting-group',
-  'edit-reporting-group',
   'view-reporting-group',
+  'edit-reporting-group',
   'delete-reporting-group',
   'create-item',
-  'edit-item',
   'view-item',
+  'edit-item',
   'delete-item',
   'create-permission',
-  'edit-permission',
   'view-permission',
+  'edit-permission',
   'delete-permission',
   'create-dc-template',
   'view-dc-template',
@@ -68,7 +68,7 @@ const EMPLOYEE_PERMISSION_NAMES = [
   'view-job-position',
 ] as const;
 
-/** Kitchen Manager: Employee base + view access for core modules. */
+/** Kitchen Manager: Employee base + view access for core modules + Task Review. */
 const KITCHEN_MANAGER_PERMISSION_NAMES = [
   ...EMPLOYEE_PERMISSION_NAMES,
   'view-user',
@@ -77,6 +77,7 @@ const KITCHEN_MANAGER_PERMISSION_NAMES = [
   'view-job-position',
   'view-location',
   'view-reporting-group',
+  'review-dc-submission',
 ] as const;
 
 const JOB_POSITION_SEEDS: readonly JobPositionSeed[] = [
