@@ -29,6 +29,38 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
   general: 'General',
 };
 
+/** Stable module order for job-position / permissions UI. */
+const MODULE_ORDER: readonly string[] = [
+  'users',
+  'jobpositions',
+  'locations',
+  'vendors',
+  'items',
+  'reporting-groups',
+  'template',
+  'form',
+  'mail',
+  'billing',
+  'tenants',
+  'general',
+];
+
+/**
+ * Action order within a module: Create, View, Edit, Delete, then extras.
+ * Keys are lowercased display labels from formatPermissionActionName.
+ */
+const PERMISSION_ACTION_ORDER: Record<string, number> = {
+  create: 10,
+  view: 20,
+  'view submission': 25,
+  edit: 30,
+  delete: 40,
+  restore: 50,
+  archive: 60,
+  submit: 70,
+  review: 80,
+};
+
 /**
  * Hidden from the grouped permissions API:
  * - roles (requested)
@@ -166,6 +198,30 @@ export function formatPermissionActionName(permissionName: string): string {
   return titleCase(action);
 }
 
+function moduleSortRank(moduleKey: string): number {
+  const index = MODULE_ORDER.indexOf(moduleKey);
+  return index === -1 ? MODULE_ORDER.length + 1 : index;
+}
+
+function permissionActionSortRank(permissionName: string, actionLabel: string): number {
+  const labelKey = String(actionLabel || '')
+    .trim()
+    .toLowerCase();
+  if (labelKey && PERMISSION_ACTION_ORDER[labelKey] != null) {
+    return PERMISSION_ACTION_ORDER[labelKey];
+  }
+
+  const action = String(permissionName || '')
+    .trim()
+    .toLowerCase()
+    .split('-')[0];
+  if (action && PERMISSION_ACTION_ORDER[action] != null) {
+    return PERMISSION_ACTION_ORDER[action];
+  }
+
+  return 999;
+}
+
 function joinWithOr(items: string[]): string {
   if (items.length <= 1) return items[0] || '';
   if (items.length === 2) return `${items[0]} or ${items[1]}`;
@@ -231,7 +287,13 @@ export function formatPermissionRecords<T extends { module?: string | Permission
 export function groupPermissionsByModule(
   permissions: Array<{ id: number; name: string; module?: string | PermissionModuleRef | null }>,
 ): GroupedPermissionModule[] {
-  const groups = new Map<string, GroupedPermissionModule>();
+  const groups = new Map<
+    string,
+    {
+      module: PermissionModuleRef;
+      permissions: Array<{ id: number; name: string; rawName: string }>;
+    }
+  >();
 
   for (const permission of permissions) {
     // Always group from the permission name so Task vs Form Template split is correct
@@ -254,11 +316,22 @@ export function groupPermissionsByModule(
     group.permissions.push({
       id: permission.id,
       name: formatPermissionActionName(permission.name),
+      rawName: permission.name,
     });
   }
 
-  return Array.from(groups.values()).map((group) => ({
-    ...group,
-    permissions: group.permissions.sort((a, b) => Number(a.id) - Number(b.id)),
-  }));
+  return Array.from(groups.entries())
+    .sort(([leftKey], [rightKey]) => moduleSortRank(leftKey) - moduleSortRank(rightKey))
+    .map(([, group]) => ({
+      module: group.module,
+      permissions: group.permissions
+        .sort((left, right) => {
+          const rankDiff =
+            permissionActionSortRank(left.rawName, left.name) -
+            permissionActionSortRank(right.rawName, right.name);
+          if (rankDiff !== 0) return rankDiff;
+          return Number(left.id) - Number(right.id);
+        })
+        .map(({ id, name }) => ({ id, name })),
+    }));
 }

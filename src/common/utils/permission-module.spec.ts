@@ -97,8 +97,8 @@ describe('display helpers', () => {
       {
         module: { name: 'Form Template' },
         permissions: [
-          { id: 6, name: 'Archive' },
           { id: 7, name: 'View' },
+          { id: 6, name: 'Archive' },
         ],
       },
       {
@@ -107,6 +107,38 @@ describe('display helpers', () => {
           { id: 8, name: 'View' },
           { id: 9, name: 'Submit' },
           { id: 11, name: 'Review' },
+        ],
+      },
+    ]);
+  });
+
+  it('orders module actions as Create, View, Edit, Delete', () => {
+    expect(
+      groupPermissionsByModule([
+        { id: 40, name: 'delete-vendor' },
+        { id: 10, name: 'create-vendor' },
+        { id: 30, name: 'edit-vendor' },
+        { id: 20, name: 'view-vendor' },
+        { id: 50, name: 'edit-user' },
+        { id: 51, name: 'create-user' },
+        { id: 52, name: 'view-user' },
+      ]),
+    ).toEqual([
+      {
+        module: { name: 'User' },
+        permissions: [
+          { id: 51, name: 'Create' },
+          { id: 52, name: 'View' },
+          { id: 50, name: 'Edit' },
+        ],
+      },
+      {
+        module: { name: 'Vendor' },
+        permissions: [
+          { id: 10, name: 'Create' },
+          { id: 20, name: 'View' },
+          { id: 30, name: 'Edit' },
+          { id: 40, name: 'Delete' },
         ],
       },
     ]);
