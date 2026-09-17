@@ -43,7 +43,40 @@ export class SubmissionsController {
   @ApiOperation({
     summary: 'List submissions (manager review)',
     description:
-      'Requires Task → Review (`review-dc-submission`). Each item includes employee `answers` plus the full `template` (schema from the pinned template version when available).',
+      'Requires Task → Review (`review-dc-submission`). Each item includes employee `answers`, full `template` (schema from the pinned template version when available), `mode` (individual|shared), and `completion` (employee-facing title/message for shared vs individual completed states).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Submissions fetched successfully.',
+    schema: {
+      example: {
+        success: true,
+        meta: { total: 1, page: 1, lastPage: 1 },
+        data: [
+          {
+            id: 10,
+            assignmentId: 5,
+            templateVersionId: 6,
+            submittedBy: 7,
+            answers: { fld_001: 'hello' },
+            status: 'submitted',
+            submittedAt: '2026-09-17T14:16:57.919Z',
+            templateId: 1,
+            formName: 'Manager Report',
+            mode: 'shared',
+            completion: {
+              state: 'completed_by_other',
+              title: 'Completed by another user',
+              message:
+                'This shared task was completed by Cyrus Mccarty on September 17, 2026 at 7:16 PM.',
+              completedByUserId: 7,
+              completedByName: 'Cyrus Mccarty',
+              completedAt: '2026-09-17T14:16:57.919Z',
+            },
+          },
+        ],
+      },
+    },
   })
   findAll(@Req() req: any, @Query() query: QuerySubmissionDto) {
     return this.submissionsService.findAll(req, query);
@@ -54,7 +87,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: 'Get submission by ID',
     description:
-      'Requires Task → Review (`review-dc-submission`). Returns the submission including employee `answers` and the full `template`.',
+      'Requires Task → Review (`review-dc-submission`). Returns the submission including employee `answers`, full `template`, `mode`, and `completion`.',
   })
   @ApiParam({ name: 'id', type: Number })
   findOne(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
