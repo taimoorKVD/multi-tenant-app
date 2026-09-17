@@ -97,6 +97,95 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
     expect(created[4].occurrenceKey).toBe('10:20:2026-09-06T00:00:00.000Z:u:101');
   });
 
+  it.each([
+    {
+      name: 'atOnce',
+      frequency: { type: 'atOnce', date: '2026-09-15', recurring: null },
+      expectedDates: ['2026-09-15'],
+    },
+    {
+      name: 'daily × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 1, interval: 'day', repeatCount: 3 },
+      },
+      expectedDates: ['2026-09-01', '2026-09-02', '2026-09-03'],
+    },
+    {
+      name: 'weekly × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 1, interval: 'week', repeatCount: 3, daysOfWeek: [] },
+      },
+      expectedDates: ['2026-09-01', '2026-09-08', '2026-09-15'],
+    },
+    {
+      name: 'weekly Mon/Wed × 2',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: {
+          every: 1,
+          interval: 'week',
+          repeatCount: 2,
+          daysOfWeek: ['monday', 'wednesday'],
+        },
+      },
+      expectedDates: ['2026-09-02', '2026-09-07'],
+    },
+    {
+      name: 'monthly dayOfMonth × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-10',
+        recurring: {
+          every: 1,
+          interval: 'month',
+          repeatCount: 3,
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 15,
+        },
+      },
+      expectedDates: ['2026-01-15', '2026-02-15', '2026-03-15'],
+    },
+    {
+      name: 'yearly dayOfMonth × 2',
+      frequency: {
+        type: 'recurring',
+        date: '2026-03-01',
+        recurring: {
+          every: 1,
+          interval: 'year',
+          repeatCount: 2,
+          monthMode: 'dayOfMonth',
+          yearMonth: 'january',
+          yearDay: 15,
+        },
+      },
+      expectedDates: ['2026-01-15', '2027-01-15'],
+    },
+  ])('materializes frequency case: $name', async ({ frequency, expectedDates }) => {
+    const caseTemplate = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [101], jobPosition: null },
+        frequency,
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      caseTemplate,
+      { id: 20, schemaSnapshot: caseTemplate.schema } as any,
+      1,
+    );
+
+    expect(created.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual(expectedDates);
+    expect(created.every((a) => a.assigneeUserId === 101)).toBe(true);
+  });
+
   it('creates assignments for monthly On the Third weekday × 2', async () => {
     const monthlyTemplate = {
       ...template,
@@ -214,6 +303,50 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       '10:20:2026-09-15T00:00:00.000Z:u:101',
       '10:20:2026-09-15T00:00:00.000Z:u:202',
     ]);
+  });
+
+  it('materializes next-day shared tasks when UI sends daily recurring with repeatCount:1', async () => {
+    const dailyShared = {
+      id: 10,
+      schema: {
+        formName: 'Daily Kitchen Checklist',
+        assign: { mode: 'shared', users: [7], jobPosition: null },
+        report: { mode: 'individual', users: null, jobPosition: [3, 2] },
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-17',
+          jobPosition: null,
+          recurring: {
+            every: 1,
+            interval: 'day',
+            repeatCount: 1,
+            daysOfWeek: [],
+            monthMode: 'dayOfMonth',
+            dayOfMonth: 1,
+            weekOrder: 'first',
+            onTheMonth: 'january',
+            yearDay: 1,
+            yearMonth: 'january',
+          },
+        },
+      },
+    } as any;
+
+    // Cap expansion via FrequencyService default is 100; assert at least day+1 exists.
+    const created = await service.materializeFromTemplate(
+      req,
+      dailyShared,
+      { id: 20, schemaSnapshot: dailyShared.schema } as any,
+      1,
+    );
+
+    expect(created.length).toBeGreaterThanOrEqual(2);
+    expect(created[0].dueAt.toISOString().slice(0, 10)).toBe('2026-09-17');
+    expect(created[1].dueAt.toISOString().slice(0, 10)).toBe('2026-09-18');
+    expect(created.every((a) => a.assignmentType === 'shared')).toBe(true);
+    expect(created.every((a) => a.assigneeUserId === 7)).toBe(true);
+    expect(created[0].sharedGroupKey).toBe('10:20:2026-09-17T00:00:00.000Z:shared');
+    expect(created[1].sharedGroupKey).toBe('10:20:2026-09-18T00:00:00.000Z:shared');
   });
 
   it('accepts frontend payload with users:null and assign.mode=individual', async () => {
