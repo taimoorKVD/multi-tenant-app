@@ -9,6 +9,7 @@ type JobPositionSeed = {
   name: string;
   department: string;
   role: 'Admin' | 'Employee';
+  permissionNames: readonly string[];
 };
 
 /** Permission names aligned with tenant Admin role (019-tenant.seeder). */
@@ -67,29 +68,49 @@ const EMPLOYEE_PERMISSION_NAMES = [
   'view-job-position',
 ] as const;
 
+/** Kitchen Manager: Employee base + view access for core modules. */
+const KITCHEN_MANAGER_PERMISSION_NAMES = [
+  ...EMPLOYEE_PERMISSION_NAMES,
+  'view-user',
+  'view-vendor',
+  'view-item',
+  'view-job-position',
+  'view-location',
+  'view-reporting-group',
+] as const;
+
 const JOB_POSITION_SEEDS: readonly JobPositionSeed[] = [
   {
     name: 'General Manager',
     department: 'Management',
     role: 'Admin',
+    permissionNames: ADMIN_PERMISSION_NAMES,
   },
   {
     name: 'Kitchen Manager',
     department: 'Kitchen',
     role: 'Employee',
+    permissionNames: KITCHEN_MANAGER_PERMISSION_NAMES,
   },
   {
     name: 'Kitchen Staff',
     department: 'Kitchen',
     role: 'Employee',
+    permissionNames: EMPLOYEE_PERMISSION_NAMES,
   },
 ];
 
 export class TenantJobPositionsSeeder implements ISeeder {
   name = 'TenantJobPositionsSeeder';
 
-  private permissionNamesForRole(role: JobPositionSeed['role']): readonly string[] {
-    return role === 'Admin' ? ADMIN_PERMISSION_NAMES : EMPLOYEE_PERMISSION_NAMES;
+  private resolvePermissions(
+    permissionByName: Map<string, Permission>,
+    permissionNames: readonly string[],
+  ): Permission[] {
+    const uniqueNames = [...new Set(permissionNames)];
+    return uniqueNames
+      .map((name) => permissionByName.get(name))
+      .filter((permission): permission is Permission => Boolean(permission));
   }
 
   async run() {
@@ -107,52 +128,57 @@ export class TenantJobPositionsSeeder implements ISeeder {
         const jobPositionRepo = tenantDataSource.getRepository(JobPosition);
         const permissionRepo = tenantDataSource.getRepository(Permission);
 
-        const existing = await jobPositionRepo.find({
-          where: { name: In(JOB_POSITION_SEEDS.map((seed) => seed.name)) },
-          select: { id: true, name: true },
-        });
-        const existingNames = new Set(existing.map((row) => row.name));
-
-        if (existingNames.size >= JOB_POSITION_SEEDS.length) {
-          console.log(
-            `⚠️  Tenant "${tenant.subdomain}": sample job positions already seeded. Skipping.`,
-          );
-          continue;
-        }
-
         const allPermissionNames = [
-          ...new Set(JOB_POSITION_SEEDS.flatMap((seed) => this.permissionNamesForRole(seed.role))),
+          ...new Set(JOB_POSITION_SEEDS.flatMap((seed) => seed.permissionNames)),
         ];
         const permissions = await permissionRepo.find({
           where: { name: In(allPermissionNames) },
         });
         const permissionByName = new Map(permissions.map((permission) => [permission.name, permission]));
 
+        const existing = await jobPositionRepo.find({
+          where: { name: In(JOB_POSITION_SEEDS.map((seed) => seed.name)) },
+          relations: ['permissions'],
+        });
+        const existingByName = new Map(existing.map((row) => [row.name, row]));
+
         let inserted = 0;
+        let updated = 0;
 
         for (const seed of JOB_POSITION_SEEDS) {
-          if (existingNames.has(seed.name)) continue;
-
-          const permissionNames = this.permissionNamesForRole(seed.role);
-          const assignedPermissions = permissionNames
-            .map((name) => permissionByName.get(name))
-            .filter((permission): permission is Permission => Boolean(permission));
-
-          await jobPositionRepo.save(
-            jobPositionRepo.create({
-              name: seed.name,
-              description: `Department: ${seed.department} | Role: ${seed.role}`,
-              permissions: assignedPermissions,
-            }),
+          const assignedPermissions = this.resolvePermissions(
+            permissionByName,
+            seed.permissionNames,
           );
+          const description = `Department: ${seed.department} | Role: ${seed.role}`;
+          const current = existingByName.get(seed.name);
 
-          inserted += 1;
+          if (!current) {
+            await jobPositionRepo.save(
+              jobPositionRepo.create({
+                name: seed.name,
+                description,
+                permissions: assignedPermissions,
+              }),
+            );
+            inserted += 1;
+            continue;
+          }
+
+          // Keep Kitchen Manager (and others) in sync when permission sets change.
+          current.description = description;
+          current.permissions = assignedPermissions;
+          await jobPositionRepo.save(current);
+          updated += 1;
         }
 
+        const parts: string[] = [];
+        if (inserted) parts.push(`seeded ${inserted}`);
+        if (updated) parts.push(`updated ${updated}`);
         console.log(
-          inserted
-            ? `✅ Tenant "${tenant.subdomain}": seeded ${inserted} job position(s).`
-            : `⚠️  Tenant "${tenant.subdomain}": no new job positions inserted.`,
+          parts.length
+            ? `✅ Tenant "${tenant.subdomain}": ${parts.join(', ')} job position(s).`
+            : `⚠️  Tenant "${tenant.subdomain}": no job position changes.`,
         );
       } catch (error) {
         console.error(
