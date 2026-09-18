@@ -124,7 +124,7 @@ jobs:
             echo "Running database baseline, migrations, and seed..."
 
             docker compose --profile maintenance run --rm maintenance sh -c \
-              "npm run migration:baseline && npm run migration:run && npm run seed:master"
+              "npm run migration:baseline && npm run migration:run"
 
             echo "Starting new backend..."
 
