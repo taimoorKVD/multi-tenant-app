@@ -342,9 +342,10 @@ export class AssignmentsService {
     }
   }
 
-  async start(req: any, id: number) {
+  async start(req: any, id: number, dto?: { answers?: Record<string, any> }) {
     try {
       const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const submissionRepo = req.tenantConnection.getRepository(DataCollectionSubmission);
       const assignment = await repo.findOne({
         where: { id },
         relations: ['template'],
@@ -383,10 +384,41 @@ export class AssignmentsService {
         }
       }
 
+      const actorId = this.getActorId(req);
       assignment.status = AssignmentStatus.IN_PROGRESS;
-      assignment.updatedBy = this.getActorId(req);
+      assignment.updatedBy = actorId;
       const saved = await repo.save(assignment);
-      const [data] = await this.serializeAssignments(req, [saved], this.getActorId(req));
+
+      // Persist / resume draft answers so leaving and returning keeps field state.
+      let draft = (
+        await submissionRepo.find({
+          where: { assignmentId: saved.id, status: SubmissionStatus.DRAFT },
+          order: { updatedAt: 'DESC' },
+          take: 1,
+        })
+      )[0];
+      if (draft) {
+        if (dto?.answers !== undefined) {
+          draft.answers = dto.answers;
+          draft.updatedBy = actorId;
+          draft = await submissionRepo.save(draft);
+        }
+      } else {
+        draft = await submissionRepo.save(
+          submissionRepo.create({
+            assignmentId: saved.id,
+            templateVersionId: saved.templateVersionId,
+            submittedBy: actorId,
+            answers: dto?.answers || {},
+            status: SubmissionStatus.DRAFT,
+            submittedAt: null,
+            createdBy: actorId,
+            updatedBy: actorId,
+          }),
+        );
+      }
+
+      const [data] = await this.serializeAssignments(req, [saved], actorId);
 
       return {
         success: true,
@@ -740,8 +772,39 @@ export class AssignmentsService {
   }
 
   /**
-   * Cancel open future assignments when republishing (optionally excluding the new version).
-   * Used so employees do not keep stale schedule rows from a previous version.
+   * Point open assignments at a newly published version without cancelling them.
+   * Used for form/report-only publishes so employees keep the same task status.
+   */
+  async retargetOpenAssignmentsToVersion(
+    req: any,
+    templateId: number,
+    templateVersionId: number,
+    actorId: number | null,
+  ) {
+    const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    await repo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({
+        templateVersionId,
+        updatedBy: actorId,
+      })
+      .where('template_id = :templateId', { templateId })
+      .andWhere('status IN (:...statuses)', {
+        statuses: [
+          AssignmentStatus.PENDING,
+          AssignmentStatus.IN_PROGRESS,
+          AssignmentStatus.OVERDUE,
+        ],
+      })
+      .execute();
+  }
+
+  /**
+   * Cancel open assignments when republishing after assign/frequency changes
+   * (optionally excluding the new version). Includes today + past overdue —
+   * due_at is stored as UTC midnight, so a wall-clock `due_at >= now` check
+   * incorrectly skips same-day open work.
    */
   async cancelFutureForTemplate(req: any, templateId: number, fromVersionId?: number) {
     const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
@@ -759,8 +822,7 @@ export class AssignmentsService {
           AssignmentStatus.IN_PROGRESS,
           AssignmentStatus.OVERDUE,
         ],
-      })
-      .andWhere('due_at >= :now', { now: new Date() });
+      });
 
     if (fromVersionId) {
       qb.andWhere('template_version_id != :versionId', { versionId: fromVersionId });

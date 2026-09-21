@@ -212,6 +212,7 @@ describe('SubmissionsService assign.mode shared completion', () => {
     };
     const submissionRepo = {
       findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([]),
       create: jest.fn((row) => row),
       save: jest.fn(async (row) => ({ id: 77, ...row })),
     };
@@ -307,6 +308,7 @@ describe('SubmissionsService assign.mode shared completion', () => {
     };
     const submissionRepo = {
       findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([]),
       create: jest.fn((row) => row),
       save: jest.fn(async (row) => ({ id: 77, ...row })),
     };
@@ -372,5 +374,115 @@ describe('SubmissionsService assign.mode shared completion', () => {
       state: 'completed',
       completedByUserId: 11,
     });
+  });
+
+  it('upserts draft answers so resume keeps previously inputted data', async () => {
+    const existingDraft = {
+      id: 40,
+      assignmentId: 5,
+      templateVersionId: 6,
+      answers: { fld_001: 'old' },
+      status: 'draft',
+      submittedAt: null,
+      submittedBy: 4,
+      updatedBy: 4,
+    };
+    const assignmentRow = {
+      id: 5,
+      templateId: 1,
+      templateVersionId: 6,
+      status: 'pending',
+      assignmentType: 'individual',
+      sharedGroupKey: null,
+    };
+    const assignmentRepo = {
+      findOne: jest.fn().mockResolvedValue(assignmentRow),
+      save: jest.fn(async (row) => row),
+      createQueryBuilder: jest.fn(),
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 5,
+          templateId: 1,
+          status: 'in_progress',
+          assignmentType: 'individual',
+          completedByUserId: null,
+          completedAt: null,
+        },
+      ]),
+    };
+    const submissionRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([existingDraft]),
+      create: jest.fn((row) => row),
+      save: jest.fn(async (row) => row),
+    };
+    const versionRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 6,
+        templateId: 1,
+        schemaSnapshot: { sections: [] },
+      }),
+      find: jest.fn().mockResolvedValue([
+        { id: 6, templateId: 1, schemaSnapshot: { sections: [] } },
+      ]),
+    };
+    const templateRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 1,
+        name: 'Form',
+        schema: {},
+        status: 'active',
+        isActive: true,
+        deletedAt: null,
+      }),
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          name: 'Form',
+          schema: {},
+          status: 'active',
+          isActive: true,
+          deletedAt: null,
+        },
+      ]),
+    };
+    const userRepo = { find: jest.fn().mockResolvedValue([]) };
+
+    const req = {
+      user: { id: 4 },
+      tenantConnection: {
+        getRepository: (entity: any) => {
+          if (entity === DataCollectionAssignment) return assignmentRepo;
+          if (entity === DataCollectionSubmission) return submissionRepo;
+          if (entity === TemplateVersion) return versionRepo;
+          if (entity === DataCollectionTemplate) return templateRepo;
+          if (entity === User) return userRepo;
+          return {};
+        },
+      },
+    };
+
+    const service = new SubmissionsService({
+      runAfterSubmit: jest.fn(),
+    } as any);
+
+    const result = await service.create(req, 5, {
+      answers: { fld_001: 'kept on leave' },
+      submit: false,
+    } as any);
+
+    expect(submissionRepo.create).not.toHaveBeenCalled();
+    expect(submissionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 40,
+        answers: { fld_001: 'kept on leave' },
+        status: 'draft',
+      }),
+    );
+    expect(assignmentRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'in_progress' }),
+    );
+    expect(result.message).toContain('Draft');
+    expect(result.data.answers).toEqual({ fld_001: 'kept on leave' });
   });
 });

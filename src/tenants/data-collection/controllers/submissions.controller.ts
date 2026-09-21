@@ -25,7 +25,9 @@ export class SubmissionsController {
   @TenantAccess('complete-dc-assignment')
   @ApiOperation({
     summary: 'Submit (or draft) answers for an assignment',
-    description: 'Validates required fields against the pinned template version when submit=true.',
+    description:
+      'Validates required fields against the pinned template version when submit=true. ' +
+      'When submit=false, upserts a single draft per assignment (resume-safe) and marks the task in progress.',
   })
   @ApiParam({ name: 'assignmentId', type: Number })
   @ApiBody({ type: CreateSubmissionDto })

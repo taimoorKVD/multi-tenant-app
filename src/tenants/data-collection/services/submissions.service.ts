@@ -333,6 +333,27 @@ export class SubmissionsService {
     await assignmentRepo.save(assignment);
   }
 
+  /**
+   * Ensure the assignment is in progress when the employee is actively filling it.
+   * Keeps overdue as overdue (still open work).
+   */
+  private async markAssignmentInProgressIfOpen(
+    assignmentRepo: any,
+    assignment: DataCollectionAssignment,
+    actorId: number | null,
+  ) {
+    if (
+      assignment.status === AssignmentStatus.PENDING ||
+      assignment.status === AssignmentStatus.IN_PROGRESS
+    ) {
+      if (assignment.status !== AssignmentStatus.IN_PROGRESS) {
+        assignment.status = AssignmentStatus.IN_PROGRESS;
+        assignment.updatedBy = actorId;
+        await assignmentRepo.save(assignment);
+      }
+    }
+  }
+
   async create(req: any, assignmentId: number, dto: CreateSubmissionDto) {
     try {
       const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
@@ -358,29 +379,59 @@ export class SubmissionsService {
       const version = await versionRepo.findOne({ where: { id: assignment.templateVersionId } });
       if (!version) throw new NotFoundException('Template version for assignment not found');
 
-      const existing = await submissionRepo.findOne({
+      const existingSubmitted = await submissionRepo.findOne({
         where: { assignmentId, status: SubmissionStatus.SUBMITTED },
       });
-      if (existing) {
+      if (existingSubmitted) {
         throw new BadRequestException('A submission already exists for this assignment');
       }
 
       const shouldSubmit = dto.submit !== false;
-      this.validateAnswers(version.schemaSnapshot, dto.answers || {}, shouldSubmit);
-
       const actorId = this.getActorId(req);
-      const submission = submissionRepo.create({
-        assignmentId,
-        templateVersionId: version.id,
-        submittedBy: actorId,
-        answers: dto.answers || {},
-        status: shouldSubmit ? SubmissionStatus.SUBMITTED : SubmissionStatus.DRAFT,
-        submittedAt: shouldSubmit ? new Date() : null,
-        createdBy: actorId,
-        updatedBy: actorId,
-      });
+      const incomingAnswers = dto.answers;
 
-      const saved = await submissionRepo.save(submission);
+      // Resume support: one draft per assignment — update it instead of creating duplicates.
+      const existingDraft = (
+        await submissionRepo.find({
+          where: { assignmentId, status: SubmissionStatus.DRAFT },
+          order: { updatedAt: 'DESC' },
+          take: 1,
+        })
+      )[0];
+
+      const mergedAnswers =
+        incomingAnswers !== undefined
+          ? incomingAnswers
+          : existingDraft?.answers || {};
+
+      this.validateAnswers(version.schemaSnapshot, mergedAnswers || {}, shouldSubmit);
+
+      let saved: DataCollectionSubmission;
+
+      if (existingDraft) {
+        if (incomingAnswers !== undefined) {
+          existingDraft.answers = incomingAnswers;
+        }
+        existingDraft.updatedBy = actorId;
+        if (shouldSubmit) {
+          existingDraft.status = SubmissionStatus.SUBMITTED;
+          existingDraft.submittedAt = new Date();
+          existingDraft.submittedBy = actorId;
+        }
+        saved = await submissionRepo.save(existingDraft);
+      } else {
+        const submission = submissionRepo.create({
+          assignmentId,
+          templateVersionId: version.id,
+          submittedBy: actorId,
+          answers: mergedAnswers || {},
+          status: shouldSubmit ? SubmissionStatus.SUBMITTED : SubmissionStatus.DRAFT,
+          submittedAt: shouldSubmit ? new Date() : null,
+          createdBy: actorId,
+          updatedBy: actorId,
+        });
+        saved = await submissionRepo.save(submission);
+      }
 
       let workflowResult: Awaited<ReturnType<WorkflowActionsService['runAfterSubmit']>> | undefined;
       if (shouldSubmit) {
@@ -396,6 +447,8 @@ export class SubmissionsService {
           schema: (version.schemaSnapshot || template?.schema || {}) as Record<string, any>,
           submittedBy: actorId,
         });
+      } else {
+        await this.markAssignmentInProgressIfOpen(assignmentRepo, assignment, actorId);
       }
 
       // Enrich after completion so `mode` / `completion` reflect the final assignment state.
@@ -478,6 +531,13 @@ export class SubmissionsService {
           schema: (version.schemaSnapshot || template?.schema || {}) as Record<string, any>,
           submittedBy: actorId,
         });
+      } else if (!shouldSubmit) {
+        const openAssignment =
+          assignment ||
+          (await assignmentRepo.findOne({ where: { id: submission.assignmentId } }));
+        if (openAssignment) {
+          await this.markAssignmentInProgressIfOpen(assignmentRepo, openAssignment, actorId);
+        }
       }
 
       // Enrich after completion so `mode` / `completion` reflect the final assignment state.

@@ -8,6 +8,7 @@ describe('TemplatesService', () => {
     materializeFromTemplate: jest.Mock;
     cancelFutureForTemplate: jest.Mock;
     cancelOpenAssignmentsForTemplate: jest.Mock;
+    retargetOpenAssignmentsToVersion: jest.Mock;
   };
 
   beforeEach(() => {
@@ -16,11 +17,45 @@ describe('TemplatesService', () => {
       materializeFromTemplate: jest.fn().mockResolvedValue([{ id: 1 }]),
       cancelFutureForTemplate: jest.fn().mockResolvedValue(undefined),
       cancelOpenAssignmentsForTemplate: jest.fn().mockResolvedValue(undefined),
+      retargetOpenAssignmentsToVersion: jest.fn().mockResolvedValue(undefined),
     };
     const workflowActions = {
       notifyAssigneesOnPublish: jest.fn().mockResolvedValue({ sent: 0, failed: 0, skipped: 0 }),
     };
-    service = new TemplatesService(assignmentsService as any, workflowActions as any);
+    const frequencyService = {
+      normalizeSchedule: jest.fn().mockImplementation((raw: any) => {
+        // Mirror FrequencyService enough for unit tests (UI + canonical shapes).
+        const unit =
+          typeof raw.interval === 'string'
+            ? raw.interval
+            : raw.unit || 'month';
+        const interval =
+          raw.every != null
+            ? Number(raw.every)
+            : typeof raw.interval === 'number'
+              ? raw.interval
+              : 1;
+        const repeat =
+          raw.repeatCount != null
+            ? Number(raw.repeatCount)
+            : raw.repeat != null && raw.repeat !== true
+              ? Number(raw.repeat)
+              : 100;
+        return {
+          interval: Number.isFinite(interval) && interval >= 1 ? interval : 1,
+          unit: String(unit).toLowerCase(),
+          repeat: Number.isFinite(repeat) && repeat >= 1 ? repeat : 100,
+          ...(Array.isArray(raw.daysOfWeek) && raw.daysOfWeek.length
+            ? { daysOfWeek: [...raw.daysOfWeek].map(String) }
+            : {}),
+        };
+      }),
+    };
+    service = new TemplatesService(
+      assignmentsService as any,
+      workflowActions as any,
+      frequencyService as any,
+    );
   });
 
   function buildRepos() {
@@ -236,7 +271,7 @@ describe('TemplatesService', () => {
       expect(req.versionRepo.save).not.toHaveBeenCalled();
     });
 
-    it('moves ACTIVE template to DRAFT when non-schedule schema changes without publish', async () => {
+    it('keeps ACTIVE status when form fields change without publish', async () => {
       const req = createReq();
       const existing = {
         id: 1,
@@ -249,9 +284,64 @@ describe('TemplatesService', () => {
       req.templateRepo.findOne.mockResolvedValue(existing);
       req.templateRepo.save.mockResolvedValueOnce(existing);
 
-      await service.update(req, 1, { schema: { ...fullSchema, sections: [] } as any });
+      await service.update(req, 1, {
+        schema: {
+          ...fullSchema,
+          sections: [{ id: 's1', name: 'Changed', type: 'custom', rows: [] }],
+        } as any,
+      });
 
-      expect(existing.status).toBe(TemplateStatus.DRAFT);
+      expect(existing.status).toBe(TemplateStatus.ACTIVE);
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+    });
+
+    it('keeps ACTIVE status when schema is saved with no meaningful changes', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const sameSchema = {
+        ...fullSchema,
+        assign: { jobPosition: null, users: [1], mode: 'individual' },
+        frequency: {
+          type: 'atOnce',
+          startDate: '2026-08-21',
+          jobPosition: null,
+          recurring: null,
+        },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save.mockResolvedValueOnce(existing);
+
+      await service.update(req, 1, { schema: sameSchema as any });
+
+      expect(existing.status).toBe(TemplateStatus.ACTIVE);
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+    });
+
+    it('keeps ACTIVE status when only template name / formName changes', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'Old Name',
+        schema: { ...fullSchema, formName: 'Old Name' },
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const nextSchema = { ...fullSchema, formName: 'New Name' };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save.mockResolvedValueOnce(existing);
+
+      await service.update(req, 1, { name: 'New Name', schema: nextSchema as any });
+
+      expect(existing.status).toBe(TemplateStatus.ACTIVE);
+      expect(existing.name).toBe('New Name');
       expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
     });
 
@@ -346,7 +436,7 @@ describe('TemplatesService', () => {
       });
 
       expect(result.message).toBe('Template updated successfully');
-      expect(existing.status).toBe(TemplateStatus.DRAFT);
+      expect(existing.status).toBe(TemplateStatus.ACTIVE);
       expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
     });
 
@@ -364,6 +454,7 @@ describe('TemplatesService', () => {
       req.templateRepo.save
         .mockResolvedValueOnce(existing)
         .mockResolvedValueOnce({ ...existing, status: TemplateStatus.ACTIVE });
+      // No prior active version → first publish rematerializes.
       req.versionRepo.findOne.mockResolvedValue(null);
 
       const result = await service.update(req, 1, { publish: true });
@@ -371,6 +462,188 @@ describe('TemplatesService', () => {
       expect(result.success).toBe(true);
       expect(result.message).toContain('published');
       expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+      expect(assignmentsService.cancelFutureForTemplate).toHaveBeenCalled();
+    });
+
+    it('keeps existing tasks when publish=true for form-only changes', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const nextSchema = {
+        ...fullSchema,
+        sections: [{ id: 's1', name: 'Updated', type: 'custom', rows: [] }],
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema })
+        .mockResolvedValueOnce({
+          ...existing,
+          schema: nextSchema,
+          status: TemplateStatus.ACTIVE,
+        });
+      req.versionRepo.findOne.mockResolvedValue({
+        id: 9,
+        templateId: 1,
+        isActive: true,
+        versionNumber: 1,
+        schemaSnapshot: fullSchema,
+      });
+
+      const result = await service.update(req, 1, {
+        schema: nextSchema as any,
+        publish: true,
+      });
+
+      expect(result.message).toContain('published');
+      expect(assignmentsService.cancelFutureForTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.retargetOpenAssignmentsToVersion).toHaveBeenCalled();
+    });
+
+    it('does not rematerialize when assign/frequency only differ cosmetically', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      // Same who/when, different key order / null vs [] / mode alias / startDate alias.
+      const nextSchema = {
+        sections: fullSchema.sections,
+        report: fullSchema.report,
+        assign: { jobPosition: [], users: [1], assignmentType: 'individual' },
+        frequency: {
+          type: 'atOnce',
+          startDate: '2026-08-21',
+          jobPosition: null,
+          recurring: null,
+        },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema })
+        .mockResolvedValueOnce({
+          ...existing,
+          schema: nextSchema,
+          status: TemplateStatus.ACTIVE,
+        });
+      req.versionRepo.findOne.mockResolvedValue({
+        id: 9,
+        templateId: 1,
+        isActive: true,
+        versionNumber: 1,
+        schemaSnapshot: fullSchema,
+      });
+
+      await service.update(req, 1, { schema: nextSchema as any, publish: true });
+
+      expect(assignmentsService.cancelFutureForTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.retargetOpenAssignmentsToVersion).toHaveBeenCalled();
+    });
+
+    it('does not rematerialize when recurring UI omits date but schedule is unchanged', async () => {
+      const req = createReq();
+      const publishedSchema = {
+        assign: { users: [1], jobPosition: null },
+        report: { users: [3], jobPosition: null },
+        frequency: {
+          type: 'recurring',
+          date: '2026-08-21',
+          recurring: { interval: 1, unit: 'week', repeat: 4, daysOfWeek: ['monday'] },
+        },
+        sections: [],
+      };
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: publishedSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      // Same schedule in UI shape, no date field (Frequency card).
+      const nextSchema = {
+        ...publishedSchema,
+        sections: [{ id: 's1', name: 'Updated', type: 'custom', rows: [] }],
+        frequency: {
+          type: 'recurring',
+          date: null,
+          recurring: {
+            every: 1,
+            interval: 'week',
+            repeatCount: 4,
+            daysOfWeek: ['monday'],
+          },
+        },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema })
+        .mockResolvedValueOnce({
+          ...existing,
+          schema: nextSchema,
+          status: TemplateStatus.ACTIVE,
+        });
+      req.versionRepo.findOne.mockResolvedValue({
+        id: 9,
+        templateId: 1,
+        isActive: true,
+        versionNumber: 1,
+        schemaSnapshot: publishedSchema,
+      });
+
+      await service.update(req, 1, { schema: nextSchema as any, publish: true });
+
+      expect(assignmentsService.cancelFutureForTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.retargetOpenAssignmentsToVersion).toHaveBeenCalled();
+    });
+
+    it('keeps existing tasks when only report changes on publish', async () => {
+      const req = createReq();
+      const existing = {
+        id: 1,
+        name: 'T',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        updatedBy: null,
+      };
+      const nextSchema = {
+        ...fullSchema,
+        report: { users: [99], jobPosition: null },
+      };
+      req.templateRepo.findOne.mockResolvedValue(existing);
+      req.templateRepo.save
+        .mockResolvedValueOnce({ ...existing, schema: nextSchema })
+        .mockResolvedValueOnce({
+          ...existing,
+          schema: nextSchema,
+          status: TemplateStatus.ACTIVE,
+        });
+      req.versionRepo.findOne.mockResolvedValue({
+        id: 9,
+        templateId: 1,
+        isActive: true,
+        versionNumber: 1,
+        schemaSnapshot: fullSchema,
+      });
+
+      await service.update(req, 1, { schema: nextSchema as any, publish: true });
+
+      expect(assignmentsService.cancelFutureForTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.retargetOpenAssignmentsToVersion).toHaveBeenCalled();
     });
 
     it('throws NotFoundException when template not found', async () => {
@@ -417,6 +690,54 @@ describe('TemplatesService', () => {
       expect(result.message).toContain('published');
       expect(schema.frequency.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+    });
+
+    it('does not cancel tasks when assign/frequency are unchanged', async () => {
+      const req = createReq();
+      const schema = {
+        ...fullSchema,
+        sections: [{ id: 's1', name: 'New', type: 'custom', rows: [] }],
+      };
+      const template = { id: 1, name: 'T', schema, status: TemplateStatus.DRAFT };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.save.mockResolvedValue({ ...template, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue({
+        id: 9,
+        templateId: 1,
+        isActive: true,
+        versionNumber: 1,
+        schemaSnapshot: fullSchema,
+      });
+
+      await service.publish(req, 1);
+
+      expect(assignmentsService.cancelFutureForTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+      expect(assignmentsService.retargetOpenAssignmentsToVersion).toHaveBeenCalled();
+    });
+
+    it('cancels and rematerializes when assign changed vs previous version', async () => {
+      const req = createReq();
+      const schema = {
+        ...fullSchema,
+        assign: { users: [1, 2], jobPosition: null },
+      };
+      const template = { id: 1, name: 'T', schema, status: TemplateStatus.DRAFT };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.save.mockResolvedValue({ ...template, status: TemplateStatus.ACTIVE });
+      req.versionRepo.findOne.mockResolvedValue({
+        id: 9,
+        templateId: 1,
+        isActive: true,
+        versionNumber: 1,
+        schemaSnapshot: fullSchema,
+      });
+
+      await service.publish(req, 1);
+
+      expect(assignmentsService.cancelFutureForTemplate).toHaveBeenCalled();
+      expect(assignmentsService.materializeFromTemplate).toHaveBeenCalled();
+      expect(assignmentsService.retargetOpenAssignmentsToVersion).not.toHaveBeenCalled();
     });
   });
 

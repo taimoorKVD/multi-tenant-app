@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -7,11 +8,12 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantAccess } from '../../../common/decorators/tenant-access.decorator';
 import { AssignmentsService } from '../services/assignments.service';
 import { AssignmentReminderService } from '../services/assignment-reminder.service';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
+import { StartAssignmentDto } from '../dto/assignments/start-assignment.dto';
 
 @ApiTags('Data Collection - Assignments')
 @ApiBearerAuth('access-token')
@@ -138,9 +140,19 @@ export class AssignmentsController {
 
   @Post(':id/start')
   @TenantAccess('complete-dc-assignment')
-  @ApiOperation({ summary: 'Start an assignment (mark in progress)' })
+  @ApiOperation({
+    summary: 'Start an assignment (mark in progress)',
+    description:
+      'Marks the task in progress and ensures a draft submission exists. ' +
+      'Pass `answers` to save progress when leaving the form; my-work / get assignment return those answers for resume.',
+  })
   @ApiParam({ name: 'id', type: Number })
-  start(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.assignmentsService.start(req, id);
+  @ApiBody({ type: StartAssignmentDto, required: false })
+  start(
+    @Req() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: StartAssignmentDto = {},
+  ) {
+    return this.assignmentsService.start(req, id, dto);
   }
 }
