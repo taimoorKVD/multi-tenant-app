@@ -1165,3 +1165,219 @@ describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', (
     expect(executeMock).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('AssignmentsService findAssignedForms (admin board)', () => {
+  let service: AssignmentsService;
+  let listQb: any;
+  let statsQb: any;
+  let createQueryBuilderMock: jest.Mock;
+  let findUsersMock: jest.Mock;
+  let findSubmissionsMock: jest.Mock;
+  let req: any;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-16T12:00:00.000Z'));
+
+    const chain = () => {
+      const api: any = {};
+      for (const method of [
+        'leftJoinAndSelect',
+        'leftJoin',
+        'andWhere',
+        'orderBy',
+        'addOrderBy',
+        'skip',
+        'take',
+        'select',
+        'addSelect',
+        'groupBy',
+      ]) {
+        api[method] = jest.fn().mockReturnValue(api);
+      }
+      return api;
+    };
+
+    listQb = chain();
+    listQb.getManyAndCount = jest.fn().mockResolvedValue([
+      [
+        {
+          id: 1,
+          templateId: 10,
+          templateVersionId: 12,
+          assigneeUserId: 5,
+          dueAt: new Date('2026-09-16T00:00:00.000Z'),
+          status: AssignmentStatus.COMPLETED,
+          assignmentType: 'individual',
+          sharedGroupKey: null,
+          completedByUserId: 5,
+          completedAt: new Date('2026-09-16T14:10:00.000Z'),
+          template: { name: 'Daily Kitchen Checklist', schema: {} },
+          createdAt: new Date('2026-09-15T01:00:00.000Z'),
+          updatedAt: new Date('2026-09-16T14:10:00.000Z'),
+        },
+        {
+          id: 2,
+          templateId: 11,
+          templateVersionId: 13,
+          assigneeUserId: 6,
+          dueAt: new Date('2026-09-15T00:00:00.000Z'),
+          status: AssignmentStatus.OVERDUE,
+          assignmentType: 'individual',
+          sharedGroupKey: null,
+          completedByUserId: null,
+          completedAt: null,
+          template: { name: 'Hygiene Inspection', schema: {} },
+          createdAt: new Date('2026-09-14T01:00:00.000Z'),
+          updatedAt: new Date('2026-09-15T01:00:00.000Z'),
+        },
+      ],
+      24,
+    ]);
+
+    statsQb = chain();
+    statsQb.getRawMany = jest.fn().mockResolvedValue([
+      { status: AssignmentStatus.COMPLETED, count: '16' },
+      { status: AssignmentStatus.IN_PROGRESS, count: '5' },
+      { status: AssignmentStatus.OVERDUE, count: '3' },
+    ]);
+
+    createQueryBuilderMock = jest
+      .fn()
+      .mockImplementationOnce(() => listQb)
+      .mockImplementationOnce(() => statsQb);
+
+    findUsersMock = jest.fn().mockResolvedValue([
+      { id: 5, name: 'Sarah Johnson' },
+      { id: 6, name: 'Mike Chen' },
+    ]);
+    findSubmissionsMock = jest.fn().mockResolvedValue([]);
+
+    service = new AssignmentsService(new FrequencyService());
+    req = {
+      user: { id: 1 },
+      tenantConnection: {
+        getRepository: jest.fn((entity: any) => {
+          const name = entity?.name || entity;
+          if (name === 'DataCollectionAssignment' || name?.name === 'DataCollectionAssignment') {
+            return { createQueryBuilder: createQueryBuilderMock };
+          }
+          if (name === 'User' || name?.name === 'User') {
+            return { find: findUsersMock };
+          }
+          if (name === 'DataCollectionSubmission' || name?.name === 'DataCollectionSubmission') {
+            return { find: findSubmissionsMock };
+          }
+          return { createQueryBuilder: createQueryBuilderMock, find: jest.fn() };
+        }),
+      },
+    };
+
+    // TypeORM getRepository often receives the class; match by comparing constructors.
+    req.tenantConnection.getRepository = jest.fn((entity: any) => {
+      if (entity?.name === 'DataCollectionAssignment') {
+        return { createQueryBuilder: createQueryBuilderMock };
+      }
+      if (entity?.name === 'User') {
+        return { find: findUsersMock };
+      }
+      if (entity?.name === 'DataCollectionSubmission') {
+        return { find: findSubmissionsMock };
+      }
+      // Fallback: first calls are assignment qb
+      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns stats cards and table-shaped rows with priority/status labels', async () => {
+    const result = await service.findAssignedForms(req, { page: 1, limit: 5 });
+
+    expect(result.success).toBe(true);
+    expect(result.stats).toEqual({
+      totalAssigned: 24,
+      completed: 16,
+      inProgress: 5,
+      overdue: 3,
+      notStarted: 0,
+    });
+    expect(result.meta).toEqual({ total: 24, page: 1, lastPage: 5, limit: 5 });
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0]).toMatchObject({
+      formName: 'Daily Kitchen Checklist',
+      assignedTo: 'Sarah Johnson',
+      dueDateLabel: 'Sep 16, 2026',
+      priority: 'high',
+      status: AssignmentStatus.COMPLETED,
+      statusLabel: 'Completed',
+    });
+    expect(result.data[1]).toMatchObject({
+      formName: 'Hygiene Inspection',
+      assignedTo: 'Mike Chen',
+      priority: 'high',
+      status: AssignmentStatus.OVERDUE,
+      statusLabel: 'Overdue',
+    });
+  });
+
+  it('filters by status not_started as pending and applies search', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      status: 'not_started',
+      search: 'Kitchen',
+    });
+
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.status = :status', {
+      status: AssignmentStatus.PENDING,
+    });
+    const searchCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('ILIKE :search'),
+    );
+    expect(searchCall).toBeDefined();
+    expect(searchCall[1].search).toBe('%Kitchen%');
+  });
+
+  it('filters overdue, priority medium, due range, and recent submissions', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      status: AssignmentStatus.OVERDUE,
+      priority: 'medium',
+      dueFrom: '2026-09-01',
+      dueTo: '2026-09-30',
+      recentSubmissions: true,
+      recentDays: 7,
+    });
+
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.status = :status', {
+      status: AssignmentStatus.OVERDUE,
+    });
+    expect(listQb.andWhere).toHaveBeenCalledWith(
+      'assignment.dueAt BETWEEN :priorityMedStart AND :priorityMedEnd',
+      expect.objectContaining({
+        priorityMedStart: new Date('2026-09-17T00:00:00.000Z'),
+        priorityMedEnd: new Date('2026-09-18T23:59:59.999Z'),
+      }),
+    );
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.dueAt >= :dueFrom', {
+      dueFrom: new Date('2026-09-01T00:00:00.000Z'),
+    });
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.dueAt <= :dueTo', {
+      dueTo: new Date('2026-09-30T23:59:59.999Z'),
+    });
+    const recentCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('dc_submissions'),
+    );
+    expect(recentCall).toBeDefined();
+  });
+
+  it('rejects invalid dueFrom', async () => {
+    await expect(
+      service.findAssignedForms(req, { dueFrom: '09-01-2026' as any }),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
