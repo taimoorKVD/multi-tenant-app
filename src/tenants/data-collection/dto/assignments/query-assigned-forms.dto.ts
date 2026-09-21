@@ -3,9 +3,6 @@ import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { AssignmentStatus } from '../../entities/enums';
 
-export const ASSIGNED_FORMS_PRIORITY_VALUES = ['high', 'medium', 'low'] as const;
-export type AssignedFormsPriority = (typeof ASSIGNED_FORMS_PRIORITY_VALUES)[number];
-
 /** UI completion / workflow filters (maps to assignment status). */
 export const ASSIGNED_FORMS_STATUS_VALUES = [
   AssignmentStatus.PENDING,
@@ -43,7 +40,7 @@ export class QueryAssignedFormsDto {
 
   @ApiPropertyOptional({
     example: 12,
-    description: 'Filter by assignee user ID (Assigned To).',
+    description: 'Filter by assignee user ID (Assigned To). Matches any assignee on the row / shared group.',
   })
   @IsOptional()
   @Type(() => Number)
@@ -59,15 +56,6 @@ export class QueryAssignedFormsDto {
   @IsOptional()
   @IsIn(ASSIGNED_FORMS_STATUS_VALUES)
   status?: AssignedFormsStatusQuery;
-
-  @ApiPropertyOptional({
-    enum: ASSIGNED_FORMS_PRIORITY_VALUES,
-    description:
-      'Priority derived from due date (UTC): high = due today or past, medium = due within 2 days, low = later.',
-  })
-  @IsOptional()
-  @IsIn(ASSIGNED_FORMS_PRIORITY_VALUES)
-  priority?: AssignedFormsPriority;
 
   @ApiPropertyOptional({
     example: '2026-09-01',

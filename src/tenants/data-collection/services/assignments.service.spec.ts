@@ -1173,6 +1173,8 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
   let createQueryBuilderMock: jest.Mock;
   let findUsersMock: jest.Mock;
   let findSubmissionsMock: jest.Mock;
+  let findAssignmentsMock: jest.Mock;
+  let findVersionsMock: jest.Mock;
   let req: any;
 
   beforeEach(() => {
@@ -1208,11 +1210,17 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
           assigneeUserId: 5,
           dueAt: new Date('2026-09-16T00:00:00.000Z'),
           status: AssignmentStatus.COMPLETED,
-          assignmentType: 'individual',
-          sharedGroupKey: null,
+          assignmentType: 'shared',
+          sharedGroupKey: 'shared-1',
           completedByUserId: 5,
           completedAt: new Date('2026-09-16T14:10:00.000Z'),
-          template: { name: 'Daily Kitchen Checklist', schema: {} },
+          template: {
+            id: 10,
+            name: 'Daily Kitchen Checklist',
+            schema: { formName: 'Daily Kitchen Checklist', sections: [] },
+            status: 'active',
+            isActive: true,
+          },
           createdAt: new Date('2026-09-15T01:00:00.000Z'),
           updatedAt: new Date('2026-09-16T14:10:00.000Z'),
         },
@@ -1227,7 +1235,13 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
           sharedGroupKey: null,
           completedByUserId: null,
           completedAt: null,
-          template: { name: 'Hygiene Inspection', schema: {} },
+          template: {
+            id: 11,
+            name: 'Hygiene Inspection',
+            schema: {},
+            status: 'active',
+            isActive: true,
+          },
           createdAt: new Date('2026-09-14T01:00:00.000Z'),
           updatedAt: new Date('2026-09-15T01:00:00.000Z'),
         },
@@ -1249,51 +1263,70 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
 
     findUsersMock = jest.fn().mockResolvedValue([
       { id: 5, name: 'Sarah Johnson' },
+      { id: 9, name: 'Alex Kim' },
       { id: 6, name: 'Mike Chen' },
     ]);
-    findSubmissionsMock = jest.fn().mockResolvedValue([]);
+    findSubmissionsMock = jest.fn().mockResolvedValue([
+      {
+        id: 40,
+        assignmentId: 1,
+        templateVersionId: 12,
+        submittedBy: 5,
+        answers: { fld_001: 'ok' },
+        status: 'submitted',
+        submittedAt: new Date('2026-09-16T14:10:00.000Z'),
+        createdBy: 5,
+        updatedBy: 5,
+        createdAt: new Date('2026-09-16T13:00:00.000Z'),
+        updatedAt: new Date('2026-09-16T14:10:00.000Z'),
+      },
+    ]);
+    findAssignmentsMock = jest.fn().mockResolvedValue([
+      { id: 1, sharedGroupKey: 'shared-1', assigneeUserId: 5 },
+      { id: 3, sharedGroupKey: 'shared-1', assigneeUserId: 9 },
+    ]);
+    findVersionsMock = jest.fn().mockResolvedValue([
+      {
+        id: 12,
+        templateId: 10,
+        schemaSnapshot: {
+          formName: 'Daily Kitchen Checklist',
+          sections: [{ id: 'sec_1', fields: [{ id: 'fld_001', label: 'Notes' }] }],
+        },
+      },
+    ]);
 
     service = new AssignmentsService(new FrequencyService());
     req = {
       user: { id: 1 },
       tenantConnection: {
         getRepository: jest.fn((entity: any) => {
-          const name = entity?.name || entity;
-          if (name === 'DataCollectionAssignment' || name?.name === 'DataCollectionAssignment') {
-            return { createQueryBuilder: createQueryBuilderMock };
+          if (entity?.name === 'DataCollectionAssignment') {
+            return {
+              createQueryBuilder: createQueryBuilderMock,
+              find: findAssignmentsMock,
+            };
           }
-          if (name === 'User' || name?.name === 'User') {
+          if (entity?.name === 'User') {
             return { find: findUsersMock };
           }
-          if (name === 'DataCollectionSubmission' || name?.name === 'DataCollectionSubmission') {
+          if (entity?.name === 'DataCollectionSubmission') {
             return { find: findSubmissionsMock };
           }
-          return { createQueryBuilder: createQueryBuilderMock, find: jest.fn() };
+          if (entity?.name === 'TemplateVersion') {
+            return { find: findVersionsMock };
+          }
+          return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
         }),
       },
     };
-
-    // TypeORM getRepository often receives the class; match by comparing constructors.
-    req.tenantConnection.getRepository = jest.fn((entity: any) => {
-      if (entity?.name === 'DataCollectionAssignment') {
-        return { createQueryBuilder: createQueryBuilderMock };
-      }
-      if (entity?.name === 'User') {
-        return { find: findUsersMock };
-      }
-      if (entity?.name === 'DataCollectionSubmission') {
-        return { find: findSubmissionsMock };
-      }
-      // Fallback: first calls are assignment qb
-      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
-    });
   });
 
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it('returns stats cards and table-shaped rows with priority/status labels', async () => {
+  it('returns stats, assignedTo array, and submission.template.schema', async () => {
     const result = await service.findAssignedForms(req, { page: 1, limit: 5 });
 
     expect(result.success).toBe(true);
@@ -1308,16 +1341,30 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(result.data).toHaveLength(2);
     expect(result.data[0]).toMatchObject({
       formName: 'Daily Kitchen Checklist',
-      assignedTo: 'Sarah Johnson',
+      assigneeUserIds: [5, 9],
+      assignedTo: [
+        { id: 5, name: 'Sarah Johnson' },
+        { id: 9, name: 'Alex Kim' },
+      ],
       dueDateLabel: 'Sep 16, 2026',
-      priority: 'high',
       status: AssignmentStatus.COMPLETED,
       statusLabel: 'Completed',
     });
+    expect(result.data[0].submission).toMatchObject({
+      id: 40,
+      answers: { fld_001: 'ok' },
+      template: {
+        id: 10,
+        name: 'Daily Kitchen Checklist',
+        schema: {
+          formName: 'Daily Kitchen Checklist',
+          sections: [{ id: 'sec_1', fields: [{ id: 'fld_001', label: 'Notes' }] }],
+        },
+      },
+    });
     expect(result.data[1]).toMatchObject({
       formName: 'Hygiene Inspection',
-      assignedTo: 'Mike Chen',
-      priority: 'high',
+      assignedTo: [{ id: 6, name: 'Mike Chen' }],
       status: AssignmentStatus.OVERDUE,
       statusLabel: 'Overdue',
     });
@@ -1341,12 +1388,11 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(searchCall[1].search).toBe('%Kitchen%');
   });
 
-  it('filters overdue, priority medium, due range, and recent submissions', async () => {
+  it('filters overdue, due range, and recent submissions', async () => {
     await service.findAssignedForms(req, {
       page: 1,
       limit: 15,
       status: AssignmentStatus.OVERDUE,
-      priority: 'medium',
       dueFrom: '2026-09-01',
       dueTo: '2026-09-30',
       recentSubmissions: true,
@@ -1356,13 +1402,6 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(listQb.andWhere).toHaveBeenCalledWith('assignment.status = :status', {
       status: AssignmentStatus.OVERDUE,
     });
-    expect(listQb.andWhere).toHaveBeenCalledWith(
-      'assignment.dueAt BETWEEN :priorityMedStart AND :priorityMedEnd',
-      expect.objectContaining({
-        priorityMedStart: new Date('2026-09-17T00:00:00.000Z'),
-        priorityMedEnd: new Date('2026-09-18T23:59:59.999Z'),
-      }),
-    );
     expect(listQb.andWhere).toHaveBeenCalledWith('assignment.dueAt >= :dueFrom', {
       dueFrom: new Date('2026-09-01T00:00:00.000Z'),
     });
