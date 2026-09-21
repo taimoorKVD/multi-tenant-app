@@ -20,11 +20,17 @@ import {
 } from '../entities';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
 import {
+  AssignedFormsPriority,
+  QueryAssignedFormsDto,
+} from '../dto/assignments/query-assigned-forms.dto';
+import {
   buildAssignmentCompletion,
   parseExclusiveAssignReportTargets,
   resolveAssignReportMode,
 } from '../utils/assignment-completion.util';
 import { FrequencyService } from './frequency.service';
+
+type AssignmentPriority = AssignedFormsPriority;
 
 @Injectable()
 export class AssignmentsService {
@@ -319,6 +325,361 @@ export class AssignmentsService {
       mine: true,
       assigneeUserId: actorId,
       status: query.status,
+    });
+  }
+
+  /**
+   * Admin "Assigned Forms" list: summary cards + filterable/paginated table rows.
+   * Priority is derived from due calendar day (UTC), matching the employee dashboard.
+   */
+  async findAssignedForms(req: any, query: QueryAssignedFormsDto) {
+    try {
+      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const page = Math.max(1, query.page ?? 1);
+      const limit = Math.min(Math.max(1, query.limit ?? 15), 100);
+      const skip = (page - 1) * limit;
+      const actorId = this.getActorId(req);
+      const now = new Date();
+      const wantRecent =
+        query.recentSubmissions === true ||
+        query.recentSubmissions === 'true' ||
+        query.recentSubmissions === '1';
+      const recentDays = Math.min(Math.max(1, query.recentDays ?? 7), 90);
+
+      const buildBaseQb = () => {
+        const qb = repo
+          .createQueryBuilder('assignment')
+          .leftJoinAndSelect('assignment.template', 'template')
+          .leftJoin(User, 'assignee', 'assignee.id = assignment.assigneeUserId');
+
+        // Exclude cancelled from the admin board unless explicitly requested.
+        const statusFilter = this.resolveAssignedFormsStatus(query.status);
+        if (statusFilter) {
+          qb.andWhere('assignment.status = :status', { status: statusFilter });
+        } else {
+          qb.andWhere('assignment.status != :cancelledStatus', {
+            cancelledStatus: AssignmentStatus.CANCELLED,
+          });
+        }
+
+        if (query.assigneeUserId) {
+          qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
+            assigneeUserId: query.assigneeUserId,
+          });
+        }
+
+        const search = String(query.search || '').trim();
+        if (search) {
+          qb.andWhere(
+            `(
+              template.name ILIKE :search
+              OR COALESCE(template.schema->>'formName', '') ILIKE :search
+              OR COALESCE(assignee.name, '') ILIKE :search
+            )`,
+            { search: `%${search}%` },
+          );
+        }
+
+        if (query.dueFrom) {
+          const from = this.parseUtcDateOnly(query.dueFrom);
+          if (!from) throw new BadRequestException('dueFrom must be a valid YYYY-MM-DD string');
+          qb.andWhere('assignment.dueAt >= :dueFrom', { dueFrom: this.startOfDayUtc(from) });
+        }
+        if (query.dueTo) {
+          const to = this.parseUtcDateOnly(query.dueTo);
+          if (!to) throw new BadRequestException('dueTo must be a valid YYYY-MM-DD string');
+          qb.andWhere('assignment.dueAt <= :dueTo', { dueTo: this.endOfDayUtc(to) });
+        }
+
+        this.applyPriorityFilter(qb, query.priority, now);
+
+        if (wantRecent) {
+          const since = new Date(now.getTime() - recentDays * 24 * 60 * 60 * 1000);
+          qb.andWhere(
+            `EXISTS (
+              SELECT 1 FROM dc_submissions s
+              WHERE s.assignment_id = assignment.id
+                AND s.status = :submittedStatus
+                AND s.deleted_at IS NULL
+                AND COALESCE(s.submitted_at, s.updated_at) >= :recentSince
+            )`,
+            {
+              submittedStatus: SubmissionStatus.SUBMITTED,
+              recentSince: since,
+            },
+          );
+        }
+
+        return qb;
+      };
+
+      const listQb = buildBaseQb()
+        .orderBy('assignment.dueAt', 'ASC')
+        .addOrderBy('assignment.id', 'ASC')
+        .skip(skip)
+        .take(limit);
+
+      const [rows, total] = await listQb.getManyAndCount();
+      const lastPage = Math.ceil(total / limit) || 1;
+
+      const stats = await this.loadAssignedFormsStats(req, query, now);
+      const data = await this.serializeAssignedFormsRows(req, rows, actorId, now);
+
+      return {
+        success: true,
+        stats,
+        meta: { total, page, lastPage, limit },
+        data,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error('Assigned forms list failed', error);
+      throw new InternalServerErrorException('Failed to retrieve assigned forms');
+    }
+  }
+
+  private resolveAssignedFormsStatus(
+    status?: string | null,
+  ): AssignmentStatus | null {
+    if (!status) return null;
+    if (status === 'not_started') return AssignmentStatus.PENDING;
+    return status as AssignmentStatus;
+  }
+
+  private dayDiffFromToday(dueAt: Date, now = new Date()): number {
+    const due = this.startOfDayUtc(dueAt).getTime();
+    const today = this.startOfDayUtc(now).getTime();
+    return Math.round((due - today) / (24 * 60 * 60 * 1000));
+  }
+
+  private resolvePriority(dueAt: Date, now = new Date()): AssignmentPriority {
+    const diff = this.dayDiffFromToday(dueAt, now);
+    if (diff <= 0) return 'high';
+    if (diff <= 2) return 'medium';
+    return 'low';
+  }
+
+  private applyPriorityFilter(
+    qb: { andWhere: (sql: string, params?: Record<string, unknown>) => unknown },
+    priority: AssignedFormsPriority | undefined,
+    now: Date,
+  ) {
+    if (!priority) return;
+
+    const startToday = this.startOfDayUtc(now);
+    const endToday = this.endOfDayUtc(now);
+    const startTomorrow = new Date(startToday.getTime() + 24 * 60 * 60 * 1000);
+    const endInTwoDays = this.endOfDayUtc(
+      new Date(startToday.getTime() + 2 * 24 * 60 * 60 * 1000),
+    );
+    const startInThreeDays = new Date(startToday.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+    if (priority === 'high') {
+      // Due today or earlier (UTC calendar day).
+      qb.andWhere('assignment.dueAt <= :priorityHighEnd', { priorityHighEnd: endToday });
+    } else if (priority === 'medium') {
+      qb.andWhere('assignment.dueAt BETWEEN :priorityMedStart AND :priorityMedEnd', {
+        priorityMedStart: startTomorrow,
+        priorityMedEnd: endInTwoDays,
+      });
+    } else {
+      qb.andWhere('assignment.dueAt >= :priorityLowStart', {
+        priorityLowStart: startInThreeDays,
+      });
+    }
+  }
+
+  private formatDueDateLabel(dueAt: Date): string {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(dueAt instanceof Date ? dueAt : new Date(dueAt));
+  }
+
+  private statusLabel(status: AssignmentStatus): string {
+    switch (status) {
+      case AssignmentStatus.PENDING:
+        return 'Not Started';
+      case AssignmentStatus.IN_PROGRESS:
+        return 'In Progress';
+      case AssignmentStatus.COMPLETED:
+        return 'Completed';
+      case AssignmentStatus.OVERDUE:
+        return 'Overdue';
+      case AssignmentStatus.CANCELLED:
+        return 'Cancelled';
+      default:
+        return String(status);
+    }
+  }
+
+  private async loadAssignedFormsStats(
+    req: any,
+    query: QueryAssignedFormsDto,
+    now: Date,
+  ) {
+    const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const wantRecent =
+      query.recentSubmissions === true ||
+      query.recentSubmissions === 'true' ||
+      query.recentSubmissions === '1';
+    const recentDays = Math.min(Math.max(1, query.recentDays ?? 7), 90);
+
+    const qb = repo
+      .createQueryBuilder('assignment')
+      .leftJoin('assignment.template', 'template')
+      .leftJoin(User, 'assignee', 'assignee.id = assignment.assigneeUserId')
+      .select('assignment.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .andWhere('assignment.status != :cancelledStatus', {
+        cancelledStatus: AssignmentStatus.CANCELLED,
+      });
+
+    if (query.assigneeUserId) {
+      qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
+        assigneeUserId: query.assigneeUserId,
+      });
+    }
+
+    const search = String(query.search || '').trim();
+    if (search) {
+      qb.andWhere(
+        `(
+          template.name ILIKE :search
+          OR COALESCE(template.schema->>'formName', '') ILIKE :search
+          OR COALESCE(assignee.name, '') ILIKE :search
+        )`,
+        { search: `%${search}%` },
+      );
+    }
+
+    if (query.dueFrom) {
+      const from = this.parseUtcDateOnly(query.dueFrom);
+      if (!from) throw new BadRequestException('dueFrom must be a valid YYYY-MM-DD string');
+      qb.andWhere('assignment.dueAt >= :dueFrom', { dueFrom: this.startOfDayUtc(from) });
+    }
+    if (query.dueTo) {
+      const to = this.parseUtcDateOnly(query.dueTo);
+      if (!to) throw new BadRequestException('dueTo must be a valid YYYY-MM-DD string');
+      qb.andWhere('assignment.dueAt <= :dueTo', { dueTo: this.endOfDayUtc(to) });
+    }
+
+    this.applyPriorityFilter(qb, query.priority, now);
+
+    if (wantRecent) {
+      const since = new Date(now.getTime() - recentDays * 24 * 60 * 60 * 1000);
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM dc_submissions s
+          WHERE s.assignment_id = assignment.id
+            AND s.status = :submittedStatus
+            AND s.deleted_at IS NULL
+            AND COALESCE(s.submitted_at, s.updated_at) >= :recentSince
+        )`,
+        {
+          submittedStatus: SubmissionStatus.SUBMITTED,
+          recentSince: since,
+        },
+      );
+    }
+
+    qb.groupBy('assignment.status');
+    const rows: Array<{ status: AssignmentStatus; count: string }> = await qb.getRawMany();
+
+    const counts: Record<string, number> = {
+      [AssignmentStatus.PENDING]: 0,
+      [AssignmentStatus.IN_PROGRESS]: 0,
+      [AssignmentStatus.COMPLETED]: 0,
+      [AssignmentStatus.OVERDUE]: 0,
+    };
+    for (const row of rows) {
+      counts[row.status] = Number(row.count) || 0;
+    }
+
+    const totalAssigned =
+      (counts[AssignmentStatus.PENDING] || 0) +
+      (counts[AssignmentStatus.IN_PROGRESS] || 0) +
+      (counts[AssignmentStatus.COMPLETED] || 0) +
+      (counts[AssignmentStatus.OVERDUE] || 0);
+
+    return {
+      totalAssigned,
+      completed: counts[AssignmentStatus.COMPLETED] || 0,
+      inProgress: counts[AssignmentStatus.IN_PROGRESS] || 0,
+      overdue: counts[AssignmentStatus.OVERDUE] || 0,
+      notStarted: counts[AssignmentStatus.PENDING] || 0,
+    };
+  }
+
+  private async serializeAssignedFormsRows(
+    req: any,
+    rows: DataCollectionAssignment[],
+    viewerUserId: number | null,
+    now: Date,
+  ) {
+    const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
+      req,
+      rows.map((row) => row.id),
+    );
+
+    const assigneeIds = rows
+      .map((row) => row.assigneeUserId)
+      .filter((id): id is number => id != null && Number.isFinite(id));
+    const completedByIds = rows
+      .map((row) => {
+        const submission = submissionsByAssignment.get(row.id);
+        return row.completedByUserId ?? submission?.submittedBy ?? null;
+      })
+      .filter((id): id is number => id != null && Number.isFinite(id));
+
+    const namesById = await this.loadUserNamesByIds(req, [...assigneeIds, ...completedByIds]);
+
+    return rows.map((row) => {
+      const submission = submissionsByAssignment.get(row.id) || null;
+      const submissionPayload = this.serializeSubmission(submission);
+      const completedAt = row.completedAt || submissionPayload?.submittedAt || null;
+      const completedByUserId =
+        row.completedByUserId ?? submissionPayload?.submittedBy ?? null;
+      const mode = row.assignmentType || AssignmentType.INDIVIDUAL;
+      const formName = this.resolveFormName(row.template);
+      const priority = this.resolvePriority(row.dueAt, now);
+      const completion = buildAssignmentCompletion({
+        status: row.status,
+        assignmentType: mode,
+        completedByUserId,
+        completedAt,
+        completedByName:
+          completedByUserId != null ? namesById.get(completedByUserId) || null : null,
+        viewerUserId,
+      });
+
+      return {
+        id: row.id,
+        templateId: row.templateId,
+        templateVersionId: row.templateVersionId,
+        formName,
+        assigneeUserId: row.assigneeUserId,
+        assignedTo:
+          row.assigneeUserId != null
+            ? namesById.get(row.assigneeUserId) || `User #${row.assigneeUserId}`
+            : null,
+        dueAt: row.dueAt,
+        dueDateLabel: this.formatDueDateLabel(row.dueAt),
+        priority,
+        status: row.status,
+        statusLabel: this.statusLabel(row.status),
+        mode,
+        sharedGroupKey: row.sharedGroupKey,
+        completedByUserId: row.completedByUserId,
+        completedAt: row.completedAt,
+        submissionId: submissionPayload?.id ?? null,
+        submission: submissionPayload,
+        completion,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
     });
   }
 

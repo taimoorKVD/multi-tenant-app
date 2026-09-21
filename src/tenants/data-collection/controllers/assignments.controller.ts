@@ -13,6 +13,7 @@ import { TenantAccess } from '../../../common/decorators/tenant-access.decorator
 import { AssignmentsService } from '../services/assignments.service';
 import { AssignmentReminderService } from '../services/assignment-reminder.service';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
+import { QueryAssignedFormsDto } from '../dto/assignments/query-assigned-forms.dto';
 import { StartAssignmentDto } from '../dto/assignments/start-assignment.dto';
 
 @ApiTags('Data Collection - Assignments')
@@ -94,6 +95,81 @@ export class AssignmentsController {
   })
   myWork(@Req() req: any, @Query() query: QueryAssignmentDto) {
     return this.assignmentsService.findMyWork(req, query);
+  }
+
+  @Get('assigned-forms')
+  @TenantAccess('view-dc-assignment')
+  @ApiOperation({
+    summary: 'Assigned Forms (admin)',
+    description:
+      'Admin Assigned Forms board: summary cards (Total Assigned, Completed, In Progress, Overdue) ' +
+      'plus a filterable, paginated table. Supports search (form or assignee name), assignee, ' +
+      'completion status (`pending`/`not_started`, `in_progress`, `completed`, `overdue`), ' +
+      'priority (derived from due date), due date range, and recent submissions.',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'assigneeUserId', required: false, type: Number })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending', 'not_started', 'in_progress', 'completed', 'overdue', 'cancelled'],
+  })
+  @ApiQuery({ name: 'priority', required: false, enum: ['high', 'medium', 'low'] })
+  @ApiQuery({ name: 'dueFrom', required: false, type: String, example: '2026-09-01' })
+  @ApiQuery({ name: 'dueTo', required: false, type: String, example: '2026-09-30' })
+  @ApiQuery({
+    name: 'recentSubmissions',
+    required: false,
+    type: Boolean,
+    description: 'When true, only rows with a submitted submission in the recent window.',
+  })
+  @ApiQuery({ name: 'recentDays', required: false, type: Number, example: 7 })
+  @ApiResponse({
+    status: 200,
+    description: 'Assigned forms fetched successfully.',
+    schema: {
+      example: {
+        success: true,
+        stats: {
+          totalAssigned: 24,
+          completed: 16,
+          inProgress: 5,
+          overdue: 3,
+          notStarted: 0,
+        },
+        meta: { total: 24, page: 1, lastPage: 5, limit: 5 },
+        data: [
+          {
+            id: 1,
+            templateId: 10,
+            templateVersionId: 12,
+            formName: 'Daily Kitchen Checklist',
+            assigneeUserId: 5,
+            assignedTo: 'Sarah Johnson',
+            dueAt: '2026-09-16T00:00:00.000Z',
+            dueDateLabel: 'Sep 16, 2026',
+            priority: 'high',
+            status: 'completed',
+            statusLabel: 'Completed',
+            mode: 'individual',
+            submissionId: 40,
+            completion: {
+              state: 'completed',
+              title: 'Completed',
+              message: 'You submitted this form on September 16, 2026 at 2:10 PM.',
+              completedByUserId: 5,
+              completedByName: 'Sarah Johnson',
+              completedAt: '2026-09-16T14:10:00.000Z',
+            },
+          },
+        ],
+      },
+    },
+  })
+  assignedForms(@Req() req: any, @Query() query: QueryAssignedFormsDto) {
+    return this.assignmentsService.findAssignedForms(req, query);
   }
 
   @Post('mark-overdue')

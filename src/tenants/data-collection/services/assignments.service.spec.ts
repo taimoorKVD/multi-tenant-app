@@ -496,6 +496,305 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
   });
 });
 
+describe('AssignmentsService materializeFromTemplate (all frequency → assign again)', () => {
+  const frequencyService = new FrequencyService();
+  let service: AssignmentsService;
+  let savedRows: any[];
+  let findOneMock: jest.Mock;
+  let createMock: jest.Mock;
+  let saveMock: jest.Mock;
+  let assignmentRepo: any;
+  let req: any;
+
+  beforeEach(() => {
+    savedRows = [];
+    findOneMock = jest.fn().mockResolvedValue(null);
+    createMock = jest.fn((row) => ({ ...row }));
+    saveMock = jest.fn(async (row) => {
+      const saved = { id: savedRows.length + 1, ...row };
+      savedRows.push(saved);
+      return saved;
+    });
+    assignmentRepo = {
+      findOne: findOneMock,
+      create: createMock,
+      save: saveMock,
+    };
+    req = {
+      user: { id: 1 },
+      tenantConnection: {
+        getRepository: jest.fn((entity) => {
+          if (entity?.name === 'User') {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                select: jest.fn().mockReturnThis(),
+                addSelect: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawMany: jest.fn().mockResolvedValue([]),
+              })),
+            };
+          }
+          return assignmentRepo;
+        }),
+      },
+    };
+    service = new AssignmentsService(frequencyService);
+  });
+
+  async function materialize(
+    frequency: Record<string, any>,
+    versionId = 20,
+    assigneeUserId = 101,
+  ) {
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [assigneeUserId], jobPosition: null },
+        frequency,
+      },
+    } as any;
+    return service.materializeFromTemplate(
+      req,
+      template,
+      { id: versionId, schemaSnapshot: template.schema } as any,
+      1,
+    );
+  }
+
+  it.each([
+    {
+      name: 'atOnce',
+      frequency: { type: 'atOnce', date: '2026-09-15', recurring: null },
+      expectedDates: ['2026-09-15'],
+    },
+    {
+      name: 'daily every 1 × 4',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 1, interval: 'day', repeatCount: 4 },
+      },
+      expectedDates: ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04'],
+    },
+    {
+      name: 'daily every 2 days × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 2, interval: 'day', repeatCount: 3 },
+      },
+      expectedDates: ['2026-09-01', '2026-09-03', '2026-09-05'],
+    },
+    {
+      name: 'weekly every 1 week × 3 (no weekdays)',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 1, interval: 'week', repeatCount: 3, daysOfWeek: [] },
+      },
+      expectedDates: ['2026-09-01', '2026-09-08', '2026-09-15'],
+    },
+    {
+      name: 'weekly Mon/Fri × 2',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: {
+          every: 1,
+          interval: 'week',
+          repeatCount: 2,
+          daysOfWeek: ['monday', 'friday'],
+        },
+      },
+      expectedDates: ['2026-09-04', '2026-09-07'],
+    },
+    {
+      name: 'biweekly Friday × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-04',
+        recurring: {
+          every: 2,
+          interval: 'week',
+          repeatCount: 3,
+          daysOfWeek: ['friday'],
+        },
+      },
+      expectedDates: ['2026-09-04', '2026-09-18', '2026-10-02'],
+    },
+    {
+      name: 'monthly dayOfMonth × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: {
+          every: 1,
+          interval: 'month',
+          repeatCount: 3,
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 10,
+        },
+      },
+      expectedDates: ['2026-01-10', '2026-02-10', '2026-03-10'],
+    },
+    {
+      name: 'every 2 months day 15 × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: {
+          every: 2,
+          interval: 'month',
+          repeatCount: 3,
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 15,
+        },
+      },
+      expectedDates: ['2026-01-15', '2026-03-15', '2026-05-15'],
+    },
+    {
+      name: 'yearly dayOfMonth × 2',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: {
+          every: 1,
+          interval: 'year',
+          repeatCount: 2,
+          monthMode: 'dayOfMonth',
+          yearMonth: 'march',
+          yearDay: 15,
+        },
+      },
+      expectedDates: ['2026-03-15', '2027-03-15'],
+    },
+  ])('assigns tasks for frequency case: $name', async ({ frequency, expectedDates }) => {
+    const created = await materialize(frequency);
+
+    expect(created).toHaveLength(expectedDates.length);
+    expect(created.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual(expectedDates);
+    expect(created.every((a) => a.assigneeUserId === 101)).toBe(true);
+    expect(
+      created.every((a) =>
+        [AssignmentStatus.PENDING, AssignmentStatus.OVERDUE].includes(a.status),
+      ),
+    ).toBe(true);
+
+    // Occurrence keys are unique per due date × assignee × version.
+    const keys = created.map((a) => a.occurrenceKey);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('assigns monthly On the Third Wednesday × 2', async () => {
+    const created = await materialize({
+      type: 'recurring',
+      date: '2026-01-01',
+      recurring: {
+        every: 1,
+        interval: 'month',
+        repeatCount: 2,
+        monthMode: 'onThe',
+        weekOrder: 'third',
+        daysOfWeek: ['wednesday'],
+      },
+    });
+
+    expect(created.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-01-21',
+      '2026-02-18',
+    ]);
+  });
+
+  it('does not duplicate open tasks when rematerializing the same frequency', async () => {
+    const frequency = {
+      type: 'recurring',
+      date: '2026-09-01',
+      recurring: { every: 1, interval: 'day', repeatCount: 3 },
+    };
+
+    const first = await materialize(frequency, 20);
+    expect(first).toHaveLength(3);
+
+    // Existing open rows are returned as-is (idempotent).
+    findOneMock.mockImplementation(async ({ where }: any) => {
+      return (
+        savedRows.find((row) => row.occurrenceKey === where.occurrenceKey) || null
+      );
+    });
+    saveMock.mockClear();
+    createMock.mockClear();
+
+    const second = await materialize(frequency, 20);
+    expect(second).toHaveLength(3);
+    expect(createMock).not.toHaveBeenCalled();
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(second.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+    ]);
+  });
+
+  it('assigns again on frequency change via a new template version', async () => {
+    const daily = {
+      type: 'recurring',
+      date: '2026-09-01',
+      recurring: { every: 1, interval: 'day', repeatCount: 3 },
+    };
+    const weekly = {
+      type: 'recurring',
+      date: '2026-09-01',
+      recurring: { every: 1, interval: 'week', repeatCount: 2, daysOfWeek: [] },
+    };
+
+    const first = await materialize(daily, 20);
+    expect(first.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+    ]);
+
+    // New version → new occurrence keys → new assignment set (assign again).
+    findOneMock.mockResolvedValue(null);
+    savedRows = [];
+    saveMock.mockClear();
+
+    const second = await materialize(weekly, 21);
+    expect(second.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-01',
+      '2026-09-08',
+    ]);
+    expect(second.every((a) => String(a.occurrenceKey).startsWith('10:21:'))).toBe(true);
+    expect(second.every((a) => a.assigneeUserId === 101)).toBe(true);
+  });
+
+  it('assigns one task per assignee × occurrence for multi-user recurring', async () => {
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [101, 202], jobPosition: null },
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-01',
+          recurring: { every: 1, interval: 'day', repeatCount: 2 },
+        },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      template,
+      { id: 20, schemaSnapshot: template.schema } as any,
+      1,
+    );
+
+    expect(created).toHaveLength(4);
+    expect(
+      created.map((a) => `${a.assigneeUserId}:${a.dueAt.toISOString().slice(0, 10)}`).sort(),
+    ).toEqual(['101:2026-09-01', '101:2026-09-02', '202:2026-09-01', '202:2026-09-02']);
+  });
+});
+
 describe('AssignmentsService materializeFromTemplate (restore rules)', () => {
   const frequencyService = new FrequencyService();
   let service: AssignmentsService;
@@ -864,5 +1163,221 @@ describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', (
     });
     expect(result.data.affected).toBe(2);
     expect(executeMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('AssignmentsService findAssignedForms (admin board)', () => {
+  let service: AssignmentsService;
+  let listQb: any;
+  let statsQb: any;
+  let createQueryBuilderMock: jest.Mock;
+  let findUsersMock: jest.Mock;
+  let findSubmissionsMock: jest.Mock;
+  let req: any;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-16T12:00:00.000Z'));
+
+    const chain = () => {
+      const api: any = {};
+      for (const method of [
+        'leftJoinAndSelect',
+        'leftJoin',
+        'andWhere',
+        'orderBy',
+        'addOrderBy',
+        'skip',
+        'take',
+        'select',
+        'addSelect',
+        'groupBy',
+      ]) {
+        api[method] = jest.fn().mockReturnValue(api);
+      }
+      return api;
+    };
+
+    listQb = chain();
+    listQb.getManyAndCount = jest.fn().mockResolvedValue([
+      [
+        {
+          id: 1,
+          templateId: 10,
+          templateVersionId: 12,
+          assigneeUserId: 5,
+          dueAt: new Date('2026-09-16T00:00:00.000Z'),
+          status: AssignmentStatus.COMPLETED,
+          assignmentType: 'individual',
+          sharedGroupKey: null,
+          completedByUserId: 5,
+          completedAt: new Date('2026-09-16T14:10:00.000Z'),
+          template: { name: 'Daily Kitchen Checklist', schema: {} },
+          createdAt: new Date('2026-09-15T01:00:00.000Z'),
+          updatedAt: new Date('2026-09-16T14:10:00.000Z'),
+        },
+        {
+          id: 2,
+          templateId: 11,
+          templateVersionId: 13,
+          assigneeUserId: 6,
+          dueAt: new Date('2026-09-15T00:00:00.000Z'),
+          status: AssignmentStatus.OVERDUE,
+          assignmentType: 'individual',
+          sharedGroupKey: null,
+          completedByUserId: null,
+          completedAt: null,
+          template: { name: 'Hygiene Inspection', schema: {} },
+          createdAt: new Date('2026-09-14T01:00:00.000Z'),
+          updatedAt: new Date('2026-09-15T01:00:00.000Z'),
+        },
+      ],
+      24,
+    ]);
+
+    statsQb = chain();
+    statsQb.getRawMany = jest.fn().mockResolvedValue([
+      { status: AssignmentStatus.COMPLETED, count: '16' },
+      { status: AssignmentStatus.IN_PROGRESS, count: '5' },
+      { status: AssignmentStatus.OVERDUE, count: '3' },
+    ]);
+
+    createQueryBuilderMock = jest
+      .fn()
+      .mockImplementationOnce(() => listQb)
+      .mockImplementationOnce(() => statsQb);
+
+    findUsersMock = jest.fn().mockResolvedValue([
+      { id: 5, name: 'Sarah Johnson' },
+      { id: 6, name: 'Mike Chen' },
+    ]);
+    findSubmissionsMock = jest.fn().mockResolvedValue([]);
+
+    service = new AssignmentsService(new FrequencyService());
+    req = {
+      user: { id: 1 },
+      tenantConnection: {
+        getRepository: jest.fn((entity: any) => {
+          const name = entity?.name || entity;
+          if (name === 'DataCollectionAssignment' || name?.name === 'DataCollectionAssignment') {
+            return { createQueryBuilder: createQueryBuilderMock };
+          }
+          if (name === 'User' || name?.name === 'User') {
+            return { find: findUsersMock };
+          }
+          if (name === 'DataCollectionSubmission' || name?.name === 'DataCollectionSubmission') {
+            return { find: findSubmissionsMock };
+          }
+          return { createQueryBuilder: createQueryBuilderMock, find: jest.fn() };
+        }),
+      },
+    };
+
+    // TypeORM getRepository often receives the class; match by comparing constructors.
+    req.tenantConnection.getRepository = jest.fn((entity: any) => {
+      if (entity?.name === 'DataCollectionAssignment') {
+        return { createQueryBuilder: createQueryBuilderMock };
+      }
+      if (entity?.name === 'User') {
+        return { find: findUsersMock };
+      }
+      if (entity?.name === 'DataCollectionSubmission') {
+        return { find: findSubmissionsMock };
+      }
+      // Fallback: first calls are assignment qb
+      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns stats cards and table-shaped rows with priority/status labels', async () => {
+    const result = await service.findAssignedForms(req, { page: 1, limit: 5 });
+
+    expect(result.success).toBe(true);
+    expect(result.stats).toEqual({
+      totalAssigned: 24,
+      completed: 16,
+      inProgress: 5,
+      overdue: 3,
+      notStarted: 0,
+    });
+    expect(result.meta).toEqual({ total: 24, page: 1, lastPage: 5, limit: 5 });
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0]).toMatchObject({
+      formName: 'Daily Kitchen Checklist',
+      assignedTo: 'Sarah Johnson',
+      dueDateLabel: 'Sep 16, 2026',
+      priority: 'high',
+      status: AssignmentStatus.COMPLETED,
+      statusLabel: 'Completed',
+    });
+    expect(result.data[1]).toMatchObject({
+      formName: 'Hygiene Inspection',
+      assignedTo: 'Mike Chen',
+      priority: 'high',
+      status: AssignmentStatus.OVERDUE,
+      statusLabel: 'Overdue',
+    });
+  });
+
+  it('filters by status not_started as pending and applies search', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      status: 'not_started',
+      search: 'Kitchen',
+    });
+
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.status = :status', {
+      status: AssignmentStatus.PENDING,
+    });
+    const searchCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('ILIKE :search'),
+    );
+    expect(searchCall).toBeDefined();
+    expect(searchCall[1].search).toBe('%Kitchen%');
+  });
+
+  it('filters overdue, priority medium, due range, and recent submissions', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      status: AssignmentStatus.OVERDUE,
+      priority: 'medium',
+      dueFrom: '2026-09-01',
+      dueTo: '2026-09-30',
+      recentSubmissions: true,
+      recentDays: 7,
+    });
+
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.status = :status', {
+      status: AssignmentStatus.OVERDUE,
+    });
+    expect(listQb.andWhere).toHaveBeenCalledWith(
+      'assignment.dueAt BETWEEN :priorityMedStart AND :priorityMedEnd',
+      expect.objectContaining({
+        priorityMedStart: new Date('2026-09-17T00:00:00.000Z'),
+        priorityMedEnd: new Date('2026-09-18T23:59:59.999Z'),
+      }),
+    );
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.dueAt >= :dueFrom', {
+      dueFrom: new Date('2026-09-01T00:00:00.000Z'),
+    });
+    expect(listQb.andWhere).toHaveBeenCalledWith('assignment.dueAt <= :dueTo', {
+      dueTo: new Date('2026-09-30T23:59:59.999Z'),
+    });
+    const recentCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('dc_submissions'),
+    );
+    expect(recentCall).toBeDefined();
+  });
+
+  it('rejects invalid dueFrom', async () => {
+    await expect(
+      service.findAssignedForms(req, { dueFrom: '09-01-2026' as any }),
+    ).rejects.toThrow(BadRequestException);
   });
 });
