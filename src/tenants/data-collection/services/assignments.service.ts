@@ -740,8 +740,39 @@ export class AssignmentsService {
   }
 
   /**
-   * Cancel open future assignments when republishing (optionally excluding the new version).
-   * Used so employees do not keep stale schedule rows from a previous version.
+   * Point open assignments at a newly published version without cancelling them.
+   * Used for form/report-only publishes so employees keep the same task status.
+   */
+  async retargetOpenAssignmentsToVersion(
+    req: any,
+    templateId: number,
+    templateVersionId: number,
+    actorId: number | null,
+  ) {
+    const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    await repo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({
+        templateVersionId,
+        updatedBy: actorId,
+      })
+      .where('template_id = :templateId', { templateId })
+      .andWhere('status IN (:...statuses)', {
+        statuses: [
+          AssignmentStatus.PENDING,
+          AssignmentStatus.IN_PROGRESS,
+          AssignmentStatus.OVERDUE,
+        ],
+      })
+      .execute();
+  }
+
+  /**
+   * Cancel open assignments when republishing after assign/frequency changes
+   * (optionally excluding the new version). Includes today + past overdue —
+   * due_at is stored as UTC midnight, so a wall-clock `due_at >= now` check
+   * incorrectly skips same-day open work.
    */
   async cancelFutureForTemplate(req: any, templateId: number, fromVersionId?: number) {
     const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
@@ -759,8 +790,7 @@ export class AssignmentsService {
           AssignmentStatus.IN_PROGRESS,
           AssignmentStatus.OVERDUE,
         ],
-      })
-      .andWhere('due_at >= :now', { now: new Date() });
+      });
 
     if (fromVersionId) {
       qb.andWhere('template_version_id != :versionId', { versionId: fromVersionId });

@@ -248,7 +248,7 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiResponse({
         status: 200,
         description:
-          'Template updated successfully. Assign/frequency schema changes auto-publish (cancel future open assignments + rematerialize) unless publish=false.',
+          'Template updated successfully. Assign/frequency changes auto-publish (cancel future open assignments + rematerialize) unless publish=false. Form/report-only publishes keep existing open tasks and point them at the new version.',
         schema: {
           example: {
             success: true,
@@ -313,7 +313,7 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiOperation({
         summary: 'Publish template',
         description:
-          'Publishes the current schema as a new active version and materializes assignments from Assign & Report + Frequency.',
+          'Publishes the current schema as a new active version. Cancels future open assignments and rematerializes only when Assign or Frequency changed vs the previous active version. Form/report-only publishes keep existing open tasks and retarget them to the new version.',
       }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template published successfully.' }),

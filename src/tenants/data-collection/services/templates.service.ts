@@ -9,13 +9,15 @@ import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../enti
 import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
 import { AssignmentsService } from './assignments.service';
 import { WorkflowActionsService } from './workflow-actions.service';
-import { parseExclusiveAssignReportTargets } from '../utils/assignment-completion.util';
+import { FrequencyService } from './frequency.service';
+import { parseExclusiveAssignReportTargets, resolveAssignReportMode } from '../utils/assignment-completion.util';
 
 @Injectable()
 export class TemplatesService {
   constructor(
     private readonly assignmentsService: AssignmentsService,
     private readonly workflowActions: WorkflowActionsService,
+    private readonly frequencyService: FrequencyService,
   ) {}
 
   private getActorId(req: any, fallback?: number | null): number | null {
@@ -68,17 +70,136 @@ export class TemplatesService {
     return String(type || '').toLowerCase() === 'recurring';
   }
 
-  /** Assign / frequency changes require rematerializing employee assignments. */
+  /**
+   * Stable JSON for schedule comparisons (key order / null vs [] must not count as a change).
+   */
+  private canonicalizeJson(value: unknown): unknown {
+    if (value === null || value === undefined) return null;
+    if (Array.isArray(value)) {
+      const mapped = value.map((item) => this.canonicalizeJson(item));
+      if (mapped.every((item) => typeof item === 'number')) {
+        return [...(mapped as number[])].sort((a, b) => a - b);
+      }
+      if (mapped.every((item) => typeof item === 'string')) {
+        return [...(mapped as string[])].sort((a, b) => a.localeCompare(b));
+      }
+      return mapped;
+    }
+    if (typeof value === 'object') {
+      const input = value as Record<string, unknown>;
+      const output: Record<string, unknown> = {};
+      for (const key of Object.keys(input).sort((a, b) => a.localeCompare(b))) {
+        const child = input[key];
+        if (child === undefined) continue;
+        output[key] = this.canonicalizeJson(child);
+      }
+      return output;
+    }
+    return value;
+  }
+
+  private normalizeFrequencyType(type: unknown): string {
+    const value = String(type || '').toLowerCase().trim();
+    if (
+      value === 'atonce' ||
+      value === 'at_once' ||
+      value === 'at-once' ||
+      value === 'one_time' ||
+      value === 'one-time' ||
+      value === 'onetime'
+    ) {
+      return 'atonce';
+    }
+    if (value === 'recurring') return 'recurring';
+    return value;
+  }
+
+  private frequencyHasDate(frequency: Record<string, unknown>): boolean {
+    const raw = frequency.date ?? frequency.startDate;
+    return raw !== null && raw !== undefined && String(raw).trim() !== '';
+  }
+
+  /** Who must complete the form — ignores null/[] and mode vs assignmentType aliases. */
+  private canonicalizeAssign(assign: unknown): string {
+    const parsed = parseExclusiveAssignReportTargets(
+      assign as { users?: unknown; jobPosition?: unknown } | null,
+    );
+    const mode = resolveAssignReportMode(
+      assign as { mode?: unknown; assignmentType?: unknown } | null,
+    );
+    return JSON.stringify({
+      mode,
+      users: [...parsed.users].sort((a, b) => a - b),
+      jobPosition: [...parsed.jobPosition].sort((a, b) => a - b),
+    });
+  }
+
+  /**
+   * Semantic frequency equality:
+   * - UI vs canonical recurring shapes (every/interval vs interval/unit)
+   * - date vs startDate
+   * - omitted recurring date inherits previous anchor (Frequency card has no date field)
+   */
+  private frequenciesEquivalent(previous: unknown, next: unknown): boolean {
+    if (previous == null && next == null) return true;
+    if (previous == null || next == null) return false;
+    if (typeof previous !== 'object' || typeof next !== 'object') return false;
+
+    const prev = previous as Record<string, unknown>;
+    const nxt: Record<string, unknown> = { ...(next as Record<string, unknown>) };
+
+    if (this.normalizeFrequencyType(prev.type) !== this.normalizeFrequencyType(nxt.type)) {
+      return false;
+    }
+
+    // Recurring UI often omits date on save — keep the previously published anchor.
+    if (!this.frequencyHasDate(nxt) && this.frequencyHasDate(prev)) {
+      nxt.date = prev.date ?? prev.startDate;
+    }
+
+    const prevDate = String(prev.date ?? prev.startDate ?? '').trim();
+    const nextDate = String(nxt.date ?? nxt.startDate ?? '').trim();
+    if (prevDate !== nextDate) return false;
+
+    if (this.normalizeFrequencyType(prev.type) === 'atonce') {
+      return true;
+    }
+
+    const prevSchedule = (prev.recurring ?? prev.schedule ?? null) as Record<string, any> | null;
+    const nextSchedule = (nxt.recurring ?? nxt.schedule ?? null) as Record<string, any> | null;
+
+    if (!prevSchedule && !nextSchedule) return true;
+    if (!prevSchedule || !nextSchedule) return false;
+
+    const prevNormalized = this.frequencyService.normalizeSchedule(prevSchedule);
+    const nextNormalized = this.frequencyService.normalizeSchedule(nextSchedule);
+    return (
+      JSON.stringify(this.canonicalizeJson(prevNormalized)) ===
+      JSON.stringify(this.canonicalizeJson(nextNormalized))
+    );
+  }
+
+  /** Assign / frequency changes require rematerializing employee assignments (report does not). */
   private scheduleAffectingSchemaChanged(
     previous: Record<string, any> | null | undefined,
     next: Record<string, any> | null | undefined,
   ): boolean {
     if (!next || typeof next !== 'object') return false;
-    const prevAssign = JSON.stringify(previous?.assign ?? null);
-    const nextAssign = JSON.stringify(next.assign ?? null);
-    const prevFrequency = JSON.stringify(previous?.frequency ?? null);
-    const nextFrequency = JSON.stringify(next.frequency ?? null);
-    return prevAssign !== nextAssign || prevFrequency !== nextFrequency;
+
+    // Partial payloads must not look like "cleared assign/frequency".
+    const previousAssign = previous?.assign;
+    const nextAssign = Object.prototype.hasOwnProperty.call(next, 'assign')
+      ? next.assign
+      : previousAssign;
+    const previousFrequency = previous?.frequency;
+    const nextFrequency = Object.prototype.hasOwnProperty.call(next, 'frequency')
+      ? next.frequency
+      : previousFrequency;
+
+    return (
+      this.canonicalizeAssign(previousAssign) !== this.canonicalizeAssign(nextAssign) ||
+      !this.frequenciesEquivalent(previousFrequency, nextFrequency)
+    );
   }
 
   /**
@@ -125,20 +246,46 @@ export class TemplatesService {
     }
   }
 
+  /**
+   * Publish creates a new active version always.
+   * Cancel + rematerialize only when assign/frequency changed (who/when).
+   * Form/report-only publishes keep existing open tasks and retarget them to the new version.
+   */
   private async publishInternal(
     req: any,
     template: DataCollectionTemplate,
     actorId: number | null,
+    options?: { rematerializeAssignments?: boolean },
   ) {
     if (!template.schema) {
       throw new BadRequestException('Cannot publish a template without a schema');
     }
 
     const schema = template.schema as Record<string, any>;
-    this.ensurePublishableSchema(schema);
+    const rematerializeAssignments = options?.rematerializeAssignments !== false;
 
     const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
     const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+
+    // Preserve the previously published recurring anchor date when the UI omits it.
+    // Otherwise ensurePublishableSchema would rewrite it to "today" and look like a schedule change.
+    const previousActive = await versionRepo.findOne({
+      where: { templateId: template.id, isActive: true },
+    });
+    const frequency = schema.frequency as Record<string, any> | undefined;
+    if (frequency && typeof frequency === 'object' && this.isRecurringFrequency(frequency.type)) {
+      const rawDate = frequency.date ?? frequency.startDate;
+      const hasDate = rawDate !== null && rawDate !== undefined && String(rawDate).trim() !== '';
+      if (!hasDate) {
+        const prevFrequency = (previousActive?.schemaSnapshot as Record<string, any> | null)?.frequency;
+        const prevDate = prevFrequency?.date ?? prevFrequency?.startDate;
+        if (prevDate !== null && prevDate !== undefined && String(prevDate).trim() !== '') {
+          frequency.date = prevDate;
+        }
+      }
+    }
+
+    this.ensurePublishableSchema(schema);
 
     const version = await this.createVersion(versionRepo, template.id, schema, actorId, true);
 
@@ -147,19 +294,32 @@ export class TemplatesService {
     template.updatedBy = actorId;
     const saved = await templateRepo.save(template);
 
-    await this.assignmentsService.cancelFutureForTemplate(req, template.id, version.id);
-    const assignments = await this.assignmentsService.materializeFromTemplate(
-      req,
-      saved,
-      version,
-      actorId,
-    );
+    let assignments: Awaited<
+      ReturnType<AssignmentsService['materializeFromTemplate']>
+    > = [];
+    let emailNotify = { sent: 0, failed: 0, skipped: 0 };
 
-    const emailNotify = await this.workflowActions.notifyAssigneesOnPublish(req, {
-      templateId: saved.id,
-      templateName: saved.name,
-      assignments,
-    });
+    if (rematerializeAssignments) {
+      await this.assignmentsService.cancelFutureForTemplate(req, template.id, version.id);
+      assignments = await this.assignmentsService.materializeFromTemplate(
+        req,
+        saved,
+        version,
+        actorId,
+      );
+      emailNotify = await this.workflowActions.notifyAssigneesOnPublish(req, {
+        templateId: saved.id,
+        templateName: saved.name,
+        assignments,
+      });
+    } else {
+      await this.assignmentsService.retargetOpenAssignmentsToVersion(
+        req,
+        template.id,
+        version.id,
+        actorId,
+      );
+    }
 
     return { template: saved, version, assignments, emailNotify };
   }
@@ -187,8 +347,10 @@ export class TemplatesService {
 
       const saved = await templateRepo.save(template);
 
-      // Always publish on create (version + assignments + assignee emails).
-      const published = await this.publishInternal(req, saved, actorId);
+      // Always publish + rematerialize on create (first assignments + assignee emails).
+      const published = await this.publishInternal(req, saved, actorId, {
+        rematerializeAssignments: true,
+      });
       return {
         success: true,
         message: 'Template created and published successfully',
@@ -270,15 +432,27 @@ export class TemplatesService {
       if (dto.isActive !== undefined) template.isActive = dto.isActive;
       template.updatedBy = actorId;
 
-      // Non-schedule schema edits on an active template go back to draft until re-published.
-      if (dto.schema !== undefined && template.status === TemplateStatus.ACTIVE && !shouldPublish) {
-        template.status = TemplateStatus.DRAFT;
-      }
+      // Never demote ACTIVE → DRAFT on update. Form/name edits stay live; assign/frequency
+      // changes still publish via shouldPublish below.
 
       const saved = await templateRepo.save(template);
 
       if (shouldPublish) {
-        const published = await this.publishInternal(req, saved, actorId);
+        // Rematerialize only when assign/frequency actually changed vs the live published version.
+        // First publish (no active version yet) always rematerializes.
+        const previousActive = await req.tenantConnection
+          .getRepository(TemplateVersion)
+          .findOne({ where: { templateId: id, isActive: true } });
+        const rematerializeAssignments =
+          !previousActive ||
+          this.scheduleAffectingSchemaChanged(
+            (previousActive.schemaSnapshot || null) as Record<string, any> | null,
+            (saved.schema || null) as Record<string, any> | null,
+          );
+
+        const published = await this.publishInternal(req, saved, actorId, {
+          rematerializeAssignments,
+        });
         return {
           success: true,
           message: 'Template updated and published successfully',
@@ -299,6 +473,7 @@ export class TemplatesService {
   async publish(req: any, id: number) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
@@ -307,7 +482,20 @@ export class TemplatesService {
       }
 
       const actorId = this.getActorId(req);
-      const published = await this.publishInternal(req, template, actorId);
+      // Compare against the current active version before it is deactivated by createVersion.
+      const previousActive = await versionRepo.findOne({
+        where: { templateId: id, isActive: true },
+      });
+      const rematerializeAssignments =
+        !previousActive ||
+        this.scheduleAffectingSchemaChanged(
+          previousActive.schemaSnapshot as Record<string, any> | null,
+          template.schema as Record<string, any> | null,
+        );
+
+      const published = await this.publishInternal(req, template, actorId, {
+        rematerializeAssignments,
+      });
 
       return {
         success: true,
