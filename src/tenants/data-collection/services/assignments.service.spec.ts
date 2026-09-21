@@ -496,6 +496,305 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
   });
 });
 
+describe('AssignmentsService materializeFromTemplate (all frequency → assign again)', () => {
+  const frequencyService = new FrequencyService();
+  let service: AssignmentsService;
+  let savedRows: any[];
+  let findOneMock: jest.Mock;
+  let createMock: jest.Mock;
+  let saveMock: jest.Mock;
+  let assignmentRepo: any;
+  let req: any;
+
+  beforeEach(() => {
+    savedRows = [];
+    findOneMock = jest.fn().mockResolvedValue(null);
+    createMock = jest.fn((row) => ({ ...row }));
+    saveMock = jest.fn(async (row) => {
+      const saved = { id: savedRows.length + 1, ...row };
+      savedRows.push(saved);
+      return saved;
+    });
+    assignmentRepo = {
+      findOne: findOneMock,
+      create: createMock,
+      save: saveMock,
+    };
+    req = {
+      user: { id: 1 },
+      tenantConnection: {
+        getRepository: jest.fn((entity) => {
+          if (entity?.name === 'User') {
+            return {
+              createQueryBuilder: jest.fn(() => ({
+                select: jest.fn().mockReturnThis(),
+                addSelect: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawMany: jest.fn().mockResolvedValue([]),
+              })),
+            };
+          }
+          return assignmentRepo;
+        }),
+      },
+    };
+    service = new AssignmentsService(frequencyService);
+  });
+
+  async function materialize(
+    frequency: Record<string, any>,
+    versionId = 20,
+    assigneeUserId = 101,
+  ) {
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [assigneeUserId], jobPosition: null },
+        frequency,
+      },
+    } as any;
+    return service.materializeFromTemplate(
+      req,
+      template,
+      { id: versionId, schemaSnapshot: template.schema } as any,
+      1,
+    );
+  }
+
+  it.each([
+    {
+      name: 'atOnce',
+      frequency: { type: 'atOnce', date: '2026-09-15', recurring: null },
+      expectedDates: ['2026-09-15'],
+    },
+    {
+      name: 'daily every 1 × 4',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 1, interval: 'day', repeatCount: 4 },
+      },
+      expectedDates: ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04'],
+    },
+    {
+      name: 'daily every 2 days × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 2, interval: 'day', repeatCount: 3 },
+      },
+      expectedDates: ['2026-09-01', '2026-09-03', '2026-09-05'],
+    },
+    {
+      name: 'weekly every 1 week × 3 (no weekdays)',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: { every: 1, interval: 'week', repeatCount: 3, daysOfWeek: [] },
+      },
+      expectedDates: ['2026-09-01', '2026-09-08', '2026-09-15'],
+    },
+    {
+      name: 'weekly Mon/Fri × 2',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: {
+          every: 1,
+          interval: 'week',
+          repeatCount: 2,
+          daysOfWeek: ['monday', 'friday'],
+        },
+      },
+      expectedDates: ['2026-09-04', '2026-09-07'],
+    },
+    {
+      name: 'biweekly Friday × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-09-04',
+        recurring: {
+          every: 2,
+          interval: 'week',
+          repeatCount: 3,
+          daysOfWeek: ['friday'],
+        },
+      },
+      expectedDates: ['2026-09-04', '2026-09-18', '2026-10-02'],
+    },
+    {
+      name: 'monthly dayOfMonth × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: {
+          every: 1,
+          interval: 'month',
+          repeatCount: 3,
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 10,
+        },
+      },
+      expectedDates: ['2026-01-10', '2026-02-10', '2026-03-10'],
+    },
+    {
+      name: 'every 2 months day 15 × 3',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: {
+          every: 2,
+          interval: 'month',
+          repeatCount: 3,
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 15,
+        },
+      },
+      expectedDates: ['2026-01-15', '2026-03-15', '2026-05-15'],
+    },
+    {
+      name: 'yearly dayOfMonth × 2',
+      frequency: {
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: {
+          every: 1,
+          interval: 'year',
+          repeatCount: 2,
+          monthMode: 'dayOfMonth',
+          yearMonth: 'march',
+          yearDay: 15,
+        },
+      },
+      expectedDates: ['2026-03-15', '2027-03-15'],
+    },
+  ])('assigns tasks for frequency case: $name', async ({ frequency, expectedDates }) => {
+    const created = await materialize(frequency);
+
+    expect(created).toHaveLength(expectedDates.length);
+    expect(created.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual(expectedDates);
+    expect(created.every((a) => a.assigneeUserId === 101)).toBe(true);
+    expect(
+      created.every((a) =>
+        [AssignmentStatus.PENDING, AssignmentStatus.OVERDUE].includes(a.status),
+      ),
+    ).toBe(true);
+
+    // Occurrence keys are unique per due date × assignee × version.
+    const keys = created.map((a) => a.occurrenceKey);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('assigns monthly On the Third Wednesday × 2', async () => {
+    const created = await materialize({
+      type: 'recurring',
+      date: '2026-01-01',
+      recurring: {
+        every: 1,
+        interval: 'month',
+        repeatCount: 2,
+        monthMode: 'onThe',
+        weekOrder: 'third',
+        daysOfWeek: ['wednesday'],
+      },
+    });
+
+    expect(created.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-01-21',
+      '2026-02-18',
+    ]);
+  });
+
+  it('does not duplicate open tasks when rematerializing the same frequency', async () => {
+    const frequency = {
+      type: 'recurring',
+      date: '2026-09-01',
+      recurring: { every: 1, interval: 'day', repeatCount: 3 },
+    };
+
+    const first = await materialize(frequency, 20);
+    expect(first).toHaveLength(3);
+
+    // Existing open rows are returned as-is (idempotent).
+    findOneMock.mockImplementation(async ({ where }: any) => {
+      return (
+        savedRows.find((row) => row.occurrenceKey === where.occurrenceKey) || null
+      );
+    });
+    saveMock.mockClear();
+    createMock.mockClear();
+
+    const second = await materialize(frequency, 20);
+    expect(second).toHaveLength(3);
+    expect(createMock).not.toHaveBeenCalled();
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(second.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+    ]);
+  });
+
+  it('assigns again on frequency change via a new template version', async () => {
+    const daily = {
+      type: 'recurring',
+      date: '2026-09-01',
+      recurring: { every: 1, interval: 'day', repeatCount: 3 },
+    };
+    const weekly = {
+      type: 'recurring',
+      date: '2026-09-01',
+      recurring: { every: 1, interval: 'week', repeatCount: 2, daysOfWeek: [] },
+    };
+
+    const first = await materialize(daily, 20);
+    expect(first.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+    ]);
+
+    // New version → new occurrence keys → new assignment set (assign again).
+    findOneMock.mockResolvedValue(null);
+    savedRows = [];
+    saveMock.mockClear();
+
+    const second = await materialize(weekly, 21);
+    expect(second.map((a) => a.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-01',
+      '2026-09-08',
+    ]);
+    expect(second.every((a) => String(a.occurrenceKey).startsWith('10:21:'))).toBe(true);
+    expect(second.every((a) => a.assigneeUserId === 101)).toBe(true);
+  });
+
+  it('assigns one task per assignee × occurrence for multi-user recurring', async () => {
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [101, 202], jobPosition: null },
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-01',
+          recurring: { every: 1, interval: 'day', repeatCount: 2 },
+        },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      template,
+      { id: 20, schemaSnapshot: template.schema } as any,
+      1,
+    );
+
+    expect(created).toHaveLength(4);
+    expect(
+      created.map((a) => `${a.assigneeUserId}:${a.dueAt.toISOString().slice(0, 10)}`).sort(),
+    ).toEqual(['101:2026-09-01', '101:2026-09-02', '202:2026-09-01', '202:2026-09-02']);
+  });
+});
+
 describe('AssignmentsService materializeFromTemplate (restore rules)', () => {
   const frequencyService = new FrequencyService();
   let service: AssignmentsService;
