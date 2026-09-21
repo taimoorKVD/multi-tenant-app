@@ -103,9 +103,9 @@ export class AssignmentsController {
     summary: 'Assigned Forms (admin)',
     description:
       'Admin Assigned Forms board: summary cards (Total Assigned, Completed, In Progress, Overdue) ' +
-      'plus a filterable, paginated table. Supports search (form or assignee name), assignee, ' +
-      'completion status (`pending`/`not_started`, `in_progress`, `completed`, `overdue`), ' +
-      'priority (derived from due date), due date range, and recent submissions.',
+      'plus a filterable, paginated table. `assignedTo` is an array of assignees (shared groups include every member). ' +
+      'Each `submission` includes `template.schema` (pinned version snapshot) so answers can be matched to fields. ' +
+      'Supports search (form or assignee name), assignee, completion status, due date range, and recent submissions.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -116,7 +116,6 @@ export class AssignmentsController {
     required: false,
     enum: ['pending', 'not_started', 'in_progress', 'completed', 'overdue', 'cancelled'],
   })
-  @ApiQuery({ name: 'priority', required: false, enum: ['high', 'medium', 'low'] })
   @ApiQuery({ name: 'dueFrom', required: false, type: String, example: '2026-09-01' })
   @ApiQuery({ name: 'dueTo', required: false, type: String, example: '2026-09-30' })
   @ApiQuery({
@@ -147,14 +146,31 @@ export class AssignmentsController {
             templateVersionId: 12,
             formName: 'Daily Kitchen Checklist',
             assigneeUserId: 5,
-            assignedTo: 'Sarah Johnson',
+            assigneeUserIds: [5, 9],
+            assignedTo: [
+              { id: 5, name: 'Sarah Johnson' },
+              { id: 9, name: 'Alex Kim' },
+            ],
             dueAt: '2026-09-16T00:00:00.000Z',
             dueDateLabel: 'Sep 16, 2026',
-            priority: 'high',
             status: 'completed',
             statusLabel: 'Completed',
-            mode: 'individual',
+            mode: 'shared',
             submissionId: 40,
+            submission: {
+              id: 40,
+              assignmentId: 1,
+              answers: { fld_001: 'ok' },
+              status: 'submitted',
+              template: {
+                id: 10,
+                name: 'Daily Kitchen Checklist',
+                schema: {
+                  formName: 'Daily Kitchen Checklist',
+                  sections: [{ id: 'sec_1', fields: [{ id: 'fld_001', label: 'Notes' }] }],
+                },
+              },
+            },
             completion: {
               state: 'completed',
               title: 'Completed',

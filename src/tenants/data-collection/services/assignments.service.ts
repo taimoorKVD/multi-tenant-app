@@ -19,18 +19,13 @@ import {
   TemplateVersion,
 } from '../entities';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
-import {
-  AssignedFormsPriority,
-  QueryAssignedFormsDto,
-} from '../dto/assignments/query-assigned-forms.dto';
+import { QueryAssignedFormsDto } from '../dto/assignments/query-assigned-forms.dto';
 import {
   buildAssignmentCompletion,
   parseExclusiveAssignReportTargets,
   resolveAssignReportMode,
 } from '../utils/assignment-completion.util';
 import { FrequencyService } from './frequency.service';
-
-type AssignmentPriority = AssignedFormsPriority;
 
 @Injectable()
 export class AssignmentsService {
@@ -330,7 +325,7 @@ export class AssignmentsService {
 
   /**
    * Admin "Assigned Forms" list: summary cards + filterable/paginated table rows.
-   * Priority is derived from due calendar day (UTC), matching the employee dashboard.
+   * `assignedTo` is always an array (shared groups include every assignee on the occurrence).
    */
   async findAssignedForms(req: any, query: QueryAssignedFormsDto) {
     try {
@@ -363,9 +358,22 @@ export class AssignmentsService {
         }
 
         if (query.assigneeUserId) {
-          qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
-            assigneeUserId: query.assigneeUserId,
-          });
+          // Match the row assignee, or any member of the same shared group.
+          qb.andWhere(
+            `(
+              assignment.assigneeUserId = :assigneeUserId
+              OR (
+                assignment.sharedGroupKey IS NOT NULL
+                AND EXISTS (
+                  SELECT 1 FROM dc_assignments peer
+                  WHERE peer.shared_group_key = assignment.shared_group_key
+                    AND peer.assignee_user_id = :assigneeUserId
+                    AND peer.deleted_at IS NULL
+                )
+              )
+            )`,
+            { assigneeUserId: query.assigneeUserId },
+          );
         }
 
         const search = String(query.search || '').trim();
@@ -375,6 +383,17 @@ export class AssignmentsService {
               template.name ILIKE :search
               OR COALESCE(template.schema->>'formName', '') ILIKE :search
               OR COALESCE(assignee.name, '') ILIKE :search
+              OR (
+                assignment.sharedGroupKey IS NOT NULL
+                AND EXISTS (
+                  SELECT 1
+                  FROM dc_assignments peer
+                  INNER JOIN users peer_user ON peer_user.id = peer.assignee_user_id
+                  WHERE peer.shared_group_key = assignment.shared_group_key
+                    AND peer.deleted_at IS NULL
+                    AND COALESCE(peer_user.name, '') ILIKE :search
+                )
+              )
             )`,
             { search: `%${search}%` },
           );
@@ -390,8 +409,6 @@ export class AssignmentsService {
           if (!to) throw new BadRequestException('dueTo must be a valid YYYY-MM-DD string');
           qb.andWhere('assignment.dueAt <= :dueTo', { dueTo: this.endOfDayUtc(to) });
         }
-
-        this.applyPriorityFilter(qb, query.priority, now);
 
         if (wantRecent) {
           const since = new Date(now.getTime() - recentDays * 24 * 60 * 60 * 1000);
@@ -423,7 +440,7 @@ export class AssignmentsService {
       const lastPage = Math.ceil(total / limit) || 1;
 
       const stats = await this.loadAssignedFormsStats(req, query, now);
-      const data = await this.serializeAssignedFormsRows(req, rows, actorId, now);
+      const data = await this.serializeAssignedFormsRows(req, rows, actorId);
 
       return {
         success: true,
@@ -444,49 +461,6 @@ export class AssignmentsService {
     if (!status) return null;
     if (status === 'not_started') return AssignmentStatus.PENDING;
     return status as AssignmentStatus;
-  }
-
-  private dayDiffFromToday(dueAt: Date, now = new Date()): number {
-    const due = this.startOfDayUtc(dueAt).getTime();
-    const today = this.startOfDayUtc(now).getTime();
-    return Math.round((due - today) / (24 * 60 * 60 * 1000));
-  }
-
-  private resolvePriority(dueAt: Date, now = new Date()): AssignmentPriority {
-    const diff = this.dayDiffFromToday(dueAt, now);
-    if (diff <= 0) return 'high';
-    if (diff <= 2) return 'medium';
-    return 'low';
-  }
-
-  private applyPriorityFilter(
-    qb: { andWhere: (sql: string, params?: Record<string, unknown>) => unknown },
-    priority: AssignedFormsPriority | undefined,
-    now: Date,
-  ) {
-    if (!priority) return;
-
-    const startToday = this.startOfDayUtc(now);
-    const endToday = this.endOfDayUtc(now);
-    const startTomorrow = new Date(startToday.getTime() + 24 * 60 * 60 * 1000);
-    const endInTwoDays = this.endOfDayUtc(
-      new Date(startToday.getTime() + 2 * 24 * 60 * 60 * 1000),
-    );
-    const startInThreeDays = new Date(startToday.getTime() + 3 * 24 * 60 * 60 * 1000);
-
-    if (priority === 'high') {
-      // Due today or earlier (UTC calendar day).
-      qb.andWhere('assignment.dueAt <= :priorityHighEnd', { priorityHighEnd: endToday });
-    } else if (priority === 'medium') {
-      qb.andWhere('assignment.dueAt BETWEEN :priorityMedStart AND :priorityMedEnd', {
-        priorityMedStart: startTomorrow,
-        priorityMedEnd: endInTwoDays,
-      });
-    } else {
-      qb.andWhere('assignment.dueAt >= :priorityLowStart', {
-        priorityLowStart: startInThreeDays,
-      });
-    }
   }
 
   private formatDueDateLabel(dueAt: Date): string {
@@ -538,9 +512,21 @@ export class AssignmentsService {
       });
 
     if (query.assigneeUserId) {
-      qb.andWhere('assignment.assigneeUserId = :assigneeUserId', {
-        assigneeUserId: query.assigneeUserId,
-      });
+      qb.andWhere(
+        `(
+          assignment.assigneeUserId = :assigneeUserId
+          OR (
+            assignment.sharedGroupKey IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM dc_assignments peer
+              WHERE peer.shared_group_key = assignment.shared_group_key
+                AND peer.assignee_user_id = :assigneeUserId
+                AND peer.deleted_at IS NULL
+            )
+          )
+        )`,
+        { assigneeUserId: query.assigneeUserId },
+      );
     }
 
     const search = String(query.search || '').trim();
@@ -550,6 +536,17 @@ export class AssignmentsService {
           template.name ILIKE :search
           OR COALESCE(template.schema->>'formName', '') ILIKE :search
           OR COALESCE(assignee.name, '') ILIKE :search
+          OR (
+            assignment.sharedGroupKey IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM dc_assignments peer
+              INNER JOIN users peer_user ON peer_user.id = peer.assignee_user_id
+              WHERE peer.shared_group_key = assignment.shared_group_key
+                AND peer.deleted_at IS NULL
+                AND COALESCE(peer_user.name, '') ILIKE :search
+            )
+          )
         )`,
         { search: `%${search}%` },
       );
@@ -565,8 +562,6 @@ export class AssignmentsService {
       if (!to) throw new BadRequestException('dueTo must be a valid YYYY-MM-DD string');
       qb.andWhere('assignment.dueAt <= :dueTo', { dueTo: this.endOfDayUtc(to) });
     }
-
-    this.applyPriorityFilter(qb, query.priority, now);
 
     if (wantRecent) {
       const since = new Date(now.getTime() - recentDays * 24 * 60 * 60 * 1000);
@@ -613,20 +608,127 @@ export class AssignmentsService {
     };
   }
 
+  private async loadSharedGroupAssigneeIds(
+    req: any,
+    sharedGroupKeys: string[],
+  ): Promise<Map<string, number[]>> {
+    const map = new Map<string, number[]>();
+    const keys = [...new Set(sharedGroupKeys.filter((k) => !!k))];
+    if (!keys.length) return map;
+
+    const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const peers: DataCollectionAssignment[] = await repo.find({
+      where: { sharedGroupKey: In(keys) },
+      select: ['id', 'sharedGroupKey', 'assigneeUserId'],
+    });
+
+    for (const peer of peers) {
+      if (!peer.sharedGroupKey || peer.assigneeUserId == null) continue;
+      const list = map.get(peer.sharedGroupKey) || [];
+      if (!list.includes(peer.assigneeUserId)) list.push(peer.assigneeUserId);
+      map.set(peer.sharedGroupKey, list);
+    }
+    return map;
+  }
+
+  private async loadTemplateVersionsByIds(
+    req: any,
+    versionIds: number[],
+  ): Promise<Map<number, TemplateVersion>> {
+    const map = new Map<number, TemplateVersion>();
+    const uniqueIds = [...new Set(versionIds.filter((id) => Number.isFinite(id)))];
+    if (!uniqueIds.length) return map;
+
+    const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
+    const versions: TemplateVersion[] = await versionRepo.find({
+      where: { id: In(uniqueIds) },
+    });
+    for (const version of versions) {
+      map.set(version.id, version);
+    }
+    return map;
+  }
+
+  private serializeAssignedFormsSubmission(
+    submission: DataCollectionSubmission | null | undefined,
+    assignment: DataCollectionAssignment,
+    version?: TemplateVersion | null,
+  ) {
+    if (!submission) return null;
+
+    const template = assignment.template;
+    const schema = (version?.schemaSnapshot ?? template?.schema ?? null) as Record<
+      string,
+      any
+    > | null;
+    const formName = this.resolveFormName(
+      template
+        ? ({ name: template.name, schema } as DataCollectionTemplate)
+        : null,
+    );
+
+    return {
+      id: submission.id,
+      assignmentId: submission.assignmentId,
+      templateVersionId: submission.templateVersionId,
+      submittedBy: submission.submittedBy,
+      answers: submission.answers || {},
+      response: submission.answers || {},
+      status: submission.status,
+      submittedAt: submission.submittedAt,
+      createdBy: submission.createdBy,
+      updatedBy: submission.updatedBy,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
+      templateId: template?.id ?? version?.templateId ?? assignment.templateId ?? null,
+      templateName: formName,
+      formName,
+      /** Pinned version schema (fallback: live template schema) so answers can be matched to fields. */
+      template: template
+        ? {
+            id: template.id,
+            name: template.name,
+            schema,
+            status: template.status,
+            isActive: template.isActive,
+          }
+        : version
+          ? {
+              id: version.templateId,
+              name: formName,
+              schema,
+              status: null,
+              isActive: null,
+            }
+          : null,
+    };
+  }
+
   private async serializeAssignedFormsRows(
     req: any,
     rows: DataCollectionAssignment[],
     viewerUserId: number | null,
-    now: Date,
   ) {
     const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
       req,
       rows.map((row) => row.id),
     );
 
-    const assigneeIds = rows
-      .map((row) => row.assigneeUserId)
-      .filter((id): id is number => id != null && Number.isFinite(id));
+    const sharedGroupKeys = rows
+      .map((row) => row.sharedGroupKey)
+      .filter((key): key is string => !!key);
+    const sharedAssigneesByKey = await this.loadSharedGroupAssigneeIds(req, sharedGroupKeys);
+
+    const assigneeIds = new Set<number>();
+    for (const row of rows) {
+      if (row.assigneeUserId != null) assigneeIds.add(row.assigneeUserId);
+      if (row.sharedGroupKey) {
+        for (const id of sharedAssigneesByKey.get(row.sharedGroupKey) || []) {
+          assigneeIds.add(id);
+        }
+      }
+    }
+
     const completedByIds = rows
       .map((row) => {
         const submission = submissionsByAssignment.get(row.id);
@@ -634,17 +736,31 @@ export class AssignmentsService {
       })
       .filter((id): id is number => id != null && Number.isFinite(id));
 
-    const namesById = await this.loadUserNamesByIds(req, [...assigneeIds, ...completedByIds]);
+    const namesById = await this.loadUserNamesByIds(req, [
+      ...assigneeIds,
+      ...completedByIds,
+    ]);
+
+    const versionIds = [
+      ...rows.map((row) => row.templateVersionId),
+      ...[...submissionsByAssignment.values()].map((s) => s.templateVersionId),
+    ];
+    const versionsById = await this.loadTemplateVersionsByIds(req, versionIds);
 
     return rows.map((row) => {
       const submission = submissionsByAssignment.get(row.id) || null;
-      const submissionPayload = this.serializeSubmission(submission);
+      const versionId = submission?.templateVersionId ?? row.templateVersionId;
+      const version = versionsById.get(versionId) || null;
+      const submissionPayload = this.serializeAssignedFormsSubmission(
+        submission,
+        row,
+        version,
+      );
       const completedAt = row.completedAt || submissionPayload?.submittedAt || null;
       const completedByUserId =
         row.completedByUserId ?? submissionPayload?.submittedBy ?? null;
       const mode = row.assignmentType || AssignmentType.INDIVIDUAL;
       const formName = this.resolveFormName(row.template);
-      const priority = this.resolvePriority(row.dueAt, now);
       const completion = buildAssignmentCompletion({
         status: row.status,
         assignmentType: mode,
@@ -655,19 +771,28 @@ export class AssignmentsService {
         viewerUserId,
       });
 
+      const groupIds =
+        row.sharedGroupKey && sharedAssigneesByKey.has(row.sharedGroupKey)
+          ? sharedAssigneesByKey.get(row.sharedGroupKey)!
+          : row.assigneeUserId != null
+            ? [row.assigneeUserId]
+            : [];
+
+      const assignedTo = groupIds.map((id) => ({
+        id,
+        name: namesById.get(id) || `User #${id}`,
+      }));
+
       return {
         id: row.id,
         templateId: row.templateId,
         templateVersionId: row.templateVersionId,
         formName,
         assigneeUserId: row.assigneeUserId,
-        assignedTo:
-          row.assigneeUserId != null
-            ? namesById.get(row.assigneeUserId) || `User #${row.assigneeUserId}`
-            : null,
+        assigneeUserIds: groupIds,
+        assignedTo,
         dueAt: row.dueAt,
         dueDateLabel: this.formatDueDateLabel(row.dueAt),
-        priority,
         status: row.status,
         statusLabel: this.statusLabel(row.status),
         mode,
