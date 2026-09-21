@@ -1,13 +1,16 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsObject, IsOptional } from 'class-validator';
 
 export class CreateSubmissionDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: { fld_001: 'Kitchen looks clean', fld_008: 'yes' },
-    description: 'Answers keyed by field id from the template version schema.',
+    description:
+      'Answers keyed by field id. For drafts (submit=false) this may be partial. ' +
+      'Omitting answers on draft upsert keeps the previously saved answers.',
   })
+  @IsOptional()
   @IsObject()
-  answers!: Record<string, any>;
+  answers?: Record<string, any>;
 
   @ApiPropertyOptional({
     example: true,

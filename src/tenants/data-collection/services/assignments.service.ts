@@ -342,9 +342,10 @@ export class AssignmentsService {
     }
   }
 
-  async start(req: any, id: number) {
+  async start(req: any, id: number, dto?: { answers?: Record<string, any> }) {
     try {
       const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const submissionRepo = req.tenantConnection.getRepository(DataCollectionSubmission);
       const assignment = await repo.findOne({
         where: { id },
         relations: ['template'],
@@ -383,10 +384,41 @@ export class AssignmentsService {
         }
       }
 
+      const actorId = this.getActorId(req);
       assignment.status = AssignmentStatus.IN_PROGRESS;
-      assignment.updatedBy = this.getActorId(req);
+      assignment.updatedBy = actorId;
       const saved = await repo.save(assignment);
-      const [data] = await this.serializeAssignments(req, [saved], this.getActorId(req));
+
+      // Persist / resume draft answers so leaving and returning keeps field state.
+      let draft = (
+        await submissionRepo.find({
+          where: { assignmentId: saved.id, status: SubmissionStatus.DRAFT },
+          order: { updatedAt: 'DESC' },
+          take: 1,
+        })
+      )[0];
+      if (draft) {
+        if (dto?.answers !== undefined) {
+          draft.answers = dto.answers;
+          draft.updatedBy = actorId;
+          draft = await submissionRepo.save(draft);
+        }
+      } else {
+        draft = await submissionRepo.save(
+          submissionRepo.create({
+            assignmentId: saved.id,
+            templateVersionId: saved.templateVersionId,
+            submittedBy: actorId,
+            answers: dto?.answers || {},
+            status: SubmissionStatus.DRAFT,
+            submittedAt: null,
+            createdBy: actorId,
+            updatedBy: actorId,
+          }),
+        );
+      }
+
+      const [data] = await this.serializeAssignments(req, [saved], actorId);
 
       return {
         success: true,
