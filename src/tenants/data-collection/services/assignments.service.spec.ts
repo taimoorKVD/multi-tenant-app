@@ -1329,6 +1329,8 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
   it('returns stats, assignedTo array, and submission.template.schema', async () => {
     const result = await service.findAssignedForms(req, { page: 1, limit: 5 });
 
+    expect(listQb.orderBy).toHaveBeenCalledWith('assignment.createdAt', 'DESC');
+    expect(listQb.addOrderBy).toHaveBeenCalledWith('assignment.id', 'DESC');
     expect(result.success).toBe(true);
     expect(result.stats).toEqual({
       totalAssigned: 24,

@@ -431,8 +431,8 @@ export class AssignmentsService {
       };
 
       const listQb = buildBaseQb()
-        .orderBy('assignment.dueAt', 'ASC')
-        .addOrderBy('assignment.id', 'ASC')
+        .orderBy('assignment.createdAt', 'DESC')
+        .addOrderBy('assignment.id', 'DESC')
         .skip(skip)
         .take(limit);
 

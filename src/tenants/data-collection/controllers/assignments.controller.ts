@@ -103,7 +103,7 @@ export class AssignmentsController {
     summary: 'Assigned Forms (admin)',
     description:
       'Admin Assigned Forms board: summary cards (Total Assigned, Completed, In Progress, Overdue) ' +
-      'plus a filterable, paginated table. `assignedTo` is an array of assignees (shared groups include every member). ' +
+      'plus a filterable, paginated table (newest first by createdAt). `assignedTo` is an array of assignees (shared groups include every member). ' +
       'Each `submission` includes `template.schema` (pinned version snapshot) so answers can be matched to fields. ' +
       'Supports search (form or assignee name), assignee, completion status, due date range, and recent submissions.',
   })
