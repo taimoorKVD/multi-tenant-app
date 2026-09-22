@@ -39,13 +39,25 @@ export class QueryAssignedFormDetailDto {
     example: '2026-09',
     description:
       'UTC calendar month for occurrence history (YYYY-MM). ' +
-      'Default: current UTC month. Ignored when dueFrom/dueTo are set.',
+      'Default: current UTC month. Ignored when `date` or dueFrom/dueTo are set.',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}$/, {
     message: 'month must be a valid YYYY-MM string',
   })
   month?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-09-17',
+    description:
+      'Filter to a single due date (YYYY-MM-DD, UTC). Overrides month. ' +
+      'Takes precedence over dueFrom/dueTo when set.',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'date must be a valid YYYY-MM-DD string',
+  })
+  date?: string;
 
   @ApiPropertyOptional({
     example: '2026-09-01',
