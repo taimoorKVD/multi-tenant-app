@@ -113,6 +113,152 @@ export class FrequencyService {
   }
 
   /**
+   * Human-readable frequency for admin boards (e.g. "Yearly · Jan 1", "Daily", "Monthly · 1st").
+   */
+  formatFrequencyLabel(frequency: FrequencyInput | null | undefined): string {
+    if (!frequency || typeof frequency !== 'object') return '—';
+
+    const type = String(frequency.type || FrequencyType.AT_ONCE).toLowerCase();
+    const isAtOnce =
+      type === FrequencyType.AT_ONCE.toLowerCase() ||
+      type === FrequencyType.ONE_TIME ||
+      type === 'one-time' ||
+      type === 'atonce' ||
+      type === 'at_once';
+
+    const startRaw = frequency.date || frequency.startDate;
+    const start = startRaw ? this.parseDateOnly(String(startRaw)) : null;
+
+    if (isAtOnce) {
+      return start ? `Once · ${this.formatShortDate(start)}` : 'Once';
+    }
+
+    const raw = (frequency.recurring || frequency.schedule) as FrequencyScheduleRaw | null | undefined;
+    if (!raw) {
+      return start ? `Once · ${this.formatShortDate(start)}` : 'Once';
+    }
+
+    const schedule = this.normalizeSchedule(raw);
+    const unit = String(schedule.unit).toLowerCase();
+    const interval = Math.max(1, schedule.interval || 1);
+
+    if (unit === FrequencyUnit.DAY) {
+      return interval === 1 ? 'Daily' : `Every ${interval} days`;
+    }
+
+    if (unit === FrequencyUnit.WEEK) {
+      const days = (schedule.daysOfWeek || [])
+        .map((d) => this.shortWeekday(d))
+        .filter(Boolean);
+      const base = interval === 1 ? 'Weekly' : `Every ${interval} weeks`;
+      return days.length ? `${base} · ${days.join(', ')}` : base;
+    }
+
+    if (unit === FrequencyUnit.MONTH) {
+      const base = interval === 1 ? 'Monthly' : `Every ${interval} months`;
+      const detail = this.formatMonthlyRuleDetail(schedule.monthlyRule, start);
+      return detail ? `${base} · ${detail}` : base;
+    }
+
+    if (unit === FrequencyUnit.YEAR) {
+      const base = interval === 1 ? 'Yearly' : `Every ${interval} years`;
+      const detail = this.formatYearlyDetail(schedule.monthlyRule, start);
+      return detail ? `${base} · ${detail}` : base;
+    }
+
+    return 'Recurring';
+  }
+
+  private formatShortDate(date: Date): string {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date);
+  }
+
+  private shortWeekday(value: string): string {
+    const key = String(value || '').toLowerCase().trim();
+    const idx = WEEKDAY_INDEX[key];
+    if (idx === undefined) return '';
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][idx];
+  }
+
+  private formatOrdinalDay(day: number): string {
+    const abs = Math.abs(day);
+    const mod100 = abs % 100;
+    const mod10 = abs % 10;
+    const suffix =
+      mod100 >= 11 && mod100 <= 13
+        ? 'th'
+        : mod10 === 1
+          ? 'st'
+          : mod10 === 2
+            ? 'nd'
+            : mod10 === 3
+              ? 'rd'
+              : 'th';
+    return `${day}${suffix}`;
+  }
+
+  private formatMonthlyRuleDetail(
+    rule: FrequencyMonthlyRule | undefined,
+    start: Date | null,
+  ): string | null {
+    if (rule?.type) {
+      const type = String(rule.type);
+      if (type === MonthlyRuleType.DAY_OF_MONTH || type === 'dayOfMonth') {
+        const day = rule.day ?? start?.getUTCDate();
+        if (day == null) return null;
+        if (day === -1) return 'Last day';
+        return this.formatOrdinalDay(day);
+      }
+      if (type === MonthlyRuleType.NTH_WEEKDAY || type === 'nthWeekday') {
+        const ordinal = String(rule.ordinal || 'first');
+        const weekday = this.shortWeekday(String(rule.weekday || ''));
+        const ordLabel = ordinal.charAt(0).toUpperCase() + ordinal.slice(1);
+        return weekday ? `${ordLabel} ${weekday}` : ordLabel;
+      }
+    }
+    if (start) return this.formatOrdinalDay(start.getUTCDate());
+    return null;
+  }
+
+  private formatYearlyDetail(
+    rule: FrequencyMonthlyRule | undefined,
+    start: Date | null,
+  ): string | null {
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    if (rule?.month) {
+      const idx = MONTH_INDEX[String(rule.month).toLowerCase()];
+      if (idx !== undefined) {
+        const day = rule.day ?? start?.getUTCDate() ?? 1;
+        return `${monthNames[idx]} ${day}`;
+      }
+    }
+
+    if (start) {
+      return `${monthNames[start.getUTCMonth()]} ${start.getUTCDate()}`;
+    }
+    return null;
+  }
+
+  /**
    * Expand frequency into due dates.
    * Supports:
    * - `{ type: "atOnce", date: "2026-08-21", recurring: null }`
