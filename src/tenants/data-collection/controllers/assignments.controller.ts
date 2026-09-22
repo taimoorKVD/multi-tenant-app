@@ -196,6 +196,13 @@ export class AssignmentsController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 31 })
   @ApiQuery({ name: 'month', required: false, type: String, example: '2026-09' })
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    type: String,
+    example: '2026-09-17',
+    description: 'Filter occurrences to a single due date (YYYY-MM-DD, UTC).',
+  })
   @ApiQuery({ name: 'dueFrom', required: false, type: String, example: '2026-09-01' })
   @ApiQuery({ name: 'dueTo', required: false, type: String, example: '2026-09-30' })
   @ApiQuery({

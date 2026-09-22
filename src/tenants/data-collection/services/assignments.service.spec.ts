@@ -1622,5 +1622,14 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       statusLabel: 'Overdue',
       action: 'open',
     });
+
+    const byDate = await service.findAssignedFormDetail(req, 4, { date: '2026-09-15' });
+    expect(byDate.data.occurrences.meta).toMatchObject({
+      date: '2026-09-15',
+      dueFrom: '2026-09-15',
+      dueTo: '2026-09-15',
+      total: 1,
+    });
+    expect(byDate.data.occurrences.data[0].id).toBe(2);
   });
 });

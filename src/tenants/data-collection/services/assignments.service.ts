@@ -1185,6 +1185,7 @@ export class AssignmentsService {
               lastPage,
               limit,
               month: dueRange?.month ?? null,
+              date: dueRange?.date ?? null,
               dueFrom: dueRange?.start.toISOString().slice(0, 10) ?? null,
               dueTo: dueRange?.end.toISOString().slice(0, 10) ?? null,
               status: query.status || 'all',
@@ -1203,11 +1204,24 @@ export class AssignmentsService {
   private resolveAssignedFormDetailDueRange(
     query: {
       month?: string;
+      date?: string;
       dueFrom?: string;
       dueTo?: string;
     },
     now: Date,
-  ): { start: Date; end: Date; month: string | null } | null {
+  ): { start: Date; end: Date; month: string | null; date: string | null } {
+    // Single calendar day (UI date picker).
+    if (query.date) {
+      const day = this.parseUtcDateOnly(query.date);
+      if (!day) throw new BadRequestException('date must be a valid YYYY-MM-DD string');
+      return {
+        start: this.startOfDayUtc(day),
+        end: this.endOfDayUtc(day),
+        month: null,
+        date: query.date,
+      };
+    }
+
     if (query.dueFrom || query.dueTo) {
       if (!query.dueFrom || !query.dueTo) {
         throw new BadRequestException('dueFrom and dueTo must both be provided');
@@ -1221,6 +1235,7 @@ export class AssignmentsService {
         start: this.startOfDayUtc(from),
         end: this.endOfDayUtc(to),
         month: null,
+        date: null,
       };
     }
 
@@ -1236,7 +1251,7 @@ export class AssignmentsService {
     }
     const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
     const end = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
-    return { start, end, month: monthRaw };
+    return { start, end, month: monthRaw, date: null };
   }
 
   private resolveAssignedFormOccurrenceStatus(
