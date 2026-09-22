@@ -14,6 +14,7 @@ import { AssignmentsService } from '../services/assignments.service';
 import { AssignmentReminderService } from '../services/assignment-reminder.service';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
 import { QueryAssignedFormsDto } from '../dto/assignments/query-assigned-forms.dto';
+import { QueryAssignedFormDetailDto } from '../dto/assignments/query-assigned-form-detail.dto';
 import { StartAssignmentDto } from '../dto/assignments/start-assignment.dto';
 
 @ApiTags('Data Collection - Assignments')
@@ -100,12 +101,12 @@ export class AssignmentsController {
   @Get('assigned-forms')
   @TenantAccess('view-dc-assignment')
   @ApiOperation({
-    summary: 'Assigned Forms (admin)',
+    summary: 'Assigned Forms (admin listing)',
     description:
-      'Admin Assigned Forms board: summary cards (Total Assigned, Completed, In Progress, Overdue) ' +
-      'plus a filterable, paginated table (newest first by createdAt). `assignedTo` is an array of assignees (shared groups include every member). ' +
-      'Each `submission` includes `template.schema` (pinned version snapshot) so answers can be matched to fields. ' +
-      'Supports search (form or assignee name), assignee, completion status, due date range, and recent submissions.',
+      '1 assignment = 1 row (template + assignee for individual, template for shared). ' +
+      'Includes frequency, start/end period, progress counts (completed / inProgress / overdue), and nextDue. ' +
+      '`stats` is occurrence-level; `assignmentStats` is assignment-level — do not mix them for cards. ' +
+      'Use `GET assigned-forms/:assignmentId` for View Details (summary + paginated occurrences).',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -127,58 +128,47 @@ export class AssignmentsController {
   @ApiQuery({ name: 'recentDays', required: false, type: Number, example: 7 })
   @ApiResponse({
     status: 200,
-    description: 'Assigned forms fetched successfully.',
+    description: 'Grouped assignment listing.',
     schema: {
       example: {
         success: true,
         stats: {
-          totalAssigned: 24,
-          completed: 16,
-          inProgress: 5,
-          overdue: 3,
-          notStarted: 0,
+          level: 'occurrence',
+          totalAssigned: 420,
+          completed: 18,
+          inProgress: 4,
+          overdue: 2,
+          notStarted: 396,
         },
-        meta: { total: 24, page: 1, lastPage: 5, limit: 5 },
+        assignmentStats: {
+          level: 'assignment',
+          totalAssigned: 24,
+          withOverdue: 2,
+          withInProgress: 4,
+          fullyCompleted: 3,
+        },
+        meta: { total: 24, page: 1, lastPage: 2, limit: 15 },
         data: [
           {
-            id: 1,
-            templateId: 10,
-            templateVersionId: 12,
-            formName: 'Daily Kitchen Checklist',
-            assigneeUserId: 5,
-            assigneeUserIds: [5, 9],
-            assignedTo: [
-              { id: 5, name: 'Sarah Johnson' },
-              { id: 9, name: 'Alex Kim' },
-            ],
-            dueAt: '2026-09-16T00:00:00.000Z',
-            dueDateLabel: 'Sep 16, 2026',
-            status: 'completed',
-            statusLabel: 'Completed',
-            mode: 'shared',
-            submissionId: 40,
-            submission: {
-              id: 40,
-              assignmentId: 1,
-              answers: { fld_001: 'ok' },
-              status: 'submitted',
-              template: {
-                id: 10,
-                name: 'Daily Kitchen Checklist',
-                schema: {
-                  formName: 'Daily Kitchen Checklist',
-                  sections: [{ id: 'sec_1', fields: [{ id: 'fld_001', label: 'Notes' }] }],
-                },
-              },
+            id: 101,
+            seriesKey: 't:10:u:5',
+            formName: 'Kitchen Daily Checklist',
+            assignedTo: [{ id: 5, name: 'Ahmer' }],
+            frequencyLabel: 'Daily',
+            startDateLabel: 'Sep 1, 2026',
+            periodLabel: 'Sep 1, 2026 → Aug 31, 2027',
+            progress: {
+              total: 365,
+              completed: 18,
+              inProgress: 2,
+              overdue: 1,
+              pending: 344,
+              upcoming: 346,
             },
-            completion: {
-              state: 'completed',
-              title: 'Completed',
-              message: 'You submitted this form on September 16, 2026 at 2:10 PM.',
-              completedByUserId: 5,
-              completedByName: 'Sarah Johnson',
-              completedAt: '2026-09-16T14:10:00.000Z',
-            },
+            completed: 18,
+            inProgress: 2,
+            overdue: 1,
+            nextDueLabel: 'Sep 23, 2026',
           },
         ],
       },
@@ -186,6 +176,115 @@ export class AssignmentsController {
   })
   assignedForms(@Req() req: any, @Query() query: QueryAssignedFormsDto) {
     return this.assignmentsService.findAssignedForms(req, query);
+  }
+
+  @Get('assigned-forms/:assignmentId')
+  @TenantAccess('view-dc-assignment')
+  @ApiOperation({
+    summary: 'Assigned Form details (View)',
+    description:
+      'Single API for the View Details drawer. Pass any occurrence `id` from the listing row. ' +
+      'Returns assignment summary (form, assignees, frequency, period, progress totals) plus ' +
+      'paginated occurrence history. Default range = current UTC month. ' +
+      'Completed occurrences include full `submission` (answers + template.schema) for read-only View.',
+  })
+  @ApiParam({
+    name: 'assignmentId',
+    type: Number,
+    description: 'Any assignment occurrence id from the listing (`data[].id`).',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 31 })
+  @ApiQuery({ name: 'month', required: false, type: String, example: '2026-09' })
+  @ApiQuery({ name: 'dueFrom', required: false, type: String, example: '2026-09-01' })
+  @ApiQuery({ name: 'dueTo', required: false, type: String, example: '2026-09-30' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: [
+      'all',
+      'pending',
+      'not_started',
+      'in_progress',
+      'completed',
+      'overdue',
+      'upcoming',
+      'cancelled',
+    ],
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Assignment summary + occurrence history.',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          assignment: {
+            id: 101,
+            seriesKey: 't:10:u:5',
+            formName: 'Kitchen Daily Checklist',
+            frequencyLabel: 'Daily',
+            periodLabel: 'Sep 1, 2026 → Aug 31, 2027',
+            summary: {
+              formName: 'Kitchen Daily Checklist',
+              assignedTo: [{ id: 5, name: 'Ahmer' }],
+              frequencyLabel: 'Daily',
+              periodLabel: 'Sep 1, 2026 → Aug 31, 2027',
+              totalOccurrences: 365,
+              completed: 18,
+              inProgress: 2,
+              overdue: 1,
+              upcoming: 344,
+            },
+          },
+          occurrences: {
+            meta: {
+              total: 30,
+              page: 1,
+              lastPage: 1,
+              limit: 31,
+              month: '2026-09',
+              status: 'all',
+            },
+            data: [
+              {
+                id: 150,
+                dueDateLabel: 'Sep 22, 2026',
+                status: 'completed',
+                statusLabel: 'Completed',
+                submittedAtLabel: 'Sep 22, 2026, 10:30 AM',
+                action: 'view',
+                submissionId: 40,
+                submission: {
+                  id: 40,
+                  answers: { fld_001: '72°F', fld_002: 'Yes' },
+                  template: {
+                    id: 10,
+                    name: 'Kitchen Daily Checklist',
+                    schema: { sections: [] },
+                  },
+                },
+              },
+              {
+                id: 151,
+                dueDateLabel: 'Sep 23, 2026',
+                status: 'in_progress',
+                statusLabel: 'In Progress',
+                action: 'continue',
+                submissionId: 41,
+              },
+            ],
+          },
+        },
+      },
+    },
+  })
+  assignedFormDetail(
+    @Req() req: any,
+    @Param('assignmentId', ParseIntPipe) assignmentId: number,
+    @Query() query: QueryAssignedFormDetailDto,
+  ) {
+    return this.assignmentsService.findAssignedFormDetail(req, assignmentId, query);
   }
 
   @Post('mark-overdue')

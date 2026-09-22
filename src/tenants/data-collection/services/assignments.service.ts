@@ -20,6 +20,7 @@ import {
 } from '../entities';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
 import { QueryAssignedFormsDto } from '../dto/assignments/query-assigned-forms.dto';
+import { QueryAssignedFormDetailDto } from '../dto/assignments/query-assigned-form-detail.dto';
 import {
   buildAssignmentCompletion,
   parseExclusiveAssignReportTargets,
@@ -325,7 +326,8 @@ export class AssignmentsService {
 
   /**
    * Admin "Assigned Forms" list: summary cards + filterable/paginated table rows.
-   * `assignedTo` is always an array (shared groups include every assignee on the occurrence).
+   * Recurring work is grouped by template + assignee (individual) or template (shared)
+   * so yearly/monthly/daily series appear as one row with an `occurrences` summary.
    */
   async findAssignedForms(req: any, query: QueryAssignedFormsDto) {
     try {
@@ -430,21 +432,41 @@ export class AssignmentsService {
         return qb;
       };
 
-      const listQb = buildBaseQb()
-        .orderBy('assignment.createdAt', 'DESC')
-        .addOrderBy('assignment.id', 'DESC')
-        .skip(skip)
-        .take(limit);
+      // Load matching rows, then collapse recurring series before paginating.
+      const rows: DataCollectionAssignment[] = await buildBaseQb()
+        .orderBy('assignment.dueAt', 'ASC')
+        .addOrderBy('assignment.id', 'ASC')
+        .getMany();
 
-      const [rows, total] = await listQb.getManyAndCount();
+      const series = this.buildAssignedFormsSeries(rows, now);
+      const total = series.length;
       const lastPage = Math.ceil(total / limit) || 1;
+      const pageSeries = series.slice(skip, skip + limit);
 
-      const stats = await this.loadAssignedFormsStats(req, query, now);
-      const data = await this.serializeAssignedFormsRows(req, rows, actorId);
+      const occurrenceStats = await this.loadAssignedFormsStats(req, query, now);
+      const data = await this.serializeAssignedFormsSeries(req, pageSeries, actorId);
+
+      const assignmentStats = {
+        level: 'assignment' as const,
+        totalAssigned: total,
+        withOverdue: series.filter((item) => item.progress.overdue > 0).length,
+        withInProgress: series.filter((item) => item.progress.inProgress > 0).length,
+        fullyCompleted: series.filter(
+          (item) =>
+            item.progress.total > 0 &&
+            item.progress.completed === item.progress.total &&
+            item.progress.overdue === 0 &&
+            item.progress.inProgress === 0 &&
+            item.progress.pending === 0,
+        ).length,
+      };
 
       return {
         success: true,
-        stats,
+        /** Occurrence-level counts (do not mix with assignmentStats). */
+        stats: { level: 'occurrence' as const, ...occurrenceStats },
+        /** Assignment-series counts (1 row = 1 assignment in the table). */
+        assignmentStats,
         meta: { total, page, lastPage, limit },
         data,
       };
@@ -452,6 +474,188 @@ export class AssignmentsService {
       if (error instanceof BadRequestException) throw error;
       this.logger.error('Assigned forms list failed', error);
       throw new InternalServerErrorException('Failed to retrieve assigned forms');
+    }
+  }
+
+  /** Series identity: one row per assignee×template (individual) or template (shared). */
+  private assignedFormsSeriesKey(row: DataCollectionAssignment): string {
+    const mode = row.assignmentType || AssignmentType.INDIVIDUAL;
+    if (mode === AssignmentType.SHARED) {
+      return `t:${row.templateId}:shared`;
+    }
+    if (row.assigneeUserId != null) {
+      return `t:${row.templateId}:u:${row.assigneeUserId}`;
+    }
+    return `t:${row.templateId}:jp:${row.jobPositionId ?? 'none'}`;
+  }
+
+  /** Distinct occurrence id within a series (shared: one id for the whole group). */
+  private assignedFormsOccurrenceId(row: DataCollectionAssignment): string {
+    const mode = row.assignmentType || AssignmentType.INDIVIDUAL;
+    if (mode === AssignmentType.SHARED) {
+      return row.sharedGroupKey || `due:${new Date(row.dueAt).toISOString()}`;
+    }
+    return String(row.id);
+  }
+
+  private isOpenAssignedFormsStatus(status: AssignmentStatus): boolean {
+    return (
+      status === AssignmentStatus.PENDING ||
+      status === AssignmentStatus.IN_PROGRESS ||
+      status === AssignmentStatus.OVERDUE
+    );
+  }
+
+  private buildAssignedFormsSeries(rows: DataCollectionAssignment[], now: Date) {
+    const startOfToday = this.startOfDayUtc(now);
+    type SeriesBucket = {
+      key: string;
+      templateId: number;
+      mode: AssignmentType;
+      assigneeUserId: number | null;
+      rows: DataCollectionAssignment[];
+      /** Distinct occurrence → representative row (shared: one row per sharedGroupKey). */
+      occurrenceById: Map<string, DataCollectionAssignment>;
+    };
+
+    const buckets = new Map<string, SeriesBucket>();
+    for (const row of rows) {
+      const key = this.assignedFormsSeriesKey(row);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          key,
+          templateId: row.templateId,
+          mode: row.assignmentType || AssignmentType.INDIVIDUAL,
+          assigneeUserId:
+            (row.assignmentType || AssignmentType.INDIVIDUAL) === AssignmentType.SHARED
+              ? null
+              : row.assigneeUserId,
+          rows: [],
+          occurrenceById: new Map(),
+        };
+        buckets.set(key, bucket);
+      }
+      bucket.rows.push(row);
+      const occurrenceId = this.assignedFormsOccurrenceId(row);
+      // Prefer keeping an open / completed representative over a cancelled peer.
+      const existing = bucket.occurrenceById.get(occurrenceId);
+      if (!existing || this.occurrencePreferRank(row) < this.occurrencePreferRank(existing)) {
+        bucket.occurrenceById.set(occurrenceId, row);
+      }
+    }
+
+    const series = [...buckets.values()].map((bucket) => {
+      const occurrenceRows = [...bucket.occurrenceById.values()];
+      const progress = {
+        total: occurrenceRows.length,
+        completed: 0,
+        inProgress: 0,
+        overdue: 0,
+        pending: 0,
+        upcoming: 0,
+        cancelled: 0,
+      };
+
+      for (const row of occurrenceRows) {
+        switch (row.status) {
+          case AssignmentStatus.COMPLETED:
+            progress.completed += 1;
+            break;
+          case AssignmentStatus.IN_PROGRESS:
+            progress.inProgress += 1;
+            if (this.startOfDayUtc(row.dueAt).getTime() >= startOfToday.getTime()) {
+              progress.upcoming += 1;
+            }
+            break;
+          case AssignmentStatus.OVERDUE:
+            progress.overdue += 1;
+            break;
+          case AssignmentStatus.PENDING:
+            progress.pending += 1;
+            if (this.startOfDayUtc(row.dueAt).getTime() >= startOfToday.getTime()) {
+              progress.upcoming += 1;
+            }
+            break;
+          case AssignmentStatus.CANCELLED:
+            progress.cancelled += 1;
+            break;
+          default:
+            break;
+        }
+      }
+
+      const openRows = occurrenceRows.filter((row) => this.isOpenAssignedFormsStatus(row.status));
+      const upcomingRows = openRows.filter(
+        (row) => this.startOfDayUtc(row.dueAt).getTime() >= startOfToday.getTime(),
+      );
+      const overdueRows = openRows.filter(
+        (row) => this.startOfDayUtc(row.dueAt).getTime() < startOfToday.getTime(),
+      );
+
+      const pickEarliest = (list: DataCollectionAssignment[]) =>
+        [...list].sort((a, b) => {
+          const dueDiff = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+          return dueDiff !== 0 ? dueDiff : a.id - b.id;
+        })[0];
+
+      const representative =
+        pickEarliest(upcomingRows) ||
+        pickEarliest(overdueRows) ||
+        pickEarliest(occurrenceRows) ||
+        bucket.rows[0];
+
+      const dueTimes = occurrenceRows.map((row) => new Date(row.dueAt).getTime());
+      const startDate = dueTimes.length ? new Date(Math.min(...dueTimes)) : null;
+      const endDate = dueTimes.length ? new Date(Math.max(...dueTimes)) : null;
+
+      const openCount = progress.pending + progress.inProgress + progress.overdue;
+      const occurrenceCount = openCount > 0 ? openCount : progress.completed;
+      const occurrencesLabel =
+        openCount > 0 ? `${openCount} upcoming` : `${progress.completed} completed`;
+
+      return {
+        key: bucket.key,
+        templateId: bucket.templateId,
+        mode: bucket.mode,
+        assigneeUserId: bucket.assigneeUserId,
+        rows: bucket.rows,
+        occurrenceRows,
+        representative,
+        progress,
+        startDate,
+        endDate,
+        occurrenceCount,
+        occurrencesLabel,
+        nextDueAt: representative?.dueAt ?? null,
+      };
+    });
+
+    series.sort((a, b) => {
+      const aCreated = Math.max(...a.rows.map((r) => new Date(r.createdAt).getTime()));
+      const bCreated = Math.max(...b.rows.map((r) => new Date(r.createdAt).getTime()));
+      if (bCreated !== aCreated) return bCreated - aCreated;
+      return (b.representative?.id || 0) - (a.representative?.id || 0);
+    });
+
+    return series;
+  }
+
+  /** Lower rank = preferred representative for a shared occurrence. */
+  private occurrencePreferRank(row: DataCollectionAssignment): number {
+    switch (row.status) {
+      case AssignmentStatus.IN_PROGRESS:
+        return 0;
+      case AssignmentStatus.OVERDUE:
+        return 1;
+      case AssignmentStatus.PENDING:
+        return 2;
+      case AssignmentStatus.COMPLETED:
+        return 3;
+      case AssignmentStatus.CANCELLED:
+        return 9;
+      default:
+        return 5;
     }
   }
 
@@ -704,7 +908,354 @@ export class AssignmentsService {
     };
   }
 
-  private async serializeAssignedFormsRows(
+  private async serializeAssignedFormsSeries(
+    req: any,
+    series: Array<{
+      key: string;
+      templateId: number;
+      mode: AssignmentType;
+      assigneeUserId: number | null;
+      rows: DataCollectionAssignment[];
+      occurrenceRows: DataCollectionAssignment[];
+      representative: DataCollectionAssignment;
+      progress: {
+        total: number;
+        completed: number;
+        inProgress: number;
+        overdue: number;
+        pending: number;
+        upcoming: number;
+        cancelled: number;
+      };
+      startDate: Date | null;
+      endDate: Date | null;
+      occurrenceCount: number;
+      occurrencesLabel: string;
+      nextDueAt: Date | null;
+    }>,
+    _viewerUserId: number | null,
+  ) {
+    const sharedGroupKeys = [
+      ...new Set(
+        series.flatMap((item) =>
+          item.rows
+            .map((row) => row.sharedGroupKey)
+            .filter((key): key is string => !!key),
+        ),
+      ),
+    ];
+    const sharedAssigneesByKey = await this.loadSharedGroupAssigneeIds(req, sharedGroupKeys);
+
+    const assigneeIds = new Set<number>();
+    for (const item of series) {
+      if (item.mode === AssignmentType.SHARED) {
+        for (const row of item.rows) {
+          if (row.assigneeUserId != null) assigneeIds.add(row.assigneeUserId);
+          if (row.sharedGroupKey) {
+            for (const id of sharedAssigneesByKey.get(row.sharedGroupKey) || []) {
+              assigneeIds.add(id);
+            }
+          }
+        }
+      } else if (item.assigneeUserId != null) {
+        assigneeIds.add(item.assigneeUserId);
+      }
+    }
+
+    const namesById = await this.loadUserNamesByIds(req, [...assigneeIds]);
+
+    return series.map((item) => {
+      const row = item.representative;
+      const mode = item.mode;
+      const formName = this.resolveFormName(row.template);
+
+      let groupIds: number[] = [];
+      if (mode === AssignmentType.SHARED) {
+        const ids = new Set<number>();
+        for (const seriesRow of item.rows) {
+          if (seriesRow.assigneeUserId != null) ids.add(seriesRow.assigneeUserId);
+          if (seriesRow.sharedGroupKey) {
+            for (const id of sharedAssigneesByKey.get(seriesRow.sharedGroupKey) || []) {
+              ids.add(id);
+            }
+          }
+        }
+        groupIds = [...ids];
+      } else if (item.assigneeUserId != null) {
+        groupIds = [item.assigneeUserId];
+      }
+
+      const assignedTo = groupIds.map((id) => ({
+        id,
+        name: namesById.get(id) || `User #${id}`,
+      }));
+
+      const frequency = (row.template?.schema as Record<string, any> | null | undefined)?.frequency;
+      const frequencyLabel = this.frequencyService.formatFrequencyLabel(frequency);
+      const nextDueAt = item.nextDueAt ?? row.dueAt;
+      const startDate = item.startDate;
+      const endDate = item.endDate;
+
+      return {
+        id: row.id,
+        seriesKey: item.key,
+        templateId: row.templateId,
+        templateVersionId: row.templateVersionId,
+        formName,
+        assigneeUserId: item.assigneeUserId ?? row.assigneeUserId,
+        assigneeUserIds: groupIds,
+        assignedTo,
+        frequency,
+        frequencyLabel,
+        startDate,
+        startDateLabel: startDate ? this.formatDueDateLabel(startDate) : null,
+        endDate,
+        endDateLabel: endDate ? this.formatDueDateLabel(endDate) : null,
+        periodLabel:
+          startDate && endDate
+            ? `${this.formatDueDateLabel(startDate)} → ${this.formatDueDateLabel(endDate)}`
+            : null,
+        dueAt: nextDueAt,
+        dueDateLabel: this.formatDueDateLabel(nextDueAt),
+        nextDueAt,
+        nextDueLabel: this.formatDueDateLabel(nextDueAt),
+        status: row.status,
+        statusLabel: this.statusLabel(row.status),
+        mode,
+        sharedGroupKey: row.sharedGroupKey,
+        /** Occurrence-level progress for this assignment series. */
+        progress: {
+          total: item.progress.total,
+          completed: item.progress.completed,
+          inProgress: item.progress.inProgress,
+          overdue: item.progress.overdue,
+          pending: item.progress.pending,
+          upcoming: item.progress.upcoming,
+        },
+        completed: item.progress.completed,
+        inProgress: item.progress.inProgress,
+        overdue: item.progress.overdue,
+        occurrenceCount: item.occurrenceCount,
+        occurrences: {
+          count: item.occurrenceCount,
+          label: item.occurrencesLabel,
+        },
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    });
+  }
+
+  /**
+   * Single View Details payload for an assignment series.
+   * Resolve series from any occurrence `assignmentId` on the listing row.
+   * Occurrences default to the current UTC month (paginated + status filters).
+   */
+  async findAssignedFormDetail(
+    req: any,
+    assignmentId: number,
+    query: QueryAssignedFormDetailDto,
+  ) {
+    try {
+      const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+      const seed = await repo.findOne({
+        where: { id: assignmentId },
+        relations: ['template'],
+      });
+      if (!seed) {
+        throw new NotFoundException(`Assignment with ID ${assignmentId} not found`);
+      }
+
+      const seriesKey = this.assignedFormsSeriesKey(seed);
+      const mode = seed.assignmentType || AssignmentType.INDIVIDUAL;
+      const now = new Date();
+      const actorId = this.getActorId(req);
+
+      const seriesQb = repo
+        .createQueryBuilder('assignment')
+        .leftJoinAndSelect('assignment.template', 'template')
+        .andWhere('assignment.templateId = :templateId', { templateId: seed.templateId })
+        .andWhere('assignment.status != :cancelledStatus', {
+          cancelledStatus: AssignmentStatus.CANCELLED,
+        });
+
+      if (mode === AssignmentType.SHARED) {
+        seriesQb.andWhere('assignment.assignmentType = :shared', {
+          shared: AssignmentType.SHARED,
+        });
+      } else if (seed.assigneeUserId != null) {
+        seriesQb
+          .andWhere('assignment.assignmentType = :individual', {
+            individual: AssignmentType.INDIVIDUAL,
+          })
+          .andWhere('assignment.assigneeUserId = :assigneeUserId', {
+            assigneeUserId: seed.assigneeUserId,
+          });
+      } else {
+        seriesQb
+          .andWhere('assignment.assignmentType = :individual', {
+            individual: AssignmentType.INDIVIDUAL,
+          })
+          .andWhere('assignment.jobPositionId = :jobPositionId', {
+            jobPositionId: seed.jobPositionId,
+          });
+      }
+
+      const seriesRows: DataCollectionAssignment[] = await seriesQb
+        .orderBy('assignment.dueAt', 'ASC')
+        .addOrderBy('assignment.id', 'ASC')
+        .getMany();
+
+      if (!seriesRows.length) {
+        throw new NotFoundException(`Assignment series not found for ID ${assignmentId}`);
+      }
+
+      const seriesList = this.buildAssignedFormsSeries(seriesRows, now);
+      const series = seriesList.find((item) => item.key === seriesKey) || seriesList[0];
+      if (!series) {
+        throw new NotFoundException(`Assignment series not found for ID ${assignmentId}`);
+      }
+
+      const [assignmentSummary] = await this.serializeAssignedFormsSeries(req, [series], actorId);
+
+      const dueRange = this.resolveAssignedFormDetailDueRange(query, now);
+      const occurrenceStatus = this.resolveAssignedFormOccurrenceStatus(query.status, now);
+
+      let filteredOccurrences = [...series.occurrenceRows];
+      if (dueRange) {
+        filteredOccurrences = filteredOccurrences.filter((row) => {
+          const due = new Date(row.dueAt).getTime();
+          return due >= dueRange.start.getTime() && due <= dueRange.end.getTime();
+        });
+      }
+      if (occurrenceStatus.statuses) {
+        filteredOccurrences = filteredOccurrences.filter((row) =>
+          occurrenceStatus.statuses!.includes(row.status),
+        );
+      }
+      if (occurrenceStatus.upcomingOnly) {
+        const startOfToday = this.startOfDayUtc(now).getTime();
+        filteredOccurrences = filteredOccurrences.filter(
+          (row) =>
+            (row.status === AssignmentStatus.PENDING ||
+              row.status === AssignmentStatus.IN_PROGRESS) &&
+            this.startOfDayUtc(row.dueAt).getTime() >= startOfToday,
+        );
+      }
+
+      filteredOccurrences.sort((a, b) => {
+        const dueDiff = new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
+        return dueDiff !== 0 ? dueDiff : b.id - a.id;
+      });
+
+      const page = Math.max(1, query.page ?? 1);
+      const limit = Math.min(Math.max(1, query.limit ?? 31), 100);
+      const skip = (page - 1) * limit;
+      const total = filteredOccurrences.length;
+      const lastPage = Math.ceil(total / limit) || 1;
+      const pageRows = filteredOccurrences.slice(skip, skip + limit);
+
+      const occurrences = await this.serializeAssignedFormOccurrences(req, pageRows, actorId);
+
+      return {
+        success: true,
+        data: {
+          assignment: {
+            ...assignmentSummary,
+            seriesKey,
+            summary: {
+              formName: assignmentSummary.formName,
+              assignedTo: assignmentSummary.assignedTo,
+              frequencyLabel: assignmentSummary.frequencyLabel,
+              periodLabel: assignmentSummary.periodLabel,
+              startDate: assignmentSummary.startDate,
+              endDate: assignmentSummary.endDate,
+              totalOccurrences: series.progress.total,
+              completed: series.progress.completed,
+              inProgress: series.progress.inProgress,
+              overdue: series.progress.overdue,
+              upcoming: series.progress.upcoming,
+              pending: series.progress.pending,
+            },
+          },
+          occurrences: {
+            meta: {
+              total,
+              page,
+              lastPage,
+              limit,
+              month: dueRange?.month ?? null,
+              dueFrom: dueRange?.start.toISOString().slice(0, 10) ?? null,
+              dueTo: dueRange?.end.toISOString().slice(0, 10) ?? null,
+              status: query.status || 'all',
+            },
+            data: occurrences,
+          },
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      this.logger.error('Assigned form detail failed', error);
+      throw new InternalServerErrorException('Failed to retrieve assigned form details');
+    }
+  }
+
+  private resolveAssignedFormDetailDueRange(
+    query: {
+      month?: string;
+      dueFrom?: string;
+      dueTo?: string;
+    },
+    now: Date,
+  ): { start: Date; end: Date; month: string | null } | null {
+    if (query.dueFrom || query.dueTo) {
+      if (!query.dueFrom || !query.dueTo) {
+        throw new BadRequestException('dueFrom and dueTo must both be provided');
+      }
+      const from = this.parseUtcDateOnly(query.dueFrom);
+      const to = this.parseUtcDateOnly(query.dueTo);
+      if (!from || !to) {
+        throw new BadRequestException('dueFrom/dueTo must be valid YYYY-MM-DD strings');
+      }
+      return {
+        start: this.startOfDayUtc(from),
+        end: this.endOfDayUtc(to),
+        month: null,
+      };
+    }
+
+    const monthRaw =
+      query.month ||
+      `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    const match = /^(\d{4})-(\d{2})$/.exec(monthRaw);
+    if (!match) throw new BadRequestException('month must be a valid YYYY-MM string');
+    const year = Number(match[1]);
+    const monthIndex = Number(match[2]) - 1;
+    if (monthIndex < 0 || monthIndex > 11) {
+      throw new BadRequestException('month must be a valid YYYY-MM string');
+    }
+    const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+    const end = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
+    return { start, end, month: monthRaw };
+  }
+
+  private resolveAssignedFormOccurrenceStatus(
+    status: string | undefined,
+    _now: Date,
+  ): { statuses: AssignmentStatus[] | null; upcomingOnly: boolean } {
+    if (!status || status === 'all') {
+      return { statuses: null, upcomingOnly: false };
+    }
+    if (status === 'upcoming') {
+      return { statuses: null, upcomingOnly: true };
+    }
+    if (status === 'not_started') {
+      return { statuses: [AssignmentStatus.PENDING], upcomingOnly: false };
+    }
+    return { statuses: [status as AssignmentStatus], upcomingOnly: false };
+  }
+
+  private async serializeAssignedFormOccurrences(
     req: any,
     rows: DataCollectionAssignment[],
     viewerUserId: number | null,
@@ -714,21 +1265,6 @@ export class AssignmentsService {
       rows.map((row) => row.id),
     );
 
-    const sharedGroupKeys = rows
-      .map((row) => row.sharedGroupKey)
-      .filter((key): key is string => !!key);
-    const sharedAssigneesByKey = await this.loadSharedGroupAssigneeIds(req, sharedGroupKeys);
-
-    const assigneeIds = new Set<number>();
-    for (const row of rows) {
-      if (row.assigneeUserId != null) assigneeIds.add(row.assigneeUserId);
-      if (row.sharedGroupKey) {
-        for (const id of sharedAssigneesByKey.get(row.sharedGroupKey) || []) {
-          assigneeIds.add(id);
-        }
-      }
-    }
-
     const completedByIds = rows
       .map((row) => {
         const submission = submissionsByAssignment.get(row.id);
@@ -736,10 +1272,11 @@ export class AssignmentsService {
       })
       .filter((id): id is number => id != null && Number.isFinite(id));
 
-    const namesById = await this.loadUserNamesByIds(req, [
-      ...assigneeIds,
-      ...completedByIds,
-    ]);
+    const assigneeIds = rows
+      .map((row) => row.assigneeUserId)
+      .filter((id): id is number => id != null && Number.isFinite(id));
+
+    const namesById = await this.loadUserNamesByIds(req, [...assigneeIds, ...completedByIds]);
 
     const versionIds = [
       ...rows.map((row) => row.templateVersionId),
@@ -751,16 +1288,22 @@ export class AssignmentsService {
       const submission = submissionsByAssignment.get(row.id) || null;
       const versionId = submission?.templateVersionId ?? row.templateVersionId;
       const version = versionsById.get(versionId) || null;
-      const submissionPayload = this.serializeAssignedFormsSubmission(
-        submission,
-        row,
-        version,
-      );
-      const completedAt = row.completedAt || submissionPayload?.submittedAt || null;
-      const completedByUserId =
-        row.completedByUserId ?? submissionPayload?.submittedBy ?? null;
+      const submissionPayload =
+        row.status === AssignmentStatus.COMPLETED
+          ? this.serializeAssignedFormsSubmission(submission, row, version)
+          : submission
+            ? {
+                id: submission.id,
+                assignmentId: submission.assignmentId,
+                status: submission.status,
+                submittedAt: submission.submittedAt,
+                answers: submission.answers || {},
+              }
+            : null;
+
+      const completedAt = row.completedAt || submission?.submittedAt || null;
+      const completedByUserId = row.completedByUserId ?? submission?.submittedBy ?? null;
       const mode = row.assignmentType || AssignmentType.INDIVIDUAL;
-      const formName = this.resolveFormName(row.template);
       const completion = buildAssignmentCompletion({
         status: row.status,
         assignmentType: mode,
@@ -771,41 +1314,62 @@ export class AssignmentsService {
         viewerUserId,
       });
 
-      const groupIds =
-        row.sharedGroupKey && sharedAssigneesByKey.has(row.sharedGroupKey)
-          ? sharedAssigneesByKey.get(row.sharedGroupKey)!
-          : row.assigneeUserId != null
-            ? [row.assigneeUserId]
-            : [];
+      const action =
+        row.status === AssignmentStatus.COMPLETED
+          ? 'view'
+          : row.status === AssignmentStatus.IN_PROGRESS
+            ? 'continue'
+            : row.status === AssignmentStatus.PENDING || row.status === AssignmentStatus.OVERDUE
+              ? 'open'
+              : null;
 
-      const assignedTo = groupIds.map((id) => ({
-        id,
-        name: namesById.get(id) || `User #${id}`,
-      }));
+      const isUpcomingPending =
+        row.status === AssignmentStatus.PENDING &&
+        this.startOfDayUtc(row.dueAt).getTime() >= this.startOfDayUtc(new Date()).getTime();
 
       return {
         id: row.id,
         templateId: row.templateId,
         templateVersionId: row.templateVersionId,
-        formName,
+        formName: this.resolveFormName(row.template),
         assigneeUserId: row.assigneeUserId,
-        assigneeUserIds: groupIds,
-        assignedTo,
+        assigneeName:
+          row.assigneeUserId != null
+            ? namesById.get(row.assigneeUserId) || `User #${row.assigneeUserId}`
+            : null,
         dueAt: row.dueAt,
         dueDateLabel: this.formatDueDateLabel(row.dueAt),
         status: row.status,
-        statusLabel: this.statusLabel(row.status),
+        statusLabel: isUpcomingPending ? 'Upcoming' : this.statusLabel(row.status),
         mode,
         sharedGroupKey: row.sharedGroupKey,
-        completedByUserId: row.completedByUserId,
-        completedAt: row.completedAt,
-        submissionId: submissionPayload?.id ?? null,
+        submittedAt: submission?.submittedAt ?? row.completedAt ?? null,
+        submittedAtLabel: submission?.submittedAt
+          ? this.formatSubmittedAtLabel(submission.submittedAt)
+          : row.completedAt
+            ? this.formatSubmittedAtLabel(row.completedAt)
+            : null,
+        action,
+        submissionId: submissionPayload?.id ?? submission?.id ?? null,
+        /** Full answers + template.schema for completed rows (read-only View). */
         submission: submissionPayload,
         completion,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
+        completedByUserId,
+        completedAt,
       };
     });
+  }
+
+  private formatSubmittedAtLabel(value: Date): string {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'UTC',
+    }).format(value instanceof Date ? value : new Date(value));
   }
 
   async findOne(req: any, id: number) {

@@ -1201,52 +1201,119 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     };
 
     listQb = chain();
-    listQb.getManyAndCount = jest.fn().mockResolvedValue([
-      [
-        {
-          id: 1,
-          templateId: 10,
-          templateVersionId: 12,
-          assigneeUserId: 5,
-          dueAt: new Date('2026-09-16T00:00:00.000Z'),
-          status: AssignmentStatus.COMPLETED,
-          assignmentType: 'shared',
-          sharedGroupKey: 'shared-1',
-          completedByUserId: 5,
-          completedAt: new Date('2026-09-16T14:10:00.000Z'),
-          template: {
-            id: 10,
-            name: 'Daily Kitchen Checklist',
-            schema: { formName: 'Daily Kitchen Checklist', sections: [] },
-            status: 'active',
-            isActive: true,
+    listQb.getMany = jest.fn().mockResolvedValue([
+      {
+        id: 1,
+        templateId: 10,
+        templateVersionId: 12,
+        assigneeUserId: 5,
+        dueAt: new Date('2026-09-16T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+        assignmentType: 'shared',
+        sharedGroupKey: 'shared-1',
+        completedByUserId: 5,
+        completedAt: new Date('2026-09-16T14:10:00.000Z'),
+        template: {
+          id: 10,
+          name: 'Daily Kitchen Checklist',
+          schema: {
+            formName: 'Daily Kitchen Checklist',
+            frequency: {
+              type: 'recurring',
+              date: '2026-09-16',
+              recurring: { every: 1, interval: 'day', repeatCount: 1 },
+            },
+            sections: [],
           },
-          createdAt: new Date('2026-09-15T01:00:00.000Z'),
-          updatedAt: new Date('2026-09-16T14:10:00.000Z'),
+          status: 'active',
+          isActive: true,
         },
-        {
-          id: 2,
-          templateId: 11,
-          templateVersionId: 13,
-          assigneeUserId: 6,
-          dueAt: new Date('2026-09-15T00:00:00.000Z'),
-          status: AssignmentStatus.OVERDUE,
-          assignmentType: 'individual',
-          sharedGroupKey: null,
-          completedByUserId: null,
-          completedAt: null,
-          template: {
-            id: 11,
-            name: 'Hygiene Inspection',
-            schema: {},
-            status: 'active',
-            isActive: true,
+        createdAt: new Date('2026-09-15T01:00:00.000Z'),
+        updatedAt: new Date('2026-09-16T14:10:00.000Z'),
+      },
+      {
+        id: 3,
+        templateId: 10,
+        templateVersionId: 12,
+        assigneeUserId: 9,
+        dueAt: new Date('2026-09-16T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+        assignmentType: 'shared',
+        sharedGroupKey: 'shared-1',
+        completedByUserId: 5,
+        completedAt: new Date('2026-09-16T14:10:00.000Z'),
+        template: {
+          id: 10,
+          name: 'Daily Kitchen Checklist',
+          schema: {
+            formName: 'Daily Kitchen Checklist',
+            frequency: {
+              type: 'recurring',
+              date: '2026-09-16',
+              recurring: { every: 1, interval: 'day', repeatCount: 1 },
+            },
+            sections: [],
           },
-          createdAt: new Date('2026-09-14T01:00:00.000Z'),
-          updatedAt: new Date('2026-09-15T01:00:00.000Z'),
+          status: 'active',
+          isActive: true,
         },
-      ],
-      24,
+        createdAt: new Date('2026-09-15T01:00:00.000Z'),
+        updatedAt: new Date('2026-09-16T14:10:00.000Z'),
+      },
+      {
+        id: 2,
+        templateId: 11,
+        templateVersionId: 13,
+        assigneeUserId: 6,
+        dueAt: new Date('2026-09-15T00:00:00.000Z'),
+        status: AssignmentStatus.OVERDUE,
+        assignmentType: 'individual',
+        sharedGroupKey: null,
+        completedByUserId: null,
+        completedAt: null,
+        template: {
+          id: 11,
+          name: 'Hygiene Inspection',
+          schema: {
+            frequency: {
+              type: 'recurring',
+              date: '2026-09-01',
+              recurring: { every: 1, interval: 'month', repeatCount: 12, monthMode: 'dayOfMonth', dayOfMonth: 1 },
+            },
+          },
+          status: 'active',
+          isActive: true,
+        },
+        createdAt: new Date('2026-09-14T01:00:00.000Z'),
+        updatedAt: new Date('2026-09-15T01:00:00.000Z'),
+      },
+      {
+        id: 4,
+        templateId: 11,
+        templateVersionId: 13,
+        assigneeUserId: 6,
+        dueAt: new Date('2026-10-01T00:00:00.000Z'),
+        status: AssignmentStatus.PENDING,
+        assignmentType: 'individual',
+        sharedGroupKey: null,
+        completedByUserId: null,
+        completedAt: null,
+        template: {
+          id: 11,
+          name: 'Hygiene Inspection',
+          schema: {
+            frequency: {
+              type: 'recurring',
+              date: '2026-09-01',
+              recurring: { every: 1, interval: 'month', repeatCount: 12, monthMode: 'dayOfMonth', dayOfMonth: 1 },
+            },
+          },
+          status: 'active',
+          isActive: true,
+        },
+        createdAt: new Date('2026-09-14T01:00:00.000Z'),
+        updatedAt: new Date('2026-09-14T01:00:00.000Z'),
+      },
     ]);
 
     statsQb = chain();
@@ -1326,49 +1393,75 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     jest.useRealTimers();
   });
 
-  it('returns stats, assignedTo array, and submission.template.schema', async () => {
+  it('groups recurring series with progress counts, frequency, and next due', async () => {
     const result = await service.findAssignedForms(req, { page: 1, limit: 5 });
 
-    expect(listQb.orderBy).toHaveBeenCalledWith('assignment.createdAt', 'DESC');
-    expect(listQb.addOrderBy).toHaveBeenCalledWith('assignment.id', 'DESC');
+    expect(listQb.orderBy).toHaveBeenCalledWith('assignment.dueAt', 'ASC');
+    expect(listQb.addOrderBy).toHaveBeenCalledWith('assignment.id', 'ASC');
+    expect(listQb.getMany).toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.stats).toEqual({
+      level: 'occurrence',
       totalAssigned: 24,
       completed: 16,
       inProgress: 5,
       overdue: 3,
       notStarted: 0,
     });
-    expect(result.meta).toEqual({ total: 24, page: 1, lastPage: 5, limit: 5 });
+    expect(result.assignmentStats).toMatchObject({
+      level: 'assignment',
+      totalAssigned: 2,
+    });
+    // 2 series: shared template 10 + individual template 11 for user 6
+    expect(result.meta).toEqual({ total: 2, page: 1, lastPage: 1, limit: 5 });
     expect(result.data).toHaveLength(2);
-    expect(result.data[0]).toMatchObject({
+
+    const shared = result.data.find((row: any) => row.templateId === 10);
+    expect(shared).toBeDefined();
+    expect(shared).toMatchObject({
       formName: 'Daily Kitchen Checklist',
+      mode: 'shared',
+      frequencyLabel: 'Daily',
       assigneeUserIds: [5, 9],
       assignedTo: [
         { id: 5, name: 'Sarah Johnson' },
         { id: 9, name: 'Alex Kim' },
       ],
-      dueDateLabel: 'Sep 16, 2026',
+      completed: 1,
+      inProgress: 0,
+      overdue: 0,
+      progress: {
+        total: 1,
+        completed: 1,
+        inProgress: 0,
+        overdue: 0,
+      },
+      occurrences: { count: 1, label: '1 completed' },
       status: AssignmentStatus.COMPLETED,
       statusLabel: 'Completed',
     });
-    expect(result.data[0].submission).toMatchObject({
-      id: 40,
-      answers: { fld_001: 'ok' },
-      template: {
-        id: 10,
-        name: 'Daily Kitchen Checklist',
-        schema: {
-          formName: 'Daily Kitchen Checklist',
-          sections: [{ id: 'sec_1', fields: [{ id: 'fld_001', label: 'Notes' }] }],
-        },
-      },
-    });
-    expect(result.data[1]).toMatchObject({
+
+    const individual = result.data.find((row: any) => row.templateId === 11);
+    expect(individual).toBeDefined();
+    expect(individual).toMatchObject({
       formName: 'Hygiene Inspection',
       assignedTo: [{ id: 6, name: 'Mike Chen' }],
-      status: AssignmentStatus.OVERDUE,
-      statusLabel: 'Overdue',
+      frequencyLabel: 'Monthly · 1st',
+      nextDueLabel: 'Oct 1, 2026',
+      status: AssignmentStatus.PENDING,
+      statusLabel: 'Not Started',
+      completed: 0,
+      inProgress: 0,
+      overdue: 1,
+      progress: {
+        total: 2,
+        completed: 0,
+        inProgress: 0,
+        overdue: 1,
+        pending: 1,
+      },
+      occurrenceCount: 2,
+      occurrences: { count: 2, label: '2 upcoming' },
     });
   });
 
@@ -1420,5 +1513,114 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     await expect(
       service.findAssignedForms(req, { dueFrom: '09-01-2026' as any }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('returns assignment summary + month-scoped occurrences for View Details', async () => {
+    const seed = {
+      id: 4,
+      templateId: 11,
+      templateVersionId: 13,
+      assigneeUserId: 6,
+      jobPositionId: null,
+      dueAt: new Date('2026-10-01T00:00:00.000Z'),
+      status: AssignmentStatus.PENDING,
+      assignmentType: 'individual',
+      sharedGroupKey: null,
+      template: {
+        id: 11,
+        name: 'Hygiene Inspection',
+        schema: {
+          frequency: {
+            type: 'recurring',
+            date: '2026-09-01',
+            recurring: {
+              every: 1,
+              interval: 'month',
+              repeatCount: 12,
+              monthMode: 'dayOfMonth',
+              dayOfMonth: 1,
+            },
+          },
+        },
+        status: 'active',
+        isActive: true,
+      },
+      createdAt: new Date('2026-09-14T01:00:00.000Z'),
+      updatedAt: new Date('2026-09-14T01:00:00.000Z'),
+    };
+
+    const detailRows = [
+      {
+        ...seed,
+        id: 2,
+        dueAt: new Date('2026-09-15T00:00:00.000Z'),
+        status: AssignmentStatus.OVERDUE,
+      },
+      {
+        ...seed,
+        id: 4,
+        dueAt: new Date('2026-10-01T00:00:00.000Z'),
+        status: AssignmentStatus.PENDING,
+      },
+    ];
+
+    const detailQb: any = {};
+    for (const method of [
+      'leftJoinAndSelect',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+    ]) {
+      detailQb[method] = jest.fn().mockReturnValue(detailQb);
+    }
+    detailQb.getMany = jest.fn().mockResolvedValue(detailRows);
+
+    const findOneMock = jest.fn().mockResolvedValue(seed);
+    createQueryBuilderMock.mockReset();
+    createQueryBuilderMock.mockReturnValue(detailQb);
+
+    req.tenantConnection.getRepository = jest.fn((entity: any) => {
+      if (entity?.name === 'DataCollectionAssignment') {
+        return {
+          createQueryBuilder: createQueryBuilderMock,
+          find: findAssignmentsMock,
+          findOne: findOneMock,
+        };
+      }
+      if (entity?.name === 'User') {
+        return { find: findUsersMock };
+      }
+      if (entity?.name === 'DataCollectionSubmission') {
+        return { find: findSubmissionsMock };
+      }
+      if (entity?.name === 'TemplateVersion') {
+        return { find: findVersionsMock };
+      }
+      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
+    });
+
+    const result = await service.findAssignedFormDetail(req, 4, { month: '2026-09' });
+
+    expect(findOneMock).toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.data.assignment.summary).toMatchObject({
+      formName: 'Hygiene Inspection',
+      frequencyLabel: 'Monthly · 1st',
+      totalOccurrences: 2,
+      overdue: 1,
+      pending: 1,
+    });
+    expect(result.data.occurrences.meta).toMatchObject({
+      month: '2026-09',
+      total: 1,
+      status: 'all',
+    });
+    expect(result.data.occurrences.data).toHaveLength(1);
+    expect(result.data.occurrences.data[0]).toMatchObject({
+      id: 2,
+      status: AssignmentStatus.OVERDUE,
+      statusLabel: 'Overdue',
+      action: 'open',
+    });
   });
 });

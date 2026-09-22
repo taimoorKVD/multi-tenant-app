@@ -869,3 +869,47 @@ describe('FrequencyService', () => {
     });
   });
 });
+
+describe('FrequencyService.formatFrequencyLabel', () => {
+  const service = new FrequencyService();
+
+  it('formats yearly, monthly, daily, and once labels', () => {
+    expect(
+      service.formatFrequencyLabel({
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: { every: 1, interval: 'year', repeatCount: 100 },
+      }),
+    ).toBe('Yearly · Jan 1');
+
+    expect(
+      service.formatFrequencyLabel({
+        type: 'recurring',
+        date: '2026-09-01',
+        recurring: {
+          every: 1,
+          interval: 'month',
+          repeatCount: 12,
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 1,
+        },
+      }),
+    ).toBe('Monthly · 1st');
+
+    expect(
+      service.formatFrequencyLabel({
+        type: 'recurring',
+        date: '2026-09-23',
+        recurring: { every: 1, interval: 'day', repeatCount: 1 },
+      }),
+    ).toBe('Daily');
+
+    expect(
+      service.formatFrequencyLabel({
+        type: 'atOnce',
+        date: '2026-09-15',
+        recurring: null,
+      }),
+    ).toBe('Once · Sep 15, 2026');
+  });
+});
