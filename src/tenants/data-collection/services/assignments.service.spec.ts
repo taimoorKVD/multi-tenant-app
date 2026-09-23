@@ -1187,6 +1187,8 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       const api: any = {};
       for (const method of [
         'leftJoinAndSelect',
+        'innerJoinAndSelect',
+        'innerJoin',
         'leftJoin',
         'andWhere',
         'orderBy',
@@ -1415,6 +1417,12 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(listQb.orderBy).toHaveBeenCalledWith('assignment.dueAt', 'ASC');
     expect(listQb.addOrderBy).toHaveBeenCalledWith('assignment.id', 'ASC');
     expect(listQb.getMany).toHaveBeenCalled();
+    expect(listQb.andWhere).toHaveBeenCalledWith('template.status = :assignedFormsTemplateStatus', {
+      assignedFormsTemplateStatus: 'active',
+    });
+    expect(listQb.andWhere).toHaveBeenCalledWith('template.is_active = :assignedFormsTemplateIsActive', {
+      assignedFormsTemplateIsActive: true,
+    });
     expect(result.success).toBe(true);
     expect(result.stats).toEqual({
       level: 'occurrence',

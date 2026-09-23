@@ -353,8 +353,11 @@ export class AssignmentsService {
       const buildBaseQb = () => {
         const qb = repo
           .createQueryBuilder('assignment')
-          .leftJoinAndSelect('assignment.template', 'template')
+          // Inner join so draft/archived/missing templates never leak into the board.
+          .innerJoinAndSelect('assignment.template', 'template')
           .leftJoin(User, 'assignee', 'assignee.id = assignment.assigneeUserId');
+
+        this.applyAssignedFormsActiveTemplateFilter(qb);
 
         // Exclude cancelled from the admin board unless explicitly requested.
         const statusFilter = this.resolveAssignedFormsStatus(query.status);
@@ -428,10 +431,12 @@ export class AssignmentsService {
       };
 
       // Load matching rows, then collapse recurring series before paginating.
-      const rows: DataCollectionAssignment[] = await buildBaseQb()
-        .orderBy('assignment.dueAt', 'ASC')
-        .addOrderBy('assignment.id', 'ASC')
-        .getMany();
+      const rows: DataCollectionAssignment[] = (
+        await buildBaseQb()
+          .orderBy('assignment.dueAt', 'ASC')
+          .addOrderBy('assignment.id', 'ASC')
+          .getMany()
+      ).filter((row) => this.isAssignedFormsActiveTemplate(row.template));
 
       const series = this.buildAssignedFormsSeries(rows, now);
       const total = series.length;
@@ -645,6 +650,27 @@ export class AssignmentsService {
     }
   }
 
+  /** True when the template would appear on Forms Templates → Active. */
+  private isAssignedFormsActiveTemplate(
+    template?: DataCollectionTemplate | null,
+  ): boolean {
+    return Boolean(
+      template &&
+        !template.deletedAt &&
+        template.isActive === true &&
+        template.status === TemplateStatus.ACTIVE,
+    );
+  }
+
+  /** Restrict Assigned Forms queries to published, non-deleted templates. */
+  private applyAssignedFormsActiveTemplateFilter(qb: any): void {
+    qb.andWhere('template.status = :assignedFormsTemplateStatus', {
+      assignedFormsTemplateStatus: TemplateStatus.ACTIVE,
+    }).andWhere('template.is_active = :assignedFormsTemplateIsActive', {
+      assignedFormsTemplateIsActive: true,
+    });
+  }
+
   /** Resolve `userId[]` + legacy `assigneeUserId` into a unique id list. */
   private resolveAssignedFormsUserIds(query: QueryAssignedFormsDto): number[] {
     const ids = new Set<number>();
@@ -763,19 +789,21 @@ export class AssignmentsService {
       },
     });
 
-    const boardRows: DataCollectionAssignment[] = await assignmentRepo
-      .createQueryBuilder('assignment')
-      .leftJoinAndSelect('assignment.template', 'template')
-      .andWhere('assignment.status != :cancelledStatus', {
-        cancelledStatus: AssignmentStatus.CANCELLED,
-      })
-      .andWhere('template.id IS NOT NULL')
-      .andWhere('template.status = :templateStatus', {
-        templateStatus: TemplateStatus.ACTIVE,
-      })
-      .andWhere('template.isActive = true')
-      .andWhere('template.deletedAt IS NULL')
-      .getMany();
+    const boardRows: DataCollectionAssignment[] = (
+      await assignmentRepo
+        .createQueryBuilder('assignment')
+        .innerJoinAndSelect('assignment.template', 'template')
+        .andWhere('assignment.status != :cancelledStatus', {
+          cancelledStatus: AssignmentStatus.CANCELLED,
+        })
+        .andWhere('template.status = :templateStatus', {
+          templateStatus: TemplateStatus.ACTIVE,
+        })
+        .andWhere('template.is_active = :templateIsActive', {
+          templateIsActive: true,
+        })
+        .getMany()
+    ).filter((row) => this.isAssignedFormsActiveTemplate(row.template));
 
     const series = this.buildAssignedFormsSeries(boardRows, now);
 
@@ -809,7 +837,7 @@ export class AssignmentsService {
 
     const qb = repo
       .createQueryBuilder('assignment')
-      .leftJoin('assignment.template', 'template')
+      .innerJoin('assignment.template', 'template')
       .leftJoin(User, 'assignee', 'assignee.id = assignment.assigneeUserId')
       .select('assignment.status', 'status')
       .addSelect('COUNT(*)', 'count')
@@ -817,6 +845,7 @@ export class AssignmentsService {
         cancelledStatus: AssignmentStatus.CANCELLED,
       });
 
+    this.applyAssignedFormsActiveTemplateFilter(qb);
     this.applyAssignedFormsPeopleFilters(qb, query);
 
     const search = String(query.search || '').trim();
