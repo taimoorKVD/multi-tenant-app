@@ -1509,6 +1509,41 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(recentCall).toBeDefined();
   });
 
+  it('filters by multiple userId and jobPositionId values', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      userId: [4, 8],
+      jobPositionId: [5, 6],
+    });
+
+    const userCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('assignedFormsUserIds'),
+    );
+    expect(userCall).toBeDefined();
+    expect(userCall[1].assignedFormsUserIds).toEqual([4, 8]);
+
+    const jpCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('assignedFormsJobPositionIds'),
+    );
+    expect(jpCall).toBeDefined();
+    expect(jpCall[1].assignedFormsJobPositionIds).toEqual([5, 6]);
+  });
+
+  it('merges legacy assigneeUserId into userId filter', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      userId: [4],
+      assigneeUserId: 9,
+    });
+
+    const userCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('assignedFormsUserIds'),
+    );
+    expect(userCall[1].assignedFormsUserIds.sort()).toEqual([4, 9]);
+  });
+
   it('rejects invalid dueFrom', async () => {
     await expect(
       service.findAssignedForms(req, { dueFrom: '09-01-2026' as any }),

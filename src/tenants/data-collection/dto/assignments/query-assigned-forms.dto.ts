@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { AssignmentStatus } from '../../entities/enums';
 
 /** UI completion / workflow filters (maps to assignment status). */
@@ -15,6 +23,25 @@ export const ASSIGNED_FORMS_STATUS_VALUES = [
 ] as const;
 
 export type AssignedFormsStatusQuery = (typeof ASSIGNED_FORMS_STATUS_VALUES)[number];
+
+/** Normalize `?id=1&id=2` or `?id=1,2` or a single `?id=1` into number[]. */
+function toIdArray(value: unknown): number[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const raw = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+  const ids = [
+    ...new Set(
+      raw
+        .map((item) => Number(item))
+        .filter((n) => Number.isFinite(n) && Number.isInteger(n)),
+    ),
+  ];
+  return ids.length ? ids : undefined;
+}
 
 export class QueryAssignedFormsDto {
   @ApiPropertyOptional({ example: 1 })
@@ -40,12 +67,40 @@ export class QueryAssignedFormsDto {
 
   @ApiPropertyOptional({
     example: 12,
-    description: 'Filter by assignee user ID (Assigned To). Matches any assignee on the row / shared group.',
+    description:
+      'Filter by a single assignee user ID. Prefer `userId` for one or more users. ' +
+      'Matches any assignee on the row / shared group.',
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   assigneeUserId?: number;
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [4, 8],
+    description:
+      'Filter by one or more assignee user IDs. Repeat param (`userId=4&userId=8`) or comma-separated. ' +
+      'Merged with `assigneeUserId` when both are sent.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => toIdArray(value))
+  @IsArray()
+  @IsInt({ each: true })
+  userId?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [5, 6],
+    description:
+      'Filter by one or more job position IDs. Repeat param (`jobPositionId=5&jobPositionId=6`) or comma-separated. ' +
+      'Matches assignment.jobPositionId or the assignee user’s current job position (including shared peers).',
+  })
+  @IsOptional()
+  @Transform(({ value }) => toIdArray(value))
+  @IsArray()
+  @IsInt({ each: true })
+  jobPositionId?: number[];
 
   @ApiPropertyOptional({
     enum: ASSIGNED_FORMS_STATUS_VALUES,

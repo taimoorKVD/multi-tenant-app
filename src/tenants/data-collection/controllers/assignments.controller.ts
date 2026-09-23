@@ -105,13 +105,33 @@ export class AssignmentsController {
     description:
       '1 assignment = 1 row (template + assignee for individual, template for shared). ' +
       'Includes frequency, start/end period, progress counts (completed / inProgress / overdue), and nextDue. ' +
+      'Filter by `userId` (one or many) and/or `jobPositionId` (one or many). ' +
       '`stats` is occurrence-level; `assignmentStats` is assignment-level — do not mix them for cards. ' +
       'Use `GET assigned-forms/:assignmentId` for View Details (summary + paginated occurrences).',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
-  @ApiQuery({ name: 'assigneeUserId', required: false, type: Number })
+  @ApiQuery({
+    name: 'assigneeUserId',
+    required: false,
+    type: Number,
+    description: 'Single assignee filter (legacy). Prefer userId.',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: false,
+    type: Number,
+    isArray: true,
+    description: 'One or more assignee user IDs (`userId=4&userId=8` or `userId=4,8`).',
+  })
+  @ApiQuery({
+    name: 'jobPositionId',
+    required: false,
+    type: Number,
+    isArray: true,
+    description: 'One or more job position IDs (`jobPositionId=5&jobPositionId=6` or `jobPositionId=5,6`).',
+  })
   @ApiQuery({
     name: 'status',
     required: false,
