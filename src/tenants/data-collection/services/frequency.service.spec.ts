@@ -271,17 +271,14 @@ describe('FrequencyService', () => {
       expect(dates[1].getUTCMonth()).toBe(2);
     });
 
-    it('treats repeat:true as open-ended up to maxOccurrences', () => {
-      const dates = service.expandOccurrences(
-        {
-          type: 'recurring',
-          date: '2026-01-01',
-          recurring: { interval: 1, unit: 'day', repeat: true },
-        },
-        7,
-      );
-      expect(dates).toHaveLength(7);
-      expect(isoDates(dates)[6]).toBe('2026-01-07');
+    it('treats repeat:true as open-ended for the next 12 months', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        date: '2026-01-01',
+        recurring: { interval: 1, unit: 'day', repeat: true },
+      });
+      expect(dates).toHaveLength(365);
+      expect(isoDates(dates)[dates.length - 1]).toBe('2026-12-31');
     });
 
     it('accepts plural unit aliases from UI (Days / Weeks)', () => {
@@ -293,35 +290,25 @@ describe('FrequencyService', () => {
       ).toMatchObject({ unit: FrequencyUnit.WEEK, interval: 2, repeat: 3 });
     });
 
-    it('treats UI default repeatCount:1 as open-ended (daily kitchen checklist)', () => {
-      const dates = service.expandOccurrences(
-        {
-          type: 'recurring',
-          date: '2026-09-17',
-          recurring: {
-            every: 1,
-            interval: 'day',
-            repeatCount: 1,
-            daysOfWeek: [],
-            monthMode: 'dayOfMonth',
-            dayOfMonth: 1,
-            weekOrder: 'first',
-            onTheMonth: 'january',
-            yearDay: 1,
-            yearMonth: 'january',
-          },
+    it('treats UI default repeatCount:1 as a 12-month daily schedule', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        date: '2026-09-17',
+        recurring: {
+          every: 1,
+          interval: 'day',
+          repeatCount: 1,
+          daysOfWeek: [],
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 1,
+          weekOrder: 'first',
+          onTheMonth: 'january',
+          yearDay: 1,
+          yearMonth: 'january',
         },
-        7,
-      );
-      expect(isoDates(dates)).toEqual([
-        '2026-09-17',
-        '2026-09-18',
-        '2026-09-19',
-        '2026-09-20',
-        '2026-09-21',
-        '2026-09-22',
-        '2026-09-23',
-      ]);
+      });
+      expect(dates).toHaveLength(365);
+      expect(isoDates(dates)[dates.length - 1]).toBe('2027-09-16');
     });
 
     it('honors explicit ends:never as open-ended', () => {
@@ -431,13 +418,13 @@ describe('FrequencyService', () => {
       expect(isoDates(dates)).toEqual(['2026-09-01', '2026-09-02', '2026-09-03']);
     });
 
-    it('clamps repeatCount above default maxOccurrences (100)', () => {
+    it('does not clamp an explicit finite repeatCount to 100', () => {
       const dates = service.expandOccurrences({
         type: 'recurring',
         date: '2026-01-01',
         recurring: { every: 1, interval: 'day', repeatCount: 250 },
       });
-      expect(dates).toHaveLength(100);
+      expect(dates).toHaveLength(250);
     });
 
     it('defaults weekday to monday when monthly onThe has no daysOfWeek', () => {
@@ -518,21 +505,14 @@ describe('FrequencyService', () => {
         ).toEqual(['2026-09-10', '2026-09-11', '2026-09-12']);
       });
 
-      it('UI repeatCount:1 is open-ended (capped)', () => {
-        const dates = service.expandOccurrences(
-          {
-            type: 'recurring',
-            date: '2026-09-17',
-            recurring: { every: 1, interval: 'day', repeatCount: 1 },
-          },
-          4,
-        );
-        expect(isoDates(dates)).toEqual([
-          '2026-09-17',
-          '2026-09-18',
-          '2026-09-19',
-          '2026-09-20',
-        ]);
+      it('UI repeatCount:1 creates daily occurrences for 12 months', () => {
+        const dates = service.expandOccurrences({
+          type: 'recurring',
+          date: '2026-09-17',
+          recurring: { every: 1, interval: 'day', repeatCount: 1 },
+        });
+        expect(dates).toHaveLength(365);
+        expect(isoDates(dates)[dates.length - 1]).toBe('2027-09-16');
       });
 
       it('accepts daily / Days aliases', () => {
@@ -605,20 +585,18 @@ describe('FrequencyService', () => {
       });
 
       it('UI weekly repeatCount:1 is open-ended with daysOfWeek', () => {
-        const dates = service.expandOccurrences(
-          {
-            type: 'recurring',
-            date: '2026-09-01',
-            recurring: {
-              every: 1,
-              interval: 'week',
-              repeatCount: 1,
-              daysOfWeek: ['monday'],
-            },
+        const dates = service.expandOccurrences({
+          type: 'recurring',
+          date: '2026-09-01',
+          recurring: {
+            every: 1,
+            interval: 'week',
+            repeatCount: 1,
+            daysOfWeek: ['monday'],
           },
-          3,
-        );
-        expect(isoDates(dates)).toEqual(['2026-09-07', '2026-09-14', '2026-09-21']);
+        });
+        expect(dates).toHaveLength(52);
+        expect(isoDates(dates)[dates.length - 1]).toBe('2027-08-30');
       });
 
       it('accepts weekly / Weeks aliases', () => {
@@ -702,21 +680,19 @@ describe('FrequencyService', () => {
       });
 
       it('UI monthly repeatCount:1 is open-ended', () => {
-        const dates = service.expandOccurrences(
-          {
-            type: 'recurring',
-            date: '2026-01-15',
-            recurring: {
-              every: 1,
-              interval: 'month',
-              repeatCount: 1,
-              monthMode: 'dayOfMonth',
-              dayOfMonth: 15,
-            },
+        const dates = service.expandOccurrences({
+          type: 'recurring',
+          date: '2026-01-15',
+          recurring: {
+            every: 1,
+            interval: 'month',
+            repeatCount: 1,
+            monthMode: 'dayOfMonth',
+            dayOfMonth: 15,
           },
-          3,
-        );
-        expect(isoDates(dates)).toEqual(['2026-01-15', '2026-02-15', '2026-03-15']);
+        });
+        expect(dates).toHaveLength(12);
+        expect(isoDates(dates)[dates.length - 1]).toBe('2026-12-15');
       });
 
       it('last day of month via day=-1', () => {
@@ -799,22 +775,19 @@ describe('FrequencyService', () => {
       });
 
       it('UI yearly repeatCount:1 is open-ended', () => {
-        const dates = service.expandOccurrences(
-          {
-            type: 'recurring',
-            date: '2026-01-01',
-            recurring: {
-              every: 1,
-              interval: 'year',
-              repeatCount: 1,
-              monthMode: 'dayOfMonth',
-              yearMonth: 'june',
-              yearDay: 1,
-            },
+        const dates = service.expandOccurrences({
+          type: 'recurring',
+          date: '2026-01-01',
+          recurring: {
+            every: 1,
+            interval: 'year',
+            repeatCount: 1,
+            monthMode: 'dayOfMonth',
+            yearMonth: 'june',
+            yearDay: 1,
           },
-          3,
-        );
-        expect(isoDates(dates)).toEqual(['2026-06-01', '2027-06-01', '2028-06-01']);
+        });
+        expect(isoDates(dates)).toEqual(['2026-06-01']);
       });
 
       it('accepts yearly / annually aliases', () => {

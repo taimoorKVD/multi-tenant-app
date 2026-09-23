@@ -359,24 +359,7 @@ export class AssignmentsService {
           });
         }
 
-        if (query.assigneeUserId) {
-          // Match the row assignee, or any member of the same shared group.
-          qb.andWhere(
-            `(
-              assignment.assigneeUserId = :assigneeUserId
-              OR (
-                assignment.sharedGroupKey IS NOT NULL
-                AND EXISTS (
-                  SELECT 1 FROM dc_assignments peer
-                  WHERE peer.shared_group_key = assignment.shared_group_key
-                    AND peer.assignee_user_id = :assigneeUserId
-                    AND peer.deleted_at IS NULL
-                )
-              )
-            )`,
-            { assigneeUserId: query.assigneeUserId },
-          );
-        }
+        this.applyAssignedFormsPeopleFilters(qb, query);
 
         const search = String(query.search || '').trim();
         if (search) {
@@ -659,6 +642,73 @@ export class AssignmentsService {
     }
   }
 
+  /** Resolve `userId[]` + legacy `assigneeUserId` into a unique id list. */
+  private resolveAssignedFormsUserIds(query: QueryAssignedFormsDto): number[] {
+    const ids = new Set<number>();
+    for (const id of query.userId || []) {
+      if (Number.isFinite(id)) ids.add(Number(id));
+    }
+    if (query.assigneeUserId != null && Number.isFinite(Number(query.assigneeUserId))) {
+      ids.add(Number(query.assigneeUserId));
+    }
+    return [...ids];
+  }
+
+  private resolveAssignedFormsJobPositionIds(query: QueryAssignedFormsDto): number[] {
+    return [...new Set((query.jobPositionId || []).map(Number).filter(Number.isFinite))];
+  }
+
+  /**
+   * Filter by assignee user(s) and/or job position(s).
+   * Users: row assignee or any shared-group peer.
+   * Job positions: assignment.jobPositionId, assignee's current JP, or shared peer JP.
+   */
+  private applyAssignedFormsPeopleFilters(qb: any, query: QueryAssignedFormsDto): void {
+    const userIds = this.resolveAssignedFormsUserIds(query);
+    if (userIds.length) {
+      qb.andWhere(
+        `(
+          assignment.assigneeUserId IN (:...assignedFormsUserIds)
+          OR (
+            assignment.sharedGroupKey IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM dc_assignments peer
+              WHERE peer.shared_group_key = assignment.shared_group_key
+                AND peer.assignee_user_id IN (:...assignedFormsUserIds)
+                AND peer.deleted_at IS NULL
+            )
+          )
+        )`,
+        { assignedFormsUserIds: userIds },
+      );
+    }
+
+    const jobPositionIds = this.resolveAssignedFormsJobPositionIds(query);
+    if (jobPositionIds.length) {
+      qb.andWhere(
+        `(
+          assignment.jobPositionId IN (:...assignedFormsJobPositionIds)
+          OR assignee.job_position_id IN (:...assignedFormsJobPositionIds)
+          OR (
+            assignment.sharedGroupKey IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM dc_assignments peer
+              LEFT JOIN users peer_user ON peer_user.id = peer.assignee_user_id
+              WHERE peer.shared_group_key = assignment.shared_group_key
+                AND peer.deleted_at IS NULL
+                AND (
+                  peer.job_position_id IN (:...assignedFormsJobPositionIds)
+                  OR peer_user.job_position_id IN (:...assignedFormsJobPositionIds)
+                )
+            )
+          )
+        )`,
+        { assignedFormsJobPositionIds: jobPositionIds },
+      );
+    }
+  }
+
   private resolveAssignedFormsStatus(
     status?: string | null,
   ): AssignmentStatus | null {
@@ -715,23 +765,7 @@ export class AssignmentsService {
         cancelledStatus: AssignmentStatus.CANCELLED,
       });
 
-    if (query.assigneeUserId) {
-      qb.andWhere(
-        `(
-          assignment.assigneeUserId = :assigneeUserId
-          OR (
-            assignment.sharedGroupKey IS NOT NULL
-            AND EXISTS (
-              SELECT 1 FROM dc_assignments peer
-              WHERE peer.shared_group_key = assignment.shared_group_key
-                AND peer.assignee_user_id = :assigneeUserId
-                AND peer.deleted_at IS NULL
-            )
-          )
-        )`,
-        { assigneeUserId: query.assigneeUserId },
-      );
-    }
+    this.applyAssignedFormsPeopleFilters(qb, query);
 
     const search = String(query.search || '').trim();
     if (search) {
