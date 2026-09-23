@@ -9,7 +9,7 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
-import { AssignmentStatus } from '../../entities/enums';
+import { AssignmentStatus, SubmissionStatus } from '../../entities/enums';
 
 /** UI completion / workflow filters (maps to assignment status). */
 export const ASSIGNED_FORMS_STATUS_VALUES = [
@@ -23,6 +23,17 @@ export const ASSIGNED_FORMS_STATUS_VALUES = [
 ] as const;
 
 export type AssignedFormsStatusQuery = (typeof ASSIGNED_FORMS_STATUS_VALUES)[number];
+
+/** Submission / response review filters (independent of assignment status). */
+export const ASSIGNED_FORMS_RESPONSE_STATUS_VALUES = [
+  SubmissionStatus.SUBMITTED,
+  SubmissionStatus.FLAGGED,
+  SubmissionStatus.FAILED,
+  SubmissionStatus.APPROVED,
+] as const;
+
+export type AssignedFormsResponseStatusQuery =
+  (typeof ASSIGNED_FORMS_RESPONSE_STATUS_VALUES)[number];
 
 /** Normalize `?id=1&id=2` or `?id=1,2` or a single `?id=1` into number[]. */
 function toIdArray(value: unknown): number[] | undefined {
@@ -41,6 +52,25 @@ function toIdArray(value: unknown): number[] | undefined {
     ),
   ];
   return ids.length ? ids : undefined;
+}
+
+function toResponseStatusArray(value: unknown): SubmissionStatus[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const raw = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+  const allowed = new Set<string>(ASSIGNED_FORMS_RESPONSE_STATUS_VALUES);
+  const statuses = [
+    ...new Set(
+      raw
+        .map((item) => String(item).toLowerCase())
+        .filter((item) => allowed.has(item)),
+    ),
+  ] as SubmissionStatus[];
+  return statuses.length ? statuses : undefined;
 }
 
 export class QueryAssignedFormsDto {
@@ -105,12 +135,26 @@ export class QueryAssignedFormsDto {
   @ApiPropertyOptional({
     enum: ASSIGNED_FORMS_STATUS_VALUES,
     description:
-      'Completion / workflow status. `not_started` is an alias for `pending`. ' +
-      'Use `overdue` for overdue forms.',
+      'Assignment workflow status. `not_started` is an alias for `pending`. ' +
+      'Use `overdue` for overdue forms. For review outcomes use `responseStatus`.',
   })
   @IsOptional()
   @IsIn(ASSIGNED_FORMS_STATUS_VALUES)
   status?: AssignedFormsStatusQuery;
+
+  @ApiPropertyOptional({
+    enum: ASSIGNED_FORMS_RESPONSE_STATUS_VALUES,
+    isArray: true,
+    example: ['flagged', 'failed'],
+    description:
+      'Filter by submission/response review status. Repeat param or comma-separated. ' +
+      'Values: submitted | flagged | failed | approved. Independent of assignment `status`.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => toResponseStatusArray(value))
+  @IsArray()
+  @IsIn(ASSIGNED_FORMS_RESPONSE_STATUS_VALUES, { each: true })
+  responseStatus?: AssignedFormsResponseStatusQuery[];
 
   @ApiPropertyOptional({
     example: '2026-09-01',

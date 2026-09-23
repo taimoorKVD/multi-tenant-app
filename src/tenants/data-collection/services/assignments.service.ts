@@ -370,6 +370,7 @@ export class AssignmentsService {
         }
 
         this.applyAssignedFormsPeopleFilters(qb, query);
+        this.applyAssignedFormsResponseStatusFilter(qb, query.responseStatus);
 
         const search = String(query.search || '').trim();
         if (search) {
@@ -738,6 +739,42 @@ export class AssignmentsService {
     }
   }
 
+  /**
+   * Filter assignments that have a non-deleted submission in one of the given
+   * review statuses (submitted | flagged | failed | approved).
+   * Independent of assignment workflow `status`.
+   */
+  private applyAssignedFormsResponseStatusFilter(
+    qb: any,
+    responseStatus?: SubmissionStatus[] | string[] | null,
+  ): void {
+    const statuses = [
+      ...new Set(
+        (responseStatus || [])
+          .map((item) => String(item).toLowerCase())
+          .filter((item): item is SubmissionStatus =>
+            [
+              SubmissionStatus.SUBMITTED,
+              SubmissionStatus.FLAGGED,
+              SubmissionStatus.FAILED,
+              SubmissionStatus.APPROVED,
+            ].includes(item as SubmissionStatus),
+          ),
+      ),
+    ];
+    if (!statuses.length) return;
+
+    qb.andWhere(
+      `EXISTS (
+        SELECT 1 FROM dc_submissions response_sub
+        WHERE response_sub.assignment_id = assignment.id
+          AND response_sub.status IN (:...assignedFormsResponseStatuses)
+          AND response_sub.deleted_at IS NULL
+      )`,
+      { assignedFormsResponseStatuses: statuses },
+    );
+  }
+
   private resolveAssignedFormsStatus(
     status?: string | null,
   ): AssignmentStatus | null {
@@ -847,6 +884,7 @@ export class AssignmentsService {
 
     this.applyAssignedFormsActiveTemplateFilter(qb);
     this.applyAssignedFormsPeopleFilters(qb, query);
+    this.applyAssignedFormsResponseStatusFilter(qb, query.responseStatus);
 
     const search = String(query.search || '').trim();
     if (search) {
@@ -1263,6 +1301,31 @@ export class AssignmentsService {
         );
       }
 
+      const responseStatuses = [
+        ...new Set(
+          (query.responseStatus || [])
+            .map((item) => String(item).toLowerCase())
+            .filter((item): item is SubmissionStatus =>
+              [
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.FLAGGED,
+                SubmissionStatus.FAILED,
+                SubmissionStatus.APPROVED,
+              ].includes(item as SubmissionStatus),
+            ),
+        ),
+      ];
+      if (responseStatuses.length) {
+        const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
+          req,
+          filteredOccurrences.map((row) => row.id),
+        );
+        filteredOccurrences = filteredOccurrences.filter((row) => {
+          const submission = submissionsByAssignment.get(row.id);
+          return submission != null && responseStatuses.includes(submission.status);
+        });
+      }
+
       filteredOccurrences.sort((a, b) => {
         const dueDiff = new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
         return dueDiff !== 0 ? dueDiff : b.id - a.id;
@@ -1309,6 +1372,7 @@ export class AssignmentsService {
               dueFrom: dueRange?.start.toISOString().slice(0, 10) ?? null,
               dueTo: dueRange?.end.toISOString().slice(0, 10) ?? null,
               status: query.status || 'all',
+              responseStatus: responseStatuses.length ? responseStatuses : null,
             },
             data: occurrences,
           },

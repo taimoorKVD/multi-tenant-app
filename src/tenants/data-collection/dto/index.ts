@@ -4,8 +4,12 @@ export { QueryAssignmentDto } from './assignments/query-assignment.dto';
 export {
   QueryAssignedFormsDto,
   ASSIGNED_FORMS_STATUS_VALUES,
+  ASSIGNED_FORMS_RESPONSE_STATUS_VALUES,
 } from './assignments/query-assigned-forms.dto';
-export type { AssignedFormsStatusQuery } from './assignments/query-assigned-forms.dto';
+export type {
+  AssignedFormsStatusQuery,
+  AssignedFormsResponseStatusQuery,
+} from './assignments/query-assigned-forms.dto';
 export {
   QueryAssignedFormDetailDto,
   ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES,
