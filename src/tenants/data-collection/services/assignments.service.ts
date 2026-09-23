@@ -426,29 +426,20 @@ export class AssignmentsService {
       const lastPage = Math.ceil(total / limit) || 1;
       const pageSeries = series.slice(skip, skip + limit);
 
-      const occurrenceStats = await this.loadAssignedFormsStats(req, query, now);
+      const [occurrenceStats, assignmentStats] = await Promise.all([
+        this.loadAssignedFormsStats(req, query, now),
+        this.loadAssignedFormsAssignmentStats(req, now),
+      ]);
       const data = await this.serializeAssignedFormsSeries(req, pageSeries, actorId);
-
-      const assignmentStats = {
-        level: 'assignment' as const,
-        totalAssigned: total,
-        withOverdue: series.filter((item) => item.progress.overdue > 0).length,
-        withInProgress: series.filter((item) => item.progress.inProgress > 0).length,
-        fullyCompleted: series.filter(
-          (item) =>
-            item.progress.total > 0 &&
-            item.progress.completed === item.progress.total &&
-            item.progress.overdue === 0 &&
-            item.progress.inProgress === 0 &&
-            item.progress.pending === 0,
-        ).length,
-      };
 
       return {
         success: true,
-        /** Occurrence-level counts (do not mix with assignmentStats). */
+        /** Occurrence-level counts for the current list filters (do not mix with assignmentStats). */
         stats: { level: 'occurrence' as const, ...occurrenceStats },
-        /** Assignment-series counts (1 row = 1 assignment in the table). */
+        /**
+         * Board summary cards — independent of table status/search/people filters.
+         * `totalAssigned` = active templates; other fields = assignment-series progress.
+         */
         assignmentStats,
         meta: { total, page, lastPage, limit },
         data,
@@ -741,6 +732,55 @@ export class AssignmentsService {
       default:
         return String(status);
     }
+  }
+
+  /**
+   * Stable board cards for Assigned Forms.
+   * - totalAssigned: count of active (published) templates
+   * - withOverdue / withInProgress / fullyCompleted: from all open assignment series
+   *   (ignores table filters so status=completed does not shrink the other cards)
+   */
+  private async loadAssignedFormsAssignmentStats(req: any, now: Date) {
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+    const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+
+    const totalAssigned = await templateRepo.count({
+      where: {
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+      },
+    });
+
+    const boardRows: DataCollectionAssignment[] = await assignmentRepo
+      .createQueryBuilder('assignment')
+      .leftJoinAndSelect('assignment.template', 'template')
+      .andWhere('assignment.status != :cancelledStatus', {
+        cancelledStatus: AssignmentStatus.CANCELLED,
+      })
+      .andWhere('template.id IS NOT NULL')
+      .andWhere('template.status = :templateStatus', {
+        templateStatus: TemplateStatus.ACTIVE,
+      })
+      .andWhere('template.isActive = true')
+      .andWhere('template.deletedAt IS NULL')
+      .getMany();
+
+    const series = this.buildAssignedFormsSeries(boardRows, now);
+
+    return {
+      level: 'assignment' as const,
+      totalAssigned,
+      withOverdue: series.filter((item) => item.progress.overdue > 0).length,
+      withInProgress: series.filter((item) => item.progress.inProgress > 0).length,
+      fullyCompleted: series.filter(
+        (item) =>
+          item.progress.total > 0 &&
+          item.progress.completed === item.progress.total &&
+          item.progress.overdue === 0 &&
+          item.progress.inProgress === 0 &&
+          item.progress.pending === 0,
+      ).length,
+    };
   }
 
   private async loadAssignedFormsStats(
