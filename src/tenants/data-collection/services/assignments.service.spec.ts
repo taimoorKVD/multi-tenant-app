@@ -332,7 +332,6 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       },
     } as any;
 
-    // Cap expansion via FrequencyService default is 100; assert at least day+1 exists.
     const created = await service.materializeFromTemplate(
       req,
       dailyShared,
@@ -340,9 +339,10 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       1,
     );
 
-    expect(created.length).toBeGreaterThanOrEqual(2);
+    expect(created).toHaveLength(365);
     expect(created[0].dueAt.toISOString().slice(0, 10)).toBe('2026-09-17');
     expect(created[1].dueAt.toISOString().slice(0, 10)).toBe('2026-09-18');
+    expect(created[created.length - 1].dueAt.toISOString().slice(0, 10)).toBe('2027-09-16');
     expect(created.every((a) => a.assignmentType === 'shared')).toBe(true);
     expect(created.every((a) => a.assigneeUserId === 7)).toBe(true);
     expect(created[0].sharedGroupKey).toBe('10:20:2026-09-17T00:00:00.000Z:shared');

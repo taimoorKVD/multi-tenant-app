@@ -101,6 +101,9 @@ const UNIT_ALIASES: Record<string, FrequencyUnit> = {
   annually: FrequencyUnit.YEAR,
 };
 
+const OPEN_ENDED_HORIZON_MONTHS = 12;
+const MAX_OCCURRENCES_WITHIN_HORIZON = 1000;
+
 @Injectable()
 export class FrequencyService {
   /** UTC today as YYYY-MM-DD when Recurring UI omits `date`. */
@@ -264,11 +267,14 @@ export class FrequencyService {
    * - `{ type: "atOnce", date: "2026-08-21", recurring: null }`
    * - Canonical `{ recurring: { interval, unit, repeat, monthlyRule? } }`
    * - UI Frequency card `{ recurring: { every, interval: "day", repeatCount, daysOfWeek, monthMode, ... } }`
-   *   (`repeatCount: 1` / omitted → open-ended up to maxOccurrences; use ≥2 for a finite series)
+   *   (`repeatCount: 1` / omitted → open-ended for the next 12 months; use ≥2 for a finite series)
    * - Legacy `{ type: "one_time"|"recurring", startDate, schedule }`
    * Recurring without `date`/`startDate` anchors to today (UTC).
    */
-  expandOccurrences(frequency: FrequencyInput | null | undefined, maxOccurrences = 100): Date[] {
+  expandOccurrences(
+    frequency: FrequencyInput | null | undefined,
+    maxOccurrences = MAX_OCCURRENCES_WITHIN_HORIZON,
+  ): Date[] {
     if (!frequency) return [];
 
     const end = frequency.endDate ? this.parseDateOnly(frequency.endDate) : null;
@@ -300,6 +306,9 @@ export class FrequencyService {
       return [start];
     }
 
+    const horizonExclusive = this.isOpenEndedSchedule(raw)
+      ? this.addCalendarMonths(start, OPEN_ENDED_HORIZON_MONTHS)
+      : null;
     const schedule = this.normalizeSchedule(raw, maxOccurrences);
     const dates: Date[] = [];
 
@@ -308,7 +317,13 @@ export class FrequencyService {
       schedule.daysOfWeek &&
       schedule.daysOfWeek.length
     ) {
-      return this.expandWeeklyByDays(start, schedule, end, maxOccurrences);
+      return this.expandWeeklyByDays(
+        start,
+        schedule,
+        end,
+        horizonExclusive,
+        maxOccurrences,
+      );
     }
 
     let cursor = new Date(start.getTime());
@@ -316,6 +331,7 @@ export class FrequencyService {
     for (let i = 0; i < schedule.repeat; i++) {
       const due = this.applyMonthlyRule(cursor, schedule.unit, schedule.monthlyRule);
       if (end && due > end) break;
+      if (horizonExclusive && due >= horizonExclusive) break;
       dates.push(due);
       cursor = this.addInterval(cursor, schedule.interval, schedule.unit);
     }
@@ -331,7 +347,10 @@ export class FrequencyService {
    * Canonical:
    * `{ interval: 1, unit: "day", repeat: 5, monthlyRule?, daysOfWeek? }`
    */
-  normalizeSchedule(raw: FrequencyScheduleRaw, maxOccurrences = 100): FrequencyScheduleInput {
+  normalizeSchedule(
+    raw: FrequencyScheduleRaw,
+    maxOccurrences = MAX_OCCURRENCES_WITHIN_HORIZON,
+  ): FrequencyScheduleInput {
     const unit = this.resolveUnit(raw);
     const interval = this.resolveIntervalCount(raw);
     const repeat = this.resolveRepeat(raw, maxOccurrences);
@@ -345,6 +364,29 @@ export class FrequencyService {
       ...(monthlyRule ? { monthlyRule } : {}),
       ...(daysOfWeek.length ? { daysOfWeek } : {}),
     };
+  }
+
+  private isOpenEndedSchedule(raw: FrequencyScheduleRaw): boolean {
+    if (
+      raw.repeat === true ||
+      String(raw.ends || raw.endType || '').toLowerCase() === 'never'
+    ) {
+      return true;
+    }
+
+    if (raw.repeatCount != null && raw.repeatCount !== '') {
+      const repeatCount = Number(raw.repeatCount);
+      if (Number.isFinite(repeatCount) && repeatCount >= 1) {
+        return Math.floor(repeatCount) === 1;
+      }
+    }
+
+    if (raw.repeat != null && raw.repeat !== '') {
+      const repeat = Number(raw.repeat);
+      if (Number.isFinite(repeat) && repeat >= 1) return false;
+    }
+
+    return true;
   }
 
   private resolveUnit(raw: FrequencyScheduleRaw): FrequencyUnit {
@@ -390,7 +432,7 @@ export class FrequencyService {
       const n = Number(raw.repeatCount);
       if (Number.isFinite(n) && n >= 1) {
         // Frequency UI defaults "Ends after" to 1 while configuring "every N days/weeks".
-        // A true one-shot belongs on atOnce — recurring × 1 means open-ended until capped.
+        // A true one-shot belongs on atOnce — recurring × 1 means open-ended.
         if (Math.floor(n) === 1) return maxOccurrences;
         return Math.min(Math.floor(n), maxOccurrences);
       }
@@ -398,10 +440,12 @@ export class FrequencyService {
 
     if (raw.repeat != null && raw.repeat !== '') {
       const n = Number(raw.repeat);
-      if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), maxOccurrences);
+      if (Number.isFinite(n) && n >= 1) {
+        return Math.min(Math.floor(n), maxOccurrences);
+      }
     }
 
-    // Recurring with no end count → open-ended (capped).
+    // Recurring with no end count → open-ended (bounded by the 12-month horizon).
     return maxOccurrences;
   }
 
@@ -517,6 +561,7 @@ export class FrequencyService {
     start: Date,
     schedule: FrequencyScheduleInput,
     end: Date | null,
+    horizonExclusive: Date | null,
     maxOccurrences: number,
   ): Date[] {
     const selected = (schedule.daysOfWeek || [])
@@ -538,6 +583,7 @@ export class FrequencyService {
     const safetyDays = Math.max(repeat * intervalWeeks * 7 * 2, 366 * 2);
 
     for (let i = 0; i < safetyDays && dates.length < repeat; i++) {
+      if (horizonExclusive && cursor >= horizonExclusive) break;
       const dow = cursor.getUTCDay();
       if (selectedSet.has(dow) && cursor >= start) {
         const weekSunday = new Date(cursor.getTime());
@@ -554,6 +600,25 @@ export class FrequencyService {
     }
 
     return dates;
+  }
+
+  private addCalendarMonths(date: Date, months: number): Date {
+    const targetMonth = date.getUTCMonth() + months;
+    const targetYear = date.getUTCFullYear() + Math.floor(targetMonth / 12);
+    const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+    const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+
+    return new Date(
+      Date.UTC(
+        targetYear,
+        normalizedMonth,
+        Math.min(date.getUTCDate(), lastDay),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
   }
 
   private parseDateOnly(value: string): Date | null {

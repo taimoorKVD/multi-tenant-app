@@ -101,7 +101,7 @@ export class FrequencyRecurringDto {
 
   /**
    * UI: number of occurrences (maps to `repeat`).
-   * `1` (Frequency card default) is treated as open-ended up to the expand cap —
+   * `1` (Frequency card default) is treated as open-ended for the next 12 months —
    * use type `atOnce` for a single due date, or set `repeatCount` ≥ 2 for a finite series.
    */
   @IsOptional()
