@@ -106,7 +106,9 @@ export class AssignmentsController {
       '1 assignment = 1 row (template + assignee for individual, template for shared). ' +
       'Includes frequency, start/end period, progress counts (completed / inProgress / overdue), and nextDue. ' +
       'Filter by `userId` (one or many) and/or `jobPositionId` (one or many). ' +
-      '`stats` is occurrence-level; `assignmentStats` is assignment-level — do not mix them for cards. ' +
+      '`stats` is occurrence-level for the current filters. ' +
+      '`assignmentStats` is the board summary (independent of status filter): ' +
+      '`totalAssigned` = active templates; withOverdue / withInProgress / fullyCompleted = series progress. ' +
       'Use `GET assigned-forms/:assignmentId` for View Details (summary + paginated occurrences).',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })

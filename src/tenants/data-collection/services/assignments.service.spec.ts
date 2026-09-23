@@ -1170,11 +1170,13 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
   let service: AssignmentsService;
   let listQb: any;
   let statsQb: any;
+  let boardQb: any;
   let createQueryBuilderMock: jest.Mock;
   let findUsersMock: jest.Mock;
   let findSubmissionsMock: jest.Mock;
   let findAssignmentsMock: jest.Mock;
   let findVersionsMock: jest.Mock;
+  let countTemplatesMock: jest.Mock;
   let req: any;
 
   beforeEach(() => {
@@ -1323,10 +1325,21 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       { status: AssignmentStatus.OVERDUE, count: '3' },
     ]);
 
+    boardQb = chain();
+    // Board cards use the same fixture rows (independent of list status filter).
+    boardQb.getMany = jest.fn().mockImplementation(() => listQb.getMany());
+
     createQueryBuilderMock = jest
       .fn()
       .mockImplementationOnce(() => listQb)
-      .mockImplementationOnce(() => statsQb);
+      .mockImplementation(() => {
+        const api: any = chain();
+        api.getMany = boardQb.getMany;
+        api.getRawMany = statsQb.getRawMany;
+        return api;
+      });
+
+    countTemplatesMock = jest.fn().mockResolvedValue(6);
 
     findUsersMock = jest.fn().mockResolvedValue([
       { id: 5, name: 'Sarah Johnson' },
@@ -1374,6 +1387,9 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
               find: findAssignmentsMock,
             };
           }
+          if (entity?.name === 'DataCollectionTemplate') {
+            return { count: countTemplatesMock };
+          }
           if (entity?.name === 'User') {
             return { find: findUsersMock };
           }
@@ -1408,9 +1424,15 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       overdue: 3,
       notStarted: 0,
     });
-    expect(result.assignmentStats).toMatchObject({
+    expect(countTemplatesMock).toHaveBeenCalledWith({
+      where: { status: 'active', isActive: true },
+    });
+    expect(result.assignmentStats).toEqual({
       level: 'assignment',
-      totalAssigned: 2,
+      totalAssigned: 6,
+      withOverdue: 1,
+      withInProgress: 0,
+      fullyCompleted: 1,
     });
     // 2 series: shared template 10 + individual template 11 for user 6
     expect(result.meta).toEqual({ total: 2, page: 1, lastPage: 1, limit: 5 });
