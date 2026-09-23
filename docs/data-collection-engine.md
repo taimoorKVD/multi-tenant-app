@@ -1,8 +1,15 @@
 # Data Collection Engine (V1)
 
-Operational data collection for **Eusocial**, implemented to match the Create Form frontend wizard screens (Form Details → Assign & Report → Frequency).
+Operational data collection for **Eusocial**, implemented to match the Create Form frontend wizard (Form Details → Assign & Report → Frequency).
 
 This is **not** the entity Form Builder (`users` / `items` / `vendors` CRUD forms). Data Collection powers operational work: checklists, inspections, inventory counts, and similar workflows.
+
+Base API paths (both work):
+
+- `/api/data-collection/...`
+- `/api/tenant/:tenantId/data-collection/...`
+
+Cron (no tenant header / JWT): `/api/cron/data-collection/...`
 
 ---
 
@@ -21,9 +28,11 @@ Matches the Form Builder canvas with **Add a Section**:
 
 Also supported on this step:
 
-- Form name (`Add Name` → template `name`)
+- Form name (`Add Name` → template `name` and optional schema `formName`)
 - Multiple sections on one template
 - Per-section rows and fields (add / remove)
+- Optional field/section `conditions` (stored on schema; see Conditional fields below)
+- Extra field props round-trip as JSON (e.g. `value`, `optionSource`)
 
 ### 2. Assign & Report (Create Form — step 2)
 
@@ -49,6 +58,8 @@ When **Job Positions** are selected, the backend expands them via `users.job_pos
 | **Assign** | Each assignee must submit their own copy. Job positions expand to every user. | Assignees share one logical task per occurrence. Any one final submit completes the group. Other assignees see `Completed by another user`. |
 | **Report** | Each report recipient gets their own notification email. | One shared notification is sent to the whole report group. |
 
+Legacy alias: `assign.assignmentType` / `report.assignmentType` still accepted (prefer `mode`).
+
 ### 3. Frequency (Create Form — step 3)
 
 Matches the Frequency card:
@@ -58,7 +69,31 @@ Matches the Frequency card:
 | Frequency Type (`atOnce` / `recurring`) | `frequency.type` |
 | Date | `frequency.date` (e.g. `"2026-08-21"`) |
 | Job position (optional) | `frequency.jobPosition` (`null` or id) |
-| Recurring config | `frequency.recurring` (`null` for atOnce; `{ interval, unit, repeat, monthlyRule? }` when recurring) |
+| Recurring config | `frequency.recurring` (`null` for atOnce) |
+
+**Recurring shapes accepted** (normalized by `FrequencyService`):
+
+```json
+// Canonical
+{ "interval": 1, "unit": "day", "repeat": 5, "monthlyRule": { "type": "dayOfMonth", "day": 15 } }
+
+// UI Frequency card
+{
+  "every": 1,
+  "interval": "day",
+  "repeatCount": 5,
+  "daysOfWeek": ["monday", "wednesday"],
+  "monthMode": "dayOfMonth",
+  "dayOfMonth": 15
+}
+```
+
+Notes:
+
+- `repeatCount: 1` / omitted → open-ended series (next ~12 months)
+- Weekly `daysOfWeek` expands to those weekdays
+- Monthly: `dayOfMonth` (incl. `-1` = last day) and `nthWeekday`
+- Legacy aliases still accepted: `one_time`, `startDate`, `schedule`
 
 Example at-once payload from frontend:
 
@@ -74,8 +109,8 @@ Example at-once payload from frontend:
 Wizard footer actions map to API behavior:
 
 - **Cancel / Back** — frontend only
-- **Next** — move between steps; persist draft via create/update
-- **Save** — persist full schema; set `publish: true` or call `/publish` to activate and create assignments
+- **Next** — move between steps; persist via create/update
+- **Save** — persist full schema; create always publishes; updates auto-publish when Assign/Frequency change (see Publish rules)
 
 ---
 
@@ -84,15 +119,15 @@ Wizard footer actions map to API behavior:
 ```
 Business Object (existing entities via field relations)
         ↓
-Data Collection Template (draft schema)
+Data Collection Template (schema on dc_templates)
         ↓
-Publish → Template Version snapshot
+Publish → Template Version snapshot (dc_template_versions)
         ↓
-Assignments (from Assign + Frequency)
+Assignments (from Assign + Frequency → dc_assignments)
         ↓
-Submission (employee answers)
+Submission (employee answers → dc_submissions)
         ↓
-Workflow actions (notify Report To, create_task stub)
+Workflow actions (notify Report To; create_task stub)
 ```
 
 ---
@@ -103,6 +138,7 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
 
 ```json
 {
+  "formName": "Manager Report",
   "assign": { "mode": "individual", "users": null, "jobPosition": [2] },
   "report": { "mode": "shared", "users": null, "jobPosition": [1] },
   "frequency": {
@@ -127,7 +163,8 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
               "name": "description",
               "type": "textarea",
               "required": true,
-              "width": "100%"
+              "width": "100%",
+              "value": null
             }
           ]
         }
@@ -220,6 +257,22 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
 
 Typed DTOs live under `src/tenants/data-collection/dto/templates/schema/`.
 
+### Conditional fields (schema only)
+
+Fields and sections may include `conditions`:
+
+```json
+{
+  "action": "show",
+  "logic": "and",
+  "rules": [{ "fieldId": "fld_handwash_response", "operator": "EQUALS", "value": "no" }]
+}
+```
+
+- Operators: `EQUALS` | `NOT_EQUALS` | `CONTAINS` | `IS_EMPTY` | `GREATER_THAN`
+- Actions: `show` | `hide` | `enable` | `disable`
+- **Stored and validated on the schema DTO.** Runtime evaluation in the employee form UI / submit pipeline is still frontend-driven; backend required-field checks do not yet skip conditionally hidden fields.
+
 ---
 
 ## What was implemented (backend)
@@ -228,101 +281,124 @@ Typed DTOs live under `src/tenants/data-collection/dto/templates/schema/`.
 
 | Capability | Detail |
 |------------|--------|
-| Create | `POST .../templates` **publishes by default** (pass `publish: false` for draft) |
-| Update draft | Schema updates in place while draft; no version until publish |
-| Publish | `POST .../templates/:id/publish` or `publish: true` on update (create defaults to publish) |
-| On publish | Active version snapshot + assignment materialization from Assign + Frequency |
-| Activate | Re-enable a previously published template (requires an active version) |
-| Archive | Soft-close template; future pending assignments cancelled |
-| Version restore | Restore snapshot into a draft for editing |
+| Create | `POST .../templates` — **always publishes** (version + assignments + assignee emails). `publish` on create is ignored (kept for API compatibility). Schema is required. |
+| List / get / search | `GET .../templates`, `GET .../templates/:id`, `GET .../templates/search` |
+| Update | `PUT .../templates/:id` — never demotes `active` → `draft`. Assign/frequency changes **auto-publish** unless `publish: false`. Explicit `publish: true` always publishes. |
+| Publish | `POST .../templates/:id/publish` or update with `publish: true` / auto-publish |
+| Activate | Re-enable a previously published template (requires an active version). Does **not** rematerialize. |
+| Archive | Soft-close template; future pending assignments cancelled (`cancel_reason=template_archived`) |
+| Restore (template) | `POST .../templates/:id/restore` — archived → active (or draft if never published); rematerializes restore-safe occurrences |
+| Delete / bulk delete | Soft-delete template(s) |
+| Version list / active / get | under `.../templates/:templateId/versions` |
+| Version restore | `POST .../templates/:templateId/versions/restore/:versionNumber` — copies snapshot into draft schema for editing |
 
 Tables: `dc_templates`, `dc_template_versions`.
+
+### Publish rules (important)
+
+Every publish creates a **new active version**. Assignment handling depends on what changed vs the previous active snapshot:
+
+| Change | Behavior |
+|--------|----------|
+| **Assign** and/or **Frequency** changed | Cancel future open assignments (`cancel_reason=republish`) + rematerialize + email assignees |
+| **Form Details / Report / name only** | Keep existing open tasks; **retarget** them to the new version (`template_version_id` updated) |
+| First publish (create) | Always rematerialize + notify assignees |
+| Recurring date omitted on save | Previous published anchor date is preserved (avoids false “schedule changed”) |
+
+Publish/create/update responses include `emailNotify: { sent, failed, skipped }` when rematerialization ran.
 
 ### Frequency → assignments
 
 | Capability | Detail |
 |------------|--------|
-| `FrequencyService` | Expands one-time / recurring dates; supports `dayOfMonth` incl. `-1`, `nthWeekday` |
+| `FrequencyService` | Expands one-time / recurring dates; UI + canonical recurring; `dayOfMonth` incl. `-1`; `nthWeekday`; weekly `daysOfWeek` |
 | Materialization | One `dc_assignments` row per occurrence × assignee |
-| Assignees | Explicit `assign.users` + users resolved from `assign.jobPosition` (via users module dynamic data) |
-| Shared group | `assign.mode=shared` sets `sharedGroupKey`; one submit marks the whole group completed |
+| Assignees | Explicit `assign.users` + users resolved from `assign.jobPosition` |
+| Shared group | `assign.mode=shared` sets `sharedGroupKey` + `assignmentType=shared`; one submit marks the whole group completed |
 | Report mode | `report.mode=individual` emails each recipient; `shared` sends one group notification |
-| Completion UX | Assignment responses include `completion` (`title` / `message` / `state`) for employee portals |
+| Completion UX | Assignment/submission responses include `completion` (`title` / `message` / `state`) for employee portals |
 | Idempotency | Unique `occurrenceKey` prevents duplicate rows |
+| Cancel reasons | `template_archived` \| `manual` \| `republish` — restore rematerialize may reactivate only archive-cancelled (and legacy null) rows |
 
 Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `cancelled`.
 
 ### Employee & manager work
 
-| Capability | API |
-|------------|-----|
-| Today’s Work | `GET /api/data-collection/assignments/my-work` |
-| Start assignment | `POST /api/data-collection/assignments/:id/start` |
-| Submit / draft answers | `POST /api/data-collection/assignments/:assignmentId/submissions` |
-| Manager review list | `GET /api/data-collection/submissions` (requires Task → **Review** / `review-dc-submission`; Task → View alone is not enough) |
-| Mark overdue | `POST /api/data-collection/assignments/mark-overdue` |
+| Capability | API | Permission |
+|------------|-----|------------|
+| Today’s Work | `GET .../assignments/my-work` | `view-dc-assignment` |
+| Start / resume | `POST .../assignments/:id/start` (optional `answers` draft) | `view-dc-assignment` |
+| List / get assignment | `GET .../assignments`, `GET .../assignments/:id` | `view-dc-assignment` |
+| Assigned Forms (admin) | `GET .../assignments/assigned-forms` | `view-dc-assignment` |
+| Assigned Form detail | `GET .../assignments/assigned-forms/:assignmentId` | `view-dc-assignment` |
+| Submit / draft answers | `POST .../assignments/:assignmentId/submissions` | `complete-dc-assignment` |
+| Update draft / finalize | `PUT .../submissions/:id` | `complete-dc-assignment` |
+| Manager review list/detail | `GET .../submissions`, `GET .../submissions/:id` | `review-dc-submission` |
+| Mark overdue | `POST .../assignments/mark-overdue` | (JWT + permission) |
+| Send due reminders | `POST .../assignments/send-due-reminders` | (JWT + permission) |
 
-Answers are keyed by field `id` and validated against the **pinned template version** (required fields enforced on final submit).
+**Assigned Forms** listing: one row per logical assignment (template + assignee for individual, template for shared). Includes frequency, period, progress counts, `nextDue`. Filter by `userId` / `jobPositionId` (multi). Detail endpoint returns summary + paginated occurrences. Do not mix `stats` (occurrence-level) with `assignmentStats` (assignment-level) for UI cards.
 
-Table: `dc_submissions`.
+**Today’s Work** filters: `status=today` and/or `date=YYYY-MM-DD` (UTC due day). Each item includes `formName`, `mode`, `submissionId`, `submission`, `completion`.
 
-### Emails (SMTP / MailService — same stack as password reset)
+Answers are keyed by field `id` and validated against the **pinned template version** (required fields enforced on final submit). One draft per assignment (resume-safe); `submit=true` finalizes.
 
-| Event | Delivery | Recipients (from UI) |
-|-------|----------|----------------------|
-| Template published / created | Direct SMTP (`SMTP_*` / `EMAIL_FROM`) — same as Tenant Credentials | **Assign** users |
+Table: `dc_submissions` (`draft` \| `submitted`).
+
+### Emails (SMTP — same stack as Tenant Credentials)
+
+| Event | Delivery | Recipients |
+|-------|----------|------------|
+| Template published / created (rematerialize path) | Direct SMTP (`SMTP_*` / `EMAIL_FROM`) | **Assign** users |
 | Submission completed | Same direct SMTP | **Report To** users / job positions |
-| Assignment due | Same direct SMTP (hourly cron) | **Assign** users |
+| Assignment due | Same direct SMTP (hourly) | **Assign** users |
 
-Publish/create response includes `emailNotify: { sent, failed, skipped }`.
+**Production:** uses env SMTP only (no DB mail-settings decrypt). Requires: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
 
-**Production:** uses env SMTP only (no DB mail-settings decrypt). Requires the same server env vars that make Tenant Credentials work: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` / `SMTP_FROM`, optional `FRONTEND_URL`.
+Reminder runners:
 
-- Hourly Nest `@Cron` (local / long-running Node): `AssignmentReminderService`
-- **Production (optional backup):** GitHub Actions → `POST /api/cron/data-collection/due-reminders` with `x-cron-secret`
-- Manual (JWT + permission): `POST /api/data-collection/assignments/send-due-reminders`
-- Disable Nest cron only: `DC_ASSIGNMENT_REMINDERS_ENABLED=false` (GitHub Actions still works)
+- Hourly Nest `@Cron`: `AssignmentReminderService` (also marks overdue)
+- External cron (no JWT): `POST /api/cron/data-collection/due-reminders` with `x-cron-secret` (or `Authorization: Bearer <CRON_SECRET>`) — processes **all tenants**
+- Manual (JWT): `POST .../assignments/send-due-reminders`
+- Disable Nest cron only: `DC_ASSIGNMENT_REMINDERS_ENABLED=false` (external cron still works)
 
-### GitHub Actions due reminders (optional backup)
+Idempotency: reminders keyed per assignment/day via `reminder_sent_on`.
 
-Use the Actions schedule as a backup to Nest `@Cron`, or when the in-process scheduler is disabled.
-
-1. **Server env** — set `CRON_SECRET` to a long random string (same value as the GitHub secret).
-2. **GitHub → Settings → Secrets and variables → Actions**
-   - `CRON_SECRET` — same value as server env
-   - `API_BASE_URL` — deployed API origin, e.g. `https://api.example.com` (no trailing slash)
-3. Workflow: `.github/workflows/dc-due-reminders.yml`
-   - Runs every hour at `:05` UTC
-   - Also runnable manually: **Actions → DC Due Reminders → Run workflow**
-4. Endpoint (no JWT, no tenant header):
-
-```http
-POST /api/cron/data-collection/due-reminders
-x-cron-secret: <CRON_SECRET>
-```
-
-What it does each run: for every tenant, mark past-due open assignments as overdue, then email assignees for due-today / overdue open work (idempotent per assignment/day via `reminder_sent_on`).
+> Note: a GitHub Actions workflow for due reminders is **not** in this repo yet. Wire an external scheduler (or add `.github/workflows/...`) to call the cron endpoint if Nest `@Cron` is not enough for production.
 
 `create_task` post-submit action remains a stub until a Tasks module exists.
 
 ### Permissions
 
-Seeded and granted to tenant Admin on provision / `013-data-collection-permissions`:
+Seeded via `013-data-collection-permissions` and granted to tenant Admin on provision:
 
 - Template: `create-dc-template`, `view-dc-template`, `edit-dc-template`, `delete-dc-template`, `activate-dc-template`, `archive-dc-template`
 - Work (UI Task module): `view-dc-assignment` (View), `complete-dc-assignment` (Submit), `review-dc-submission` (Review)
 - Legacy/hidden: `view-dc-submission` (not shown in job-position UI; submissions list/detail use **Review**)
 
+### Seed data
+
+| Seeder | Purpose |
+|--------|---------|
+| `013-data-collection-permissions` | Permission rows + Admin grants |
+| `014-data-collection-email-templates` (if present) | Email template seeds |
+| `017-data-collection-restaurant-templates` | Demo restaurant templates (e.g. **Daily Kitchen Checklist**) with assign/report job positions resolved from tenant JP names |
+
+Restaurant seed definitions: `src/tenants/data-collection/config/restaurant-template-seeds.ts`. Run order is in `src/database/seeders/seed.ts` (after tenant job positions / vendors / items).
+
 ### Module layout
 
 ```
 src/tenants/data-collection/
+  config/        constants, permission seeds, restaurant template seeds
   controllers/   templates, versions, assignments, submissions, cron
   services/      templates, versions, frequency, assignments, submissions,
                  workflow-actions, assignment-reminder
   guards/        permissions, cron-secret
-  dto/           typed schema (assign/report, frequency, sections) + assignment/submission DTOs
+  dto/           typed schema (assign/report, frequency, sections, conditions)
+                 + assignment/submission DTOs
   entities/      template, version, assignment, submission + enums
+  utils/         assignment-completion helpers
   swagger/
 ```
 
@@ -333,29 +409,81 @@ Entities registered in `tenant-database.config.ts` (`synchronize: true` for tena
 ## Lifecycle
 
 ```
-DRAFT  →  publish  →  ACTIVE  →  optional ARCHIVED
-              │
-              ├─ dc_template_versions (active snapshot)
-              └─ dc_assignments (from Frequency × Assign)
+CREATE (always publish)  →  ACTIVE
+                │
+UPDATE publish / auto-publish
+                │
+                ├─ new dc_template_versions (active snapshot)
+                ├─ assign/frequency change → cancel future open + rematerialize
+                └─ form/report-only → retarget open assignments to new version
+
+ACTIVE  →  archive  →  ARCHIVED  →  restore  →  ACTIVE (rematerialize safe rows)
 ```
 
-Editing an **active** template’s schema without `publish: true` moves it back to **draft** until re-published. Historical submissions stay readable against the version they were completed on.
+Editing an **active** template’s schema does **not** demote it to draft. Historical submissions stay readable against the version they were completed on.
 
 ---
 
 ## Recommended frontend save flow
 
-1. `POST /templates` with full wizard schema → **always published** (version + assignments + assignee emails)
-2. Updates can stay draft until `POST /templates/:id/publish` if needed
-3. Employees open **Today’s Work**; managers list **submissions**
-4. Assign users get email on create/publish; Report To users get email on submit; due reminders run hourly
+1. `POST /templates` with full wizard schema → always published (version + assignments + assignee emails)
+2. Form/report-only edits: `PUT /templates/:id` (optional `publish: true`); open tasks stay, pinned to new version
+3. Assign/frequency edits: `PUT` auto-publishes and rematerializes unless `publish: false`
+4. Employees use **Today’s Work**; admins use **Assigned Forms**; managers list **submissions** (Review permission)
+5. Assign users get email on rematerializing publish; Report To users get email on submit; due reminders run hourly
 
 ---
 
-## Out of scope (V1)
+## API quick reference
+
+### Templates — `/api/data-collection/templates`
+
+| Method | Path | Permission |
+|--------|------|------------|
+| POST | `/` | `create-dc-template` |
+| GET | `/`, `/search`, `/:id` | `view-dc-template` |
+| PUT | `/:id` | `edit-dc-template` |
+| DELETE | `/:id`, `/bulk` | `delete-dc-template` |
+| POST | `/:id/publish`, `/:id/activate`, `/:id/restore` | `activate-dc-template` |
+| POST | `/:id/archive` | `archive-dc-template` |
+
+### Versions — `/api/data-collection/templates/:templateId/versions`
+
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/`, `/active`, `/:id` | `view-dc-template` |
+| POST | `/restore/:versionNumber` | `edit-dc-template` |
+
+### Assignments — `/api/data-collection/assignments`
+
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/my-work`, `/`, `/:id` | `view-dc-assignment` |
+| GET | `/assigned-forms`, `/assigned-forms/:assignmentId` | `view-dc-assignment` |
+| POST | `/:id/start` | `view-dc-assignment` |
+| POST | `/mark-overdue`, `/send-due-reminders` | JWT + DC perms |
+
+### Submissions — `/api/data-collection`
+
+| Method | Path | Permission |
+|--------|------|------------|
+| POST | `/assignments/:assignmentId/submissions` | `complete-dc-assignment` |
+| PUT | `/submissions/:id` | `complete-dc-assignment` |
+| GET | `/submissions`, `/submissions/:id` | `review-dc-submission` |
+
+### Cron — `/api/cron/data-collection`
+
+| Method | Path | Auth |
+|--------|------|------|
+| POST | `/due-reminders` | `x-cron-secret` / Bearer `CRON_SECRET` |
+
+---
+
+## Out of scope / next work (V1+)
 
 - AI-assisted template draft / voice transcription
-- Conditional field logic in the designer
+- **Server-side** conditional field evaluation on submit (schema storage exists; enforcement does not)
 - Merging with entity Form Builder
-- Full Tasks module (notify is live; `create_task` is stubbed)
+- Full Tasks module (`create_task` is stubbed; notify is live)
 - Media storage pipeline beyond storing file URLs/IDs in answers
+- Optional GitHub Actions (or other) cron workflow calling `/api/cron/data-collection/due-reminders`
