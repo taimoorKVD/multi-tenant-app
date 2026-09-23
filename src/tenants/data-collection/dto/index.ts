@@ -14,4 +14,10 @@ export type { AssignedFormOccurrenceStatusQuery } from './assignments/query-assi
 export { StartAssignmentDto } from './assignments/start-assignment.dto';
 export { CreateSubmissionDto, UpdateSubmissionDto } from './submissions/submission.dto';
 export { QuerySubmissionDto } from './submissions/query-submission.dto';
+export {
+  CreateSubmissionFlagDto,
+  ResolveSubmissionFlagDto,
+  UpdateSubmissionFlagDto,
+  FailSubmissionDto,
+} from './submissions/submission-flag.dto';
 export * from './templates/schema';

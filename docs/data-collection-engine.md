@@ -334,6 +334,9 @@ Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `
 | Submit / draft answers | `POST .../assignments/:assignmentId/submissions` | `complete-dc-assignment` |
 | Update draft / finalize | `PUT .../submissions/:id` | `complete-dc-assignment` |
 | Manager review list/detail | `GET .../submissions`, `GET .../submissions/:id` | `review-dc-submission` |
+| Create / list / update flags | `POST/GET/PATCH .../submissions/:id/flags` | assignee (`complete-dc-assignment`) or `review-dc-submission` |
+| Resolve flag | `POST .../submissions/:id/flags/:flagId/resolve` | `review-dc-submission` |
+| Approve / fail submission | `POST .../submissions/:id/approve`, `.../fail` | `review-dc-submission` |
 | Mark overdue | `POST .../assignments/mark-overdue` | (JWT + permission) |
 | Send due reminders | `POST .../assignments/send-due-reminders` | (JWT + permission) |
 
@@ -343,7 +346,82 @@ Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `
 
 Answers are keyed by field `id` and validated against the **pinned template version** (required fields enforced on final submit). One draft per assignment (resume-safe); `submit=true` finalizes.
 
-Table: `dc_submissions` (`draft` \| `submitted`).
+Table: `dc_submissions` (`draft` \| `submitted` \| `flagged` \| `failed` \| `approved`).
+
+### Submission status, flags & manager review
+
+Final employee submit persists status based on open flags:
+
+```
+draft ──submit──► submitted   (no unresolved flags)
+draft ──submit──► flagged     (one or more unresolved flags)
+```
+
+Managers (or anyone with `review-dc-submission`) can raise additional flags after submit:
+
+```
+submitted ──create flag──► flagged
+flagged   ──create flag──► flagged   (unchanged)
+```
+
+**`flagged` is a persisted status**, not a UI-only calculation. Whether flags remain open is separately sourced from `dc_submission_flags.is_resolved = false`.
+
+| Status | Meaning |
+|--------|---------|
+| `draft` | Employee still working |
+| `submitted` | Finalized with no unresolved flags |
+| `flagged` | Has (or had) attention required; may still have open flags |
+| `failed` | Reviewer rejected the response |
+| `approved` | Reviewer accepted the response |
+
+#### Flags (`dc_submission_flags`)
+
+One table for both employees and managers (`created_by` identifies the author). Field-level vs response-level is implicit:
+
+| Kind | `field_id` |
+|------|------------|
+| Field-level | e.g. `"temperature"` — must exist on the submission’s **pinned** `template_version_id` schema |
+| Response-level | `NULL` |
+
+Severity: `low` \| `medium` (default) \| `high` \| `critical`.
+
+Resolve sets `is_resolved`, `resolved_by`, `resolved_at`, `resolution_note`. Flags are never deleted (history kept after resolve/fail).
+
+**Resolving the last open flag does not approve.** Status stays `flagged` until the manager explicitly approves or fails.
+
+#### Approve / fail
+
+| Action | Rule |
+|--------|------|
+| Approve | From `submitted` or `flagged`. **Blocked** while any unresolved flag exists. Sets `reviewed_by` / `reviewed_at`. |
+| Fail | From `submitted` or `flagged`. Requires `note` → stored as `review_note`. Flags retained. |
+
+Valid status transitions (centralized in `submission-status.util.ts`):
+
+```
+draft → submitted | flagged
+submitted → flagged | approved | failed
+flagged → approved | failed
+```
+
+Invalid examples: `draft → approved`, `approved → failed`, `failed → approved`.
+
+No submission reopen endpoint exists in V1 (assignment rematerialize `:reopen` is unrelated).
+
+#### Review events (`dc_submission_review_events`)
+
+Explicit review/flag actions are recorded (`flagged`, `flag_resolved`, `approved`, `failed`, plus reserved `reopened`). This is in addition to tenant DB audit triggers.
+
+#### Authorization summary
+
+| Actor | Create flag | List flags | Resolve | Approve / fail |
+|-------|-------------|------------|---------|----------------|
+| Assignee / shared peer (`complete-dc-assignment`) | Yes (own assignment) | Yes | No | No |
+| Reviewer (`review-dc-submission`) | Yes | Yes | Yes | Yes |
+
+Shared assignments: one logical submission; peers can see flags; only reviewers resolve/approve/fail. `completed_by_other` behavior is unchanged.
+
+Tenant isolation: all APIs use `req.tenantConnection`; never trust a client-supplied tenant id for authorization.
 
 ### Emails (SMTP — same stack as Tenant Credentials)
 
@@ -397,8 +475,9 @@ src/tenants/data-collection/
   guards/        permissions, cron-secret
   dto/           typed schema (assign/report, frequency, sections, conditions)
                  + assignment/submission DTOs
-  entities/      template, version, assignment, submission + enums
-  utils/         assignment-completion helpers
+  entities/      template, version, assignment, submission, submission-flag,
+                 submission-review-event + enums
+  utils/         assignment-completion, submission-status helpers
   swagger/
 ```
 
@@ -470,6 +549,12 @@ Editing an **active** template’s schema does **not** demote it to draft. Histo
 | POST | `/assignments/:assignmentId/submissions` | `complete-dc-assignment` |
 | PUT | `/submissions/:id` | `complete-dc-assignment` |
 | GET | `/submissions`, `/submissions/:id` | `review-dc-submission` |
+| POST | `/submissions/:submissionId/flags` | JWT + assignee or `review-dc-submission` |
+| GET | `/submissions/:submissionId/flags` | JWT + assignee or `review-dc-submission` |
+| PATCH | `/submissions/:submissionId/flags/:flagId` | JWT + flag owner or reviewer |
+| POST | `/submissions/:submissionId/flags/:flagId/resolve` | `review-dc-submission` |
+| POST | `/submissions/:submissionId/approve` | `review-dc-submission` |
+| POST | `/submissions/:submissionId/fail` | `review-dc-submission` |
 
 ### Cron — `/api/cron/data-collection`
 

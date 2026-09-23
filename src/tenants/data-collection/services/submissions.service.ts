@@ -1,23 +1,34 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { In } from 'typeorm';
+import { DC_PERM_REVIEW_SUBMISSION } from '../config/data-collection.constants';
 import {
   AssignmentStatus,
   AssignmentType,
   DataCollectionAssignment,
   DataCollectionSubmission,
+  DataCollectionSubmissionFlag,
+  DataCollectionSubmissionReviewEvent,
   DataCollectionTemplate,
+  SubmissionReviewAction,
   SubmissionStatus,
   TemplateStatus,
   TemplateVersion,
 } from '../entities';
 import { CreateSubmissionDto, UpdateSubmissionDto } from '../dto/submissions/submission.dto';
+import { FailSubmissionDto } from '../dto/submissions/submission-flag.dto';
 import { QuerySubmissionDto } from '../dto/submissions/query-submission.dto';
 import { buildAssignmentCompletion } from '../utils/assignment-completion.util';
+import {
+  assertSubmissionStatusTransition,
+  isFinalizedSubmissionStatus,
+  resolveSubmitStatus,
+} from '../utils/submission-status.util';
 import { User } from '../../users/entities';
 import { WorkflowActionsService } from './workflow-actions.service';
 
@@ -164,6 +175,9 @@ export class SubmissionsService {
       response: submission.answers || {},
       status: submission.status,
       submittedAt: submission.submittedAt,
+      reviewedBy: submission.reviewedById ?? null,
+      reviewedAt: submission.reviewedAt ?? null,
+      reviewNote: submission.reviewNote ?? null,
       createdBy: submission.createdBy,
       updatedBy: submission.updatedBy,
       createdAt: submission.createdAt,
@@ -176,6 +190,44 @@ export class SubmissionsService {
       mode,
       completion,
     };
+  }
+
+  private async countUnresolvedFlags(req: any, submissionId: number): Promise<number> {
+    const flagRepo = req.tenantConnection.getRepository(DataCollectionSubmissionFlag);
+    return flagRepo.count({ where: { submissionId, isResolved: false } });
+  }
+
+  private async recordReviewEvent(
+    manager: any,
+    params: {
+      submissionId: number;
+      action: SubmissionReviewAction;
+      note?: string | null;
+      performedById: number;
+    },
+  ) {
+    const eventRepo = manager.getRepository(DataCollectionSubmissionReviewEvent);
+    const event = eventRepo.create({
+      submissionId: params.submissionId,
+      action: params.action,
+      note: params.note ?? null,
+      performedById: params.performedById,
+    });
+    await eventRepo.save(event);
+  }
+
+  private assertHasReviewPermission(req: any) {
+    const permissions =
+      req.user?.permissions ||
+      req.user?.role?.permissions?.map((p: any) =>
+        typeof p === 'string' ? p : p.name,
+      ) ||
+      [];
+    if (!permissions.includes(DC_PERM_REVIEW_SUBMISSION)) {
+      throw new ForbiddenException(
+        `Missing required permission: ${DC_PERM_REVIEW_SUBMISSION}`,
+      );
+    }
   }
 
   private async loadTemplateContext(
@@ -379,10 +431,18 @@ export class SubmissionsService {
       const version = await versionRepo.findOne({ where: { id: assignment.templateVersionId } });
       if (!version) throw new NotFoundException('Template version for assignment not found');
 
-      const existingSubmitted = await submissionRepo.findOne({
-        where: { assignmentId, status: SubmissionStatus.SUBMITTED },
+      const existingFinalized = await submissionRepo.findOne({
+        where: {
+          assignmentId,
+          status: In([
+            SubmissionStatus.SUBMITTED,
+            SubmissionStatus.FLAGGED,
+            SubmissionStatus.FAILED,
+            SubmissionStatus.APPROVED,
+          ]),
+        },
       });
-      if (existingSubmitted) {
+      if (existingFinalized) {
         throw new BadRequestException('A submission already exists for this assignment');
       }
 
@@ -414,12 +474,16 @@ export class SubmissionsService {
         }
         existingDraft.updatedBy = actorId;
         if (shouldSubmit) {
-          existingDraft.status = SubmissionStatus.SUBMITTED;
+          const unresolved = await this.countUnresolvedFlags(req, existingDraft.id);
+          const nextStatus = resolveSubmitStatus(unresolved > 0);
+          assertSubmissionStatusTransition(existingDraft.status, nextStatus);
+          existingDraft.status = nextStatus;
           existingDraft.submittedAt = new Date();
           existingDraft.submittedBy = actorId;
         }
         saved = await submissionRepo.save(existingDraft);
       } else {
+        // New row: flags cannot exist yet, so finalize as submitted (or draft).
         const submission = submissionRepo.create({
           assignmentId,
           templateVersionId: version.id,
@@ -437,6 +501,15 @@ export class SubmissionsService {
       if (shouldSubmit) {
         const completedAt = saved.submittedAt || new Date();
         await this.markAssignmentCompleted(assignmentRepo, assignment, actorId, completedAt);
+
+        if (saved.status === SubmissionStatus.FLAGGED && actorId != null) {
+          await this.recordReviewEvent(req.tenantConnection.manager, {
+            submissionId: saved.id,
+            action: SubmissionReviewAction.FLAGGED,
+            note: 'Submitted with unresolved flags',
+            performedById: actorId,
+          });
+        }
 
         const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
         workflowResult = await this.workflowActions.runAfterSubmit(req, {
@@ -482,7 +555,7 @@ export class SubmissionsService {
       const submission = await submissionRepo.findOne({ where: { id } });
       if (!submission) throw new NotFoundException(`Submission with ID ${id} not found`);
 
-      if (submission.status === SubmissionStatus.SUBMITTED && dto.submit !== false) {
+      if (isFinalizedSubmissionStatus(submission.status) && dto.submit !== false) {
         throw new BadRequestException('Submission is already finalized');
       }
 
@@ -509,7 +582,10 @@ export class SubmissionsService {
         this.assertTemplateAvailable(templateForGate);
         await this.assertSharedGroupOpen(assignmentRepo, assignment);
         this.validateAnswers(version.schemaSnapshot, submission.answers || {}, true);
-        submission.status = SubmissionStatus.SUBMITTED;
+        const unresolved = await this.countUnresolvedFlags(req, submission.id);
+        const nextStatus = resolveSubmitStatus(unresolved > 0);
+        assertSubmissionStatusTransition(submission.status, nextStatus);
+        submission.status = nextStatus;
         submission.submittedAt = new Date();
         submission.submittedBy = actorId;
       }
@@ -521,6 +597,15 @@ export class SubmissionsService {
       if (shouldSubmit && assignment) {
         const completedAt = saved.submittedAt || new Date();
         await this.markAssignmentCompleted(assignmentRepo, assignment, actorId, completedAt);
+
+        if (saved.status === SubmissionStatus.FLAGGED && actorId != null) {
+          await this.recordReviewEvent(req.tenantConnection.manager, {
+            submissionId: saved.id,
+            action: SubmissionReviewAction.FLAGGED,
+            note: 'Submitted with unresolved flags',
+            performedById: actorId,
+          });
+        }
 
         const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
         workflowResult = await this.workflowActions.runAfterSubmit(req, {
@@ -600,6 +685,126 @@ export class SubmissionsService {
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to retrieve submission');
+    }
+  }
+
+  async approve(req: any, id: number) {
+    try {
+      this.assertHasReviewPermission(req);
+      const actorId = this.getActorId(req);
+      if (actorId == null) {
+        throw new ForbiddenException('User not authenticated for tenant context');
+      }
+
+      const saved = await req.tenantConnection.manager.transaction(async (manager) => {
+        const submissionRepo = manager.getRepository(DataCollectionSubmission);
+        const flagRepo = manager.getRepository(DataCollectionSubmissionFlag);
+
+        const submission = await submissionRepo.findOne({
+          where: { id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!submission) {
+          throw new NotFoundException(`Submission with ID ${id} not found`);
+        }
+
+        assertSubmissionStatusTransition(submission.status, SubmissionStatus.APPROVED);
+
+        const unresolved = await flagRepo.count({
+          where: { submissionId: submission.id, isResolved: false },
+        });
+        if (unresolved > 0) {
+          throw new BadRequestException(
+            'Cannot approve a submission with unresolved flags.',
+          );
+        }
+
+        submission.status = SubmissionStatus.APPROVED;
+        submission.reviewedById = actorId;
+        submission.reviewedAt = new Date();
+        submission.updatedBy = actorId;
+        const updated = await submissionRepo.save(submission);
+
+        await this.recordReviewEvent(manager, {
+          submissionId: updated.id,
+          action: SubmissionReviewAction.APPROVED,
+          note: null,
+          performedById: actorId,
+        });
+
+        return updated;
+      });
+
+      const [data] = await this.enrichSubmissions(req, [saved]);
+      return { success: true, message: 'Submission approved', data };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      console.error('Submission approve failed:', error);
+      throw new InternalServerErrorException('Failed to approve submission');
+    }
+  }
+
+  async fail(req: any, id: number, dto: FailSubmissionDto) {
+    try {
+      this.assertHasReviewPermission(req);
+      const actorId = this.getActorId(req);
+      if (actorId == null) {
+        throw new ForbiddenException('User not authenticated for tenant context');
+      }
+
+      const note = String(dto.note || '').trim();
+      if (!note) {
+        throw new BadRequestException('note is required');
+      }
+
+      const saved = await req.tenantConnection.manager.transaction(async (manager) => {
+        const submissionRepo = manager.getRepository(DataCollectionSubmission);
+
+        const submission = await submissionRepo.findOne({
+          where: { id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!submission) {
+          throw new NotFoundException(`Submission with ID ${id} not found`);
+        }
+
+        assertSubmissionStatusTransition(submission.status, SubmissionStatus.FAILED);
+
+        submission.status = SubmissionStatus.FAILED;
+        submission.reviewedById = actorId;
+        submission.reviewedAt = new Date();
+        submission.reviewNote = note;
+        submission.updatedBy = actorId;
+        const updated = await submissionRepo.save(submission);
+
+        await this.recordReviewEvent(manager, {
+          submissionId: updated.id,
+          action: SubmissionReviewAction.FAILED,
+          note,
+          performedById: actorId,
+        });
+
+        return updated;
+      });
+
+      const [data] = await this.enrichSubmissions(req, [saved]);
+      return { success: true, message: 'Submission failed', data };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      console.error('Submission fail failed:', error);
+      throw new InternalServerErrorException('Failed to fail submission');
     }
   }
 }

@@ -40,6 +40,26 @@ export enum AssignmentCompletionState {
 export enum SubmissionStatus {
   DRAFT = 'draft',
   SUBMITTED = 'submitted',
+  FLAGGED = 'flagged',
+  FAILED = 'failed',
+  APPROVED = 'approved',
+}
+
+/** Severity for field-level or response-level submission flags. */
+export enum FlagSeverity {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  CRITICAL = 'critical',
+}
+
+/** Review / flag lifecycle events recorded on a submission. */
+export enum SubmissionReviewAction {
+  FLAGGED = 'flagged',
+  FAILED = 'failed',
+  APPROVED = 'approved',
+  REOPENED = 'reopened',
+  FLAG_RESOLVED = 'flag_resolved',
 }
 
 export enum FrequencyType {

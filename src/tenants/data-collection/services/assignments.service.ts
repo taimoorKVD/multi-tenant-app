@@ -121,7 +121,14 @@ export class AssignmentsService {
   ): DataCollectionSubmission | null {
     if (!submissions.length) return null;
     const submitted = submissions
-      .filter((s) => s.status === SubmissionStatus.SUBMITTED)
+      .filter((s) =>
+        [
+          SubmissionStatus.SUBMITTED,
+          SubmissionStatus.FLAGGED,
+          SubmissionStatus.FAILED,
+          SubmissionStatus.APPROVED,
+        ].includes(s.status),
+      )
       .sort(
         (a, b) =>
           new Date(b.submittedAt || b.updatedAt).getTime() -
@@ -401,12 +408,17 @@ export class AssignmentsService {
             `EXISTS (
               SELECT 1 FROM dc_submissions s
               WHERE s.assignment_id = assignment.id
-                AND s.status = :submittedStatus
+                AND s.status IN (:...finalizedStatuses)
                 AND s.deleted_at IS NULL
                 AND COALESCE(s.submitted_at, s.updated_at) >= :recentSince
             )`,
             {
-              submittedStatus: SubmissionStatus.SUBMITTED,
+              finalizedStatuses: [
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.FLAGGED,
+                SubmissionStatus.FAILED,
+                SubmissionStatus.APPROVED,
+              ],
               recentSince: since,
             },
           );
@@ -847,12 +859,17 @@ export class AssignmentsService {
         `EXISTS (
           SELECT 1 FROM dc_submissions s
           WHERE s.assignment_id = assignment.id
-            AND s.status = :submittedStatus
+            AND s.status IN (:...finalizedStatuses)
             AND s.deleted_at IS NULL
             AND COALESCE(s.submitted_at, s.updated_at) >= :recentSince
         )`,
         {
-          submittedStatus: SubmissionStatus.SUBMITTED,
+          finalizedStatuses: [
+            SubmissionStatus.SUBMITTED,
+            SubmissionStatus.FLAGGED,
+            SubmissionStatus.FAILED,
+            SubmissionStatus.APPROVED,
+          ],
           recentSince: since,
         },
       );
