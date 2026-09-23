@@ -17,6 +17,7 @@ import {
   FrequencyService,
   AssignmentsService,
   SubmissionsService,
+  SubmissionFlagsService,
   WorkflowActionsService,
   AssignmentReminderService,
 } from './services';
@@ -42,6 +43,7 @@ import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
     FrequencyService,
     AssignmentsService,
     SubmissionsService,
+    SubmissionFlagsService,
     WorkflowActionsService,
     AssignmentReminderService,
     DataCollectionPermissionsGuard,
@@ -53,6 +55,7 @@ import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
     FrequencyService,
     AssignmentsService,
     SubmissionsService,
+    SubmissionFlagsService,
     AssignmentReminderService,
   ],
 })

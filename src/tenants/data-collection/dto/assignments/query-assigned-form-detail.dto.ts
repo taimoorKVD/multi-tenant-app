@@ -1,7 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Matches } from 'class-validator';
-import { AssignmentStatus } from '../../entities/enums';
+import { Transform, Type } from 'class-transformer';
+import { IsArray, IsIn, IsInt, IsOptional, Matches } from 'class-validator';
+import { AssignmentStatus, SubmissionStatus } from '../../entities/enums';
+import {
+  ASSIGNED_FORMS_RESPONSE_STATUS_VALUES,
+  AssignedFormsResponseStatusQuery,
+} from './query-assigned-forms.dto';
 
 /** Occurrence filters for the assignment detail drawer. */
 export const ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES = [
@@ -18,6 +22,25 @@ export const ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES = [
 
 export type AssignedFormOccurrenceStatusQuery =
   (typeof ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES)[number];
+
+function toResponseStatusArray(value: unknown): SubmissionStatus[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const raw = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+  const allowed = new Set<string>(ASSIGNED_FORMS_RESPONSE_STATUS_VALUES);
+  const statuses = [
+    ...new Set(
+      raw
+        .map((item) => String(item).toLowerCase())
+        .filter((item) => allowed.has(item)),
+    ),
+  ] as SubmissionStatus[];
+  return statuses.length ? statuses : undefined;
+}
 
 export class QueryAssignedFormDetailDto {
   @ApiPropertyOptional({ example: 1 })
@@ -82,10 +105,25 @@ export class QueryAssignedFormDetailDto {
   @ApiPropertyOptional({
     enum: ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES,
     description:
-      'Filter occurrences. `upcoming` = pending/in_progress with dueAt ≥ today (UTC). ' +
-      '`not_started` aliases pending. Default `all` (excludes cancelled).',
+      'Filter by assignment occurrence status. `upcoming` = pending/in_progress with dueAt ≥ today (UTC). ' +
+      '`not_started` aliases pending. Default `all` (excludes cancelled). ' +
+      'For review outcomes use `responseStatus`.',
   })
   @IsOptional()
   @IsIn(ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES)
   status?: AssignedFormOccurrenceStatusQuery;
+
+  @ApiPropertyOptional({
+    enum: ASSIGNED_FORMS_RESPONSE_STATUS_VALUES,
+    isArray: true,
+    example: ['flagged', 'failed'],
+    description:
+      'Filter occurrences by submission/response review status. ' +
+      'Repeat param or comma-separated: submitted | flagged | failed | approved.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => toResponseStatusArray(value))
+  @IsArray()
+  @IsIn(ASSIGNED_FORMS_RESPONSE_STATUS_VALUES, { each: true })
+  responseStatus?: AssignedFormsResponseStatusQuery[];
 }

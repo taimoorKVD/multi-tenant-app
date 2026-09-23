@@ -6,12 +6,15 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { User } from '../../users/entities';
 import { SubmissionStatus } from './enums';
 import { DataCollectionAssignment } from './data-collection-assignment.entity';
 import { TemplateVersion } from './template-version.entity';
+import { DataCollectionSubmissionFlag } from './data-collection-submission-flag.entity';
 
 @Entity('dc_submissions')
 @Index('idx_dc_submissions_assignment', ['assignmentId'])
@@ -45,6 +48,22 @@ export class DataCollectionSubmission {
 
   @Column({ type: 'timestamptz', name: 'submitted_at', nullable: true })
   submittedAt!: Date | null;
+
+  @Column({ type: 'int', name: 'reviewed_by', nullable: true })
+  reviewedById!: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'reviewed_by' })
+  reviewedBy!: User | null;
+
+  @Column({ type: 'timestamptz', name: 'reviewed_at', nullable: true })
+  reviewedAt!: Date | null;
+
+  @Column({ type: 'text', name: 'review_note', nullable: true })
+  reviewNote!: string | null;
+
+  @OneToMany(() => DataCollectionSubmissionFlag, (flag) => flag.submission)
+  flags!: DataCollectionSubmissionFlag[];
 
   @Column({ type: 'int', name: 'created_by', nullable: true })
   createdBy!: number | null;

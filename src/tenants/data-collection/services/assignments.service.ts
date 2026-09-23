@@ -121,7 +121,14 @@ export class AssignmentsService {
   ): DataCollectionSubmission | null {
     if (!submissions.length) return null;
     const submitted = submissions
-      .filter((s) => s.status === SubmissionStatus.SUBMITTED)
+      .filter((s) =>
+        [
+          SubmissionStatus.SUBMITTED,
+          SubmissionStatus.FLAGGED,
+          SubmissionStatus.FAILED,
+          SubmissionStatus.APPROVED,
+        ].includes(s.status),
+      )
       .sort(
         (a, b) =>
           new Date(b.submittedAt || b.updatedAt).getTime() -
@@ -346,8 +353,11 @@ export class AssignmentsService {
       const buildBaseQb = () => {
         const qb = repo
           .createQueryBuilder('assignment')
-          .leftJoinAndSelect('assignment.template', 'template')
+          // Inner join so draft/archived/missing templates never leak into the board.
+          .innerJoinAndSelect('assignment.template', 'template')
           .leftJoin(User, 'assignee', 'assignee.id = assignment.assigneeUserId');
+
+        this.applyAssignedFormsActiveTemplateFilter(qb);
 
         // Exclude cancelled from the admin board unless explicitly requested.
         const statusFilter = this.resolveAssignedFormsStatus(query.status);
@@ -360,6 +370,7 @@ export class AssignmentsService {
         }
 
         this.applyAssignedFormsPeopleFilters(qb, query);
+        this.applyAssignedFormsResponseStatusFilter(qb, query.responseStatus);
 
         const search = String(query.search || '').trim();
         if (search) {
@@ -401,12 +412,17 @@ export class AssignmentsService {
             `EXISTS (
               SELECT 1 FROM dc_submissions s
               WHERE s.assignment_id = assignment.id
-                AND s.status = :submittedStatus
+                AND s.status IN (:...finalizedStatuses)
                 AND s.deleted_at IS NULL
                 AND COALESCE(s.submitted_at, s.updated_at) >= :recentSince
             )`,
             {
-              submittedStatus: SubmissionStatus.SUBMITTED,
+              finalizedStatuses: [
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.FLAGGED,
+                SubmissionStatus.FAILED,
+                SubmissionStatus.APPROVED,
+              ],
               recentSince: since,
             },
           );
@@ -416,10 +432,12 @@ export class AssignmentsService {
       };
 
       // Load matching rows, then collapse recurring series before paginating.
-      const rows: DataCollectionAssignment[] = await buildBaseQb()
-        .orderBy('assignment.dueAt', 'ASC')
-        .addOrderBy('assignment.id', 'ASC')
-        .getMany();
+      const rows: DataCollectionAssignment[] = (
+        await buildBaseQb()
+          .orderBy('assignment.dueAt', 'ASC')
+          .addOrderBy('assignment.id', 'ASC')
+          .getMany()
+      ).filter((row) => this.isAssignedFormsActiveTemplate(row.template));
 
       const series = this.buildAssignedFormsSeries(rows, now);
       const total = series.length;
@@ -633,6 +651,27 @@ export class AssignmentsService {
     }
   }
 
+  /** True when the template would appear on Forms Templates → Active. */
+  private isAssignedFormsActiveTemplate(
+    template?: DataCollectionTemplate | null,
+  ): boolean {
+    return Boolean(
+      template &&
+        !template.deletedAt &&
+        template.isActive === true &&
+        template.status === TemplateStatus.ACTIVE,
+    );
+  }
+
+  /** Restrict Assigned Forms queries to published, non-deleted templates. */
+  private applyAssignedFormsActiveTemplateFilter(qb: any): void {
+    qb.andWhere('template.status = :assignedFormsTemplateStatus', {
+      assignedFormsTemplateStatus: TemplateStatus.ACTIVE,
+    }).andWhere('template.is_active = :assignedFormsTemplateIsActive', {
+      assignedFormsTemplateIsActive: true,
+    });
+  }
+
   /** Resolve `userId[]` + legacy `assigneeUserId` into a unique id list. */
   private resolveAssignedFormsUserIds(query: QueryAssignedFormsDto): number[] {
     const ids = new Set<number>();
@@ -700,6 +739,42 @@ export class AssignmentsService {
     }
   }
 
+  /**
+   * Filter assignments that have a non-deleted submission in one of the given
+   * review statuses (submitted | flagged | failed | approved).
+   * Independent of assignment workflow `status`.
+   */
+  private applyAssignedFormsResponseStatusFilter(
+    qb: any,
+    responseStatus?: SubmissionStatus[] | string[] | null,
+  ): void {
+    const statuses = [
+      ...new Set(
+        (responseStatus || [])
+          .map((item) => String(item).toLowerCase())
+          .filter((item): item is SubmissionStatus =>
+            [
+              SubmissionStatus.SUBMITTED,
+              SubmissionStatus.FLAGGED,
+              SubmissionStatus.FAILED,
+              SubmissionStatus.APPROVED,
+            ].includes(item as SubmissionStatus),
+          ),
+      ),
+    ];
+    if (!statuses.length) return;
+
+    qb.andWhere(
+      `EXISTS (
+        SELECT 1 FROM dc_submissions response_sub
+        WHERE response_sub.assignment_id = assignment.id
+          AND response_sub.status IN (:...assignedFormsResponseStatuses)
+          AND response_sub.deleted_at IS NULL
+      )`,
+      { assignedFormsResponseStatuses: statuses },
+    );
+  }
+
   private resolveAssignedFormsStatus(
     status?: string | null,
   ): AssignmentStatus | null {
@@ -751,19 +826,21 @@ export class AssignmentsService {
       },
     });
 
-    const boardRows: DataCollectionAssignment[] = await assignmentRepo
-      .createQueryBuilder('assignment')
-      .leftJoinAndSelect('assignment.template', 'template')
-      .andWhere('assignment.status != :cancelledStatus', {
-        cancelledStatus: AssignmentStatus.CANCELLED,
-      })
-      .andWhere('template.id IS NOT NULL')
-      .andWhere('template.status = :templateStatus', {
-        templateStatus: TemplateStatus.ACTIVE,
-      })
-      .andWhere('template.isActive = true')
-      .andWhere('template.deletedAt IS NULL')
-      .getMany();
+    const boardRows: DataCollectionAssignment[] = (
+      await assignmentRepo
+        .createQueryBuilder('assignment')
+        .innerJoinAndSelect('assignment.template', 'template')
+        .andWhere('assignment.status != :cancelledStatus', {
+          cancelledStatus: AssignmentStatus.CANCELLED,
+        })
+        .andWhere('template.status = :templateStatus', {
+          templateStatus: TemplateStatus.ACTIVE,
+        })
+        .andWhere('template.is_active = :templateIsActive', {
+          templateIsActive: true,
+        })
+        .getMany()
+    ).filter((row) => this.isAssignedFormsActiveTemplate(row.template));
 
     const series = this.buildAssignedFormsSeries(boardRows, now);
 
@@ -797,7 +874,7 @@ export class AssignmentsService {
 
     const qb = repo
       .createQueryBuilder('assignment')
-      .leftJoin('assignment.template', 'template')
+      .innerJoin('assignment.template', 'template')
       .leftJoin(User, 'assignee', 'assignee.id = assignment.assigneeUserId')
       .select('assignment.status', 'status')
       .addSelect('COUNT(*)', 'count')
@@ -805,7 +882,9 @@ export class AssignmentsService {
         cancelledStatus: AssignmentStatus.CANCELLED,
       });
 
+    this.applyAssignedFormsActiveTemplateFilter(qb);
     this.applyAssignedFormsPeopleFilters(qb, query);
+    this.applyAssignedFormsResponseStatusFilter(qb, query.responseStatus);
 
     const search = String(query.search || '').trim();
     if (search) {
@@ -847,12 +926,17 @@ export class AssignmentsService {
         `EXISTS (
           SELECT 1 FROM dc_submissions s
           WHERE s.assignment_id = assignment.id
-            AND s.status = :submittedStatus
+            AND s.status IN (:...finalizedStatuses)
             AND s.deleted_at IS NULL
             AND COALESCE(s.submitted_at, s.updated_at) >= :recentSince
         )`,
         {
-          submittedStatus: SubmissionStatus.SUBMITTED,
+          finalizedStatuses: [
+            SubmissionStatus.SUBMITTED,
+            SubmissionStatus.FLAGGED,
+            SubmissionStatus.FAILED,
+            SubmissionStatus.APPROVED,
+          ],
           recentSince: since,
         },
       );
@@ -1217,6 +1301,31 @@ export class AssignmentsService {
         );
       }
 
+      const responseStatuses = [
+        ...new Set(
+          (query.responseStatus || [])
+            .map((item) => String(item).toLowerCase())
+            .filter((item): item is SubmissionStatus =>
+              [
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.FLAGGED,
+                SubmissionStatus.FAILED,
+                SubmissionStatus.APPROVED,
+              ].includes(item as SubmissionStatus),
+            ),
+        ),
+      ];
+      if (responseStatuses.length) {
+        const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
+          req,
+          filteredOccurrences.map((row) => row.id),
+        );
+        filteredOccurrences = filteredOccurrences.filter((row) => {
+          const submission = submissionsByAssignment.get(row.id);
+          return submission != null && responseStatuses.includes(submission.status);
+        });
+      }
+
       filteredOccurrences.sort((a, b) => {
         const dueDiff = new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
         return dueDiff !== 0 ? dueDiff : b.id - a.id;
@@ -1263,6 +1372,7 @@ export class AssignmentsService {
               dueFrom: dueRange?.start.toISOString().slice(0, 10) ?? null,
               dueTo: dueRange?.end.toISOString().slice(0, 10) ?? null,
               status: query.status || 'all',
+              responseStatus: responseStatuses.length ? responseStatuses : null,
             },
             data: occurrences,
           },

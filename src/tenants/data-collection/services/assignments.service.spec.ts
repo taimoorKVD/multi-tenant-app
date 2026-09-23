@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { AssignmentCancelReason, AssignmentStatus } from '../entities/enums';
+import { AssignmentCancelReason, AssignmentStatus, SubmissionStatus } from '../entities/enums';
 import { AssignmentsService } from './assignments.service';
 import { FrequencyService } from './frequency.service';
 
@@ -1187,6 +1187,8 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       const api: any = {};
       for (const method of [
         'leftJoinAndSelect',
+        'innerJoinAndSelect',
+        'innerJoin',
         'leftJoin',
         'andWhere',
         'orderBy',
@@ -1415,6 +1417,12 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(listQb.orderBy).toHaveBeenCalledWith('assignment.dueAt', 'ASC');
     expect(listQb.addOrderBy).toHaveBeenCalledWith('assignment.id', 'ASC');
     expect(listQb.getMany).toHaveBeenCalled();
+    expect(listQb.andWhere).toHaveBeenCalledWith('template.status = :assignedFormsTemplateStatus', {
+      assignedFormsTemplateStatus: 'active',
+    });
+    expect(listQb.andWhere).toHaveBeenCalledWith('template.is_active = :assignedFormsTemplateIsActive', {
+      assignedFormsTemplateIsActive: true,
+    });
     expect(result.success).toBe(true);
     expect(result.stats).toEqual({
       level: 'occurrence',
@@ -1566,6 +1574,23 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(userCall[1].assignedFormsUserIds.sort()).toEqual([4, 9]);
   });
 
+  it('filters by responseStatus flagged/failed via submission EXISTS', async () => {
+    await service.findAssignedForms(req, {
+      page: 1,
+      limit: 15,
+      responseStatus: [SubmissionStatus.FLAGGED, SubmissionStatus.FAILED],
+    });
+
+    const responseCall = listQb.andWhere.mock.calls.find(([sql]: [string]) =>
+      String(sql).includes('assignedFormsResponseStatuses'),
+    );
+    expect(responseCall).toBeDefined();
+    expect(responseCall[1].assignedFormsResponseStatuses).toEqual([
+      SubmissionStatus.FLAGGED,
+      SubmissionStatus.FAILED,
+    ]);
+  });
+
   it('rejects invalid dueFrom', async () => {
     await expect(
       service.findAssignedForms(req, { dueFrom: '09-01-2026' as any }),
@@ -1671,6 +1696,7 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       month: '2026-09',
       total: 1,
       status: 'all',
+      responseStatus: null,
     });
     expect(result.data.occurrences.data).toHaveLength(1);
     expect(result.data.occurrences.data[0]).toMatchObject({
@@ -1688,5 +1714,135 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       total: 1,
     });
     expect(byDate.data.occurrences.data[0].id).toBe(2);
+  });
+
+  it('filters View Details occurrences by responseStatus', async () => {
+    const seed = {
+      id: 2,
+      templateId: 11,
+      templateVersionId: 13,
+      assigneeUserId: 6,
+      jobPositionId: null,
+      dueAt: new Date('2026-09-15T00:00:00.000Z'),
+      status: AssignmentStatus.COMPLETED,
+      assignmentType: 'individual',
+      sharedGroupKey: null,
+      completedByUserId: 6,
+      completedAt: new Date('2026-09-15T10:00:00.000Z'),
+      template: {
+        id: 11,
+        name: 'Hygiene Inspection',
+        schema: {
+          frequency: {
+            type: 'recurring',
+            date: '2026-09-01',
+            recurring: {
+              every: 1,
+              interval: 'month',
+              repeatCount: 12,
+              monthMode: 'dayOfMonth',
+              dayOfMonth: 1,
+            },
+          },
+        },
+        status: 'active',
+        isActive: true,
+      },
+      createdAt: new Date('2026-09-14T01:00:00.000Z'),
+      updatedAt: new Date('2026-09-15T10:00:00.000Z'),
+    };
+
+    const detailRows = [
+      {
+        ...seed,
+        id: 2,
+        dueAt: new Date('2026-09-15T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+      },
+      {
+        ...seed,
+        id: 5,
+        dueAt: new Date('2026-09-20T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+        completedAt: new Date('2026-09-20T11:00:00.000Z'),
+      },
+    ];
+
+    const detailQb: any = {};
+    for (const method of [
+      'leftJoinAndSelect',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+    ]) {
+      detailQb[method] = jest.fn().mockReturnValue(detailQb);
+    }
+    detailQb.getMany = jest.fn().mockResolvedValue(detailRows);
+
+    const findOneMock = jest.fn().mockResolvedValue(seed);
+    createQueryBuilderMock.mockReset();
+    createQueryBuilderMock.mockReturnValue(detailQb);
+
+    findSubmissionsMock.mockResolvedValue([
+      {
+        id: 50,
+        assignmentId: 2,
+        templateVersionId: 13,
+        submittedBy: 6,
+        answers: { fld_001: 'flagged' },
+        status: SubmissionStatus.FLAGGED,
+        submittedAt: new Date('2026-09-15T10:00:00.000Z'),
+        createdBy: 6,
+        updatedBy: 6,
+        createdAt: new Date('2026-09-15T09:00:00.000Z'),
+        updatedAt: new Date('2026-09-15T10:00:00.000Z'),
+      },
+      {
+        id: 51,
+        assignmentId: 5,
+        templateVersionId: 13,
+        submittedBy: 6,
+        answers: { fld_001: 'ok' },
+        status: SubmissionStatus.APPROVED,
+        submittedAt: new Date('2026-09-20T11:00:00.000Z'),
+        createdBy: 6,
+        updatedBy: 6,
+        createdAt: new Date('2026-09-20T10:00:00.000Z'),
+        updatedAt: new Date('2026-09-20T11:00:00.000Z'),
+      },
+    ]);
+
+    req.tenantConnection.getRepository = jest.fn((entity: any) => {
+      if (entity?.name === 'DataCollectionAssignment') {
+        return {
+          createQueryBuilder: createQueryBuilderMock,
+          find: findAssignmentsMock,
+          findOne: findOneMock,
+        };
+      }
+      if (entity?.name === 'User') {
+        return { find: findUsersMock };
+      }
+      if (entity?.name === 'DataCollectionSubmission') {
+        return { find: findSubmissionsMock };
+      }
+      if (entity?.name === 'TemplateVersion') {
+        return { find: findVersionsMock };
+      }
+      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
+    });
+
+    const result = await service.findAssignedFormDetail(req, 2, {
+      month: '2026-09',
+      responseStatus: [SubmissionStatus.FLAGGED, SubmissionStatus.FAILED],
+    });
+
+    expect(result.data.occurrences.meta).toMatchObject({
+      month: '2026-09',
+      total: 1,
+      responseStatus: [SubmissionStatus.FLAGGED, SubmissionStatus.FAILED],
+    });
+    expect(result.data.occurrences.data).toHaveLength(1);
+    expect(result.data.occurrences.data[0].id).toBe(2);
   });
 });

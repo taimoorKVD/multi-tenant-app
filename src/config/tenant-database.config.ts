@@ -30,6 +30,8 @@ import {
   TemplateVersion,
   DataCollectionAssignment,
   DataCollectionSubmission,
+  DataCollectionSubmissionFlag,
+  DataCollectionSubmissionReviewEvent,
 } from '../tenants/data-collection/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
@@ -91,6 +93,8 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       TemplateVersion,
       DataCollectionAssignment,
       DataCollectionSubmission,
+      DataCollectionSubmissionFlag,
+      DataCollectionSubmissionReviewEvent,
     ],
 
     synchronize: true,

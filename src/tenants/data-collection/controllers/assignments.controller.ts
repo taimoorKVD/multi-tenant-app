@@ -109,6 +109,7 @@ export class AssignmentsController {
       '`stats` is occurrence-level for the current filters. ' +
       '`assignmentStats` is the board summary (independent of status filter): ' +
       '`totalAssigned` = active templates; withOverdue / withInProgress / fullyCompleted = series progress. ' +
+      'Use `responseStatus` (submitted|flagged|failed|approved) to filter by submission review outcome — independent of assignment `status`. ' +
       'Use `GET assigned-forms/:assignmentId` for View Details (summary + paginated occurrences).',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -138,6 +139,16 @@ export class AssignmentsController {
     name: 'status',
     required: false,
     enum: ['pending', 'not_started', 'in_progress', 'completed', 'overdue', 'cancelled'],
+    description: 'Assignment workflow status. For review outcomes use responseStatus.',
+  })
+  @ApiQuery({
+    name: 'responseStatus',
+    required: false,
+    enum: ['submitted', 'flagged', 'failed', 'approved'],
+    isArray: true,
+    description:
+      'Filter by submission/response review status. Repeat or comma-separate ' +
+      '(`responseStatus=flagged&responseStatus=failed` or `responseStatus=flagged,failed`).',
   })
   @ApiQuery({ name: 'dueFrom', required: false, type: String, example: '2026-09-01' })
   @ApiQuery({ name: 'dueTo', required: false, type: String, example: '2026-09-30' })
@@ -208,6 +219,7 @@ export class AssignmentsController {
       'Single API for the View Details drawer. Pass any occurrence `id` from the listing row. ' +
       'Returns assignment summary (form, assignees, frequency, period, progress totals) plus ' +
       'paginated occurrence history. Default range = current UTC month. ' +
+      'Filter occurrences by assignment `status` and/or submission `responseStatus` (submitted|flagged|failed|approved). ' +
       'Completed occurrences include full `submission` (answers + template.schema) for read-only View.',
   })
   @ApiParam({
@@ -240,6 +252,16 @@ export class AssignmentsController {
       'upcoming',
       'cancelled',
     ],
+    description: 'Assignment occurrence status. For review outcomes use responseStatus.',
+  })
+  @ApiQuery({
+    name: 'responseStatus',
+    required: false,
+    enum: ['submitted', 'flagged', 'failed', 'approved'],
+    isArray: true,
+    description:
+      'Filter occurrences by submission review status. Repeat or comma-separate ' +
+      '(`responseStatus=flagged,failed`).',
   })
   @ApiResponse({
     status: 200,
