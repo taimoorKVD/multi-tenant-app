@@ -218,7 +218,8 @@ export class AssignmentsController {
     description:
       'Single API for the View Details drawer. Pass any occurrence `id` from the listing row. ' +
       'Returns assignment summary (form, assignees, frequency, period, progress totals) plus ' +
-      'paginated occurrence history. Default range = current UTC month. ' +
+      'paginated occurrence history. Default range = **today only** (UTC) so future upcoming ' +
+      'tasks for the rest of the month/year are not listed. Pass `month=YYYY-MM` or dueFrom/dueTo for a wider range. ' +
       'Filter occurrences by assignment `status` and/or submission `responseStatus` (submitted|flagged|failed|approved). ' +
       'Completed occurrences include full `submission` (answers + template.schema) for read-only View.',
   })
@@ -228,14 +229,20 @@ export class AssignmentsController {
     description: 'Any assignment occurrence id from the listing (`data[].id`).',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 31 })
-  @ApiQuery({ name: 'month', required: false, type: String, example: '2026-09' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 15 })
+  @ApiQuery({
+    name: 'month',
+    required: false,
+    type: String,
+    example: '2026-09',
+    description: 'Full UTC calendar month. Omit to default to today only.',
+  })
   @ApiQuery({
     name: 'date',
     required: false,
     type: String,
     example: '2026-09-17',
-    description: 'Filter occurrences to a single due date (YYYY-MM-DD, UTC).',
+    description: 'Filter occurrences to a single due date (YYYY-MM-DD, UTC). Default = today.',
   })
   @ApiQuery({ name: 'dueFrom', required: false, type: String, example: '2026-09-01' })
   @ApiQuery({ name: 'dueTo', required: false, type: String, example: '2026-09-30' })

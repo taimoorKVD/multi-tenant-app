@@ -1423,19 +1423,29 @@ export class AssignmentsService {
       };
     }
 
-    const monthRaw =
-      query.month ||
-      `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    const match = /^(\d{4})-(\d{2})$/.exec(monthRaw);
-    if (!match) throw new BadRequestException('month must be a valid YYYY-MM string');
-    const year = Number(match[1]);
-    const monthIndex = Number(match[2]) - 1;
-    if (monthIndex < 0 || monthIndex > 11) {
-      throw new BadRequestException('month must be a valid YYYY-MM string');
+    // Explicit month from UI calendar.
+    if (query.month) {
+      const match = /^(\d{4})-(\d{2})$/.exec(query.month);
+      if (!match) throw new BadRequestException('month must be a valid YYYY-MM string');
+      const year = Number(match[1]);
+      const monthIndex = Number(match[2]) - 1;
+      if (monthIndex < 0 || monthIndex > 11) {
+        throw new BadRequestException('month must be a valid YYYY-MM string');
+      }
+      const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
+      return { start, end, month: query.month, date: null };
     }
-    const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0, 0));
-    const end = new Date(Date.UTC(year, monthIndex + 1, 0, 23, 59, 59, 999));
-    return { start, end, month: monthRaw, date: null };
+
+    // Default: today only — avoid listing a month/year of future upcoming tasks.
+    const today = this.startOfDayUtc(now);
+    const date = today.toISOString().slice(0, 10);
+    return {
+      start: today,
+      end: this.endOfDayUtc(today),
+      month: null,
+      date,
+    };
   }
 
   private resolveAssignedFormOccurrenceStatus(
