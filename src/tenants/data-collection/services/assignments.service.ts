@@ -1743,17 +1743,37 @@ export class AssignmentsService {
     }
 
     const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const startOfToday = this.startOfDayUtc(new Date());
+    const { hasHistory, floorByAssigneeKey } = await this.loadAssigneeMaterializeFloors(
+      assignmentRepo,
+      template.id,
+      startOfToday,
+    );
+
+    // Drop open past rows before each assignee's effective start (fixes mid-schedule add backfill).
+    if (hasHistory && floorByAssigneeKey.size) {
+      await this.cancelOpenAssignmentsBeforeFloor(assignmentRepo, template.id, floorByAssigneeKey);
+    }
+
     const created: DataCollectionAssignment[] = [];
 
     for (const dueAt of dueDates) {
       for (const target of targets) {
+        const assigneeKey =
+          target.userId != null ? `u:${target.userId}` : `jp:${target.jobPositionId}`;
+
+        // First publish (no history): keep full frequency window, including past overdue.
+        // Later: each assignee starts at their floor (today for net-new; else earliest
+        // completed / upcoming open due date — never backfill earlier overdues).
+        if (hasHistory) {
+          const floor = floorByAssigneeKey.get(assigneeKey) ?? startOfToday;
+          if (this.startOfDayUtc(dueAt).getTime() < floor.getTime()) {
+            continue;
+          }
+        }
+
         const dueIso = dueAt.toISOString();
-        const occurrenceKey = [
-          template.id,
-          version.id,
-          dueIso,
-          target.userId != null ? `u:${target.userId}` : `jp:${target.jobPositionId}`,
-        ].join(':');
+        const occurrenceKey = [template.id, version.id, dueIso, assigneeKey].join(':');
         const sharedGroupKey =
           assignmentType === AssignmentType.SHARED
             ? [template.id, version.id, dueIso, 'shared'].join(':')
@@ -1775,6 +1795,116 @@ export class AssignmentsService {
     }
 
     return created;
+  }
+
+  /**
+   * Per-assignee materialize floor for mid-lifecycle rematerialize.
+   * - No non-cancelled history for the template → first publish (caller skips floors).
+   * - Net-new assignee → not in map (caller uses startOfToday).
+   * - Existing with completed or upcoming open work → min of those due dates.
+   * - Existing with only past overdue → startOfToday (so we don't keep a false backlog).
+   */
+  private async loadAssigneeMaterializeFloors(
+    assignmentRepo: any,
+    templateId: number,
+    startOfToday: Date,
+  ): Promise<{ hasHistory: boolean; floorByAssigneeKey: Map<string, Date> }> {
+    const rows: Array<{
+      assigneeUserId: number | null;
+      jobPositionId: number | null;
+      dueAt: Date;
+      status: AssignmentStatus;
+    }> = await assignmentRepo.find({
+      where: { templateId },
+      select: ['assigneeUserId', 'jobPositionId', 'dueAt', 'status'],
+    });
+
+    const floorByAssigneeKey = new Map<string, Date>();
+    const grouped = new Map<string, typeof rows>();
+
+    for (const row of rows || []) {
+      if (row.status === AssignmentStatus.CANCELLED) continue;
+      const key =
+        row.assigneeUserId != null
+          ? `u:${Number(row.assigneeUserId)}`
+          : row.jobPositionId != null
+            ? `jp:${Number(row.jobPositionId)}`
+            : null;
+      if (!key) continue;
+      const list = grouped.get(key) || [];
+      list.push(row);
+      grouped.set(key, list);
+    }
+
+    const hasHistory = grouped.size > 0;
+    const todayMs = startOfToday.getTime();
+
+    for (const [key, list] of grouped.entries()) {
+      const meaningful = list.filter((row) => {
+        if (row.status === AssignmentStatus.COMPLETED) return true;
+        if (!this.isOpenAssignmentStatus(row.status)) return false;
+        return this.startOfDayUtc(row.dueAt).getTime() >= todayMs;
+      });
+
+      if (!meaningful.length) {
+        // Only past overdue/open — keep their earliest due as floor so rematerialize
+        // can refresh the existing backlog (not treat them as starting today).
+        let minMs = Number.POSITIVE_INFINITY;
+        for (const row of list) {
+          const ms = this.startOfDayUtc(row.dueAt).getTime();
+          if (ms < minMs) minMs = ms;
+        }
+        floorByAssigneeKey.set(key, new Date(minMs));
+        continue;
+      }
+
+      let minMs = Number.POSITIVE_INFINITY;
+      for (const row of meaningful) {
+        const ms = this.startOfDayUtc(row.dueAt).getTime();
+        if (ms < minMs) minMs = ms;
+      }
+      floorByAssigneeKey.set(key, new Date(minMs));
+    }
+
+    return { hasHistory, floorByAssigneeKey };
+  }
+
+  /** Cancel open/overdue rows earlier than each assignee's materialize floor. */
+  private async cancelOpenAssignmentsBeforeFloor(
+    assignmentRepo: any,
+    templateId: number,
+    floorByAssigneeKey: Map<string, Date>,
+  ): Promise<void> {
+    for (const [key, floor] of floorByAssigneeKey.entries()) {
+      const qb = assignmentRepo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({
+          status: AssignmentStatus.CANCELLED,
+          cancelReason: AssignmentCancelReason.REPUBLISH,
+        })
+        .where('template_id = :templateId', { templateId })
+        .andWhere('status IN (:...statuses)', {
+          statuses: [
+            AssignmentStatus.PENDING,
+            AssignmentStatus.IN_PROGRESS,
+            AssignmentStatus.OVERDUE,
+          ],
+        })
+        .andWhere('due_at < :floor', { floor });
+
+      if (key.startsWith('u:')) {
+        qb.andWhere('assignee_user_id = :userId', { userId: Number(key.slice(2)) });
+      } else if (key.startsWith('jp:')) {
+        qb.andWhere('job_position_id = :jobPositionId', {
+          jobPositionId: Number(key.slice(3)),
+        });
+      } else {
+        continue;
+      }
+
+      await qb.execute();
+    }
   }
 
   private reopenOccurrenceKey(occurrenceKey: string): string {

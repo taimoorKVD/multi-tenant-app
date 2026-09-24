@@ -52,6 +52,19 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
       findOne: findOneMock,
       create: createMock,
       save: saveMock,
+      find: jest.fn(async (opts: any) => {
+        const templateId = opts?.where?.templateId;
+        if (templateId == null) return [...savedRows];
+        return savedRows.filter((row) => row.templateId === templateId);
+      }),
+      createQueryBuilder: jest.fn(() => {
+        const api: any = {};
+        for (const method of ['update', 'set', 'where', 'andWhere']) {
+          api[method] = jest.fn().mockReturnValue(api);
+        }
+        api.execute = jest.fn().mockResolvedValue({ affected: 0 });
+        return api;
+      }),
     };
     req = {
       user: { id: 1 },
@@ -519,6 +532,19 @@ describe('AssignmentsService materializeFromTemplate (all frequency → assign a
       findOne: findOneMock,
       create: createMock,
       save: saveMock,
+      find: jest.fn(async (opts: any) => {
+        const templateId = opts?.where?.templateId;
+        if (templateId == null) return [...savedRows];
+        return savedRows.filter((row) => row.templateId === templateId);
+      }),
+      createQueryBuilder: jest.fn(() => {
+        const api: any = {};
+        for (const method of ['update', 'set', 'where', 'andWhere']) {
+          api[method] = jest.fn().mockReturnValue(api);
+        }
+        api.execute = jest.fn().mockResolvedValue({ affected: 0 });
+        return api;
+      }),
     };
     req = {
       user: { id: 1 },
@@ -793,6 +819,137 @@ describe('AssignmentsService materializeFromTemplate (all frequency → assign a
       created.map((a) => `${a.assigneeUserId}:${a.dueAt.toISOString().slice(0, 10)}`).sort(),
     ).toEqual(['101:2026-09-01', '101:2026-09-02', '202:2026-09-01', '202:2026-09-02']);
   });
+
+  it('does not backfill past overdue for a user added mid-schedule', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-23T12:00:00.000Z'));
+
+    // Template already running since Sept 16 for users 101 and 202.
+    savedRows = [
+      {
+        id: 1,
+        templateId: 10,
+        assigneeUserId: 101,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-16T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+      },
+      {
+        id: 2,
+        templateId: 10,
+        assigneeUserId: 202,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-16T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+      },
+    ];
+
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [101, 202, 303], jobPosition: null },
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-16',
+          recurring: { every: 1, interval: 'day', repeatCount: 10 },
+        },
+      },
+    } as any;
+
+    findOneMock.mockResolvedValue(null);
+    saveMock.mockClear();
+    createMock.mockClear();
+
+    const created = await service.materializeFromTemplate(
+      req,
+      template,
+      { id: 21, schemaSnapshot: template.schema } as any,
+      1,
+    );
+
+    const forNewUser = created.filter((a) => a.assigneeUserId === 303);
+    expect(forNewUser.length).toBeGreaterThan(0);
+    expect(
+      forNewUser.every((a) => a.dueAt.toISOString().slice(0, 10) >= '2026-09-23'),
+    ).toBe(true);
+
+    // Existing assignees still get the full schedule window (incl. past).
+    const forExisting = created.filter((a) => a.assigneeUserId === 101);
+    expect(forExisting.some((a) => a.dueAt.toISOString().slice(0, 10) === '2026-09-16')).toBe(
+      true,
+    );
+
+    jest.useRealTimers();
+  });
+
+  it('cancels false past overdue when mid-added user already has completed from assign day', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-23T12:00:00.000Z'));
+
+    savedRows = [
+      {
+        id: 1,
+        templateId: 10,
+        assigneeUserId: 101,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-16T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+      },
+      // Bad backfill for user added on Sept 23:
+      {
+        id: 10,
+        templateId: 10,
+        assigneeUserId: 303,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-17T00:00:00.000Z'),
+        status: AssignmentStatus.OVERDUE,
+      },
+      {
+        id: 11,
+        templateId: 10,
+        assigneeUserId: 303,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-22T00:00:00.000Z'),
+        status: AssignmentStatus.OVERDUE,
+      },
+      {
+        id: 12,
+        templateId: 10,
+        assigneeUserId: 303,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-23T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+      },
+    ];
+
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [101, 303], jobPosition: null },
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-16',
+          recurring: { every: 1, interval: 'day', repeatCount: 10 },
+        },
+      },
+    } as any;
+
+    findOneMock.mockResolvedValue(null);
+    const created = await service.materializeFromTemplate(
+      req,
+      template,
+      { id: 22, schemaSnapshot: template.schema } as any,
+      1,
+    );
+
+    expect(assignmentRepo.createQueryBuilder).toHaveBeenCalled();
+    const forUser = created.filter((a) => a.assigneeUserId === 303);
+    expect(forUser.every((a) => a.dueAt.toISOString().slice(0, 10) >= '2026-09-23')).toBe(
+      true,
+    );
+
+    jest.useRealTimers();
+  });
 });
 
 describe('AssignmentsService materializeFromTemplate (restore rules)', () => {
@@ -825,6 +982,15 @@ describe('AssignmentsService materializeFromTemplate (restore rules)', () => {
       findOne: findOneMock,
       create: createMock,
       save: saveMock,
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn(() => {
+        const api: any = {};
+        for (const method of ['update', 'set', 'where', 'andWhere']) {
+          api[method] = jest.fn().mockReturnValue(api);
+        }
+        api.execute = jest.fn().mockResolvedValue({ affected: 0 });
+        return api;
+      }),
     };
     req = {
       user: { id: 1 },
