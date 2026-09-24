@@ -1880,6 +1880,16 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
       total: 1,
     });
     expect(byDate.data.occurrences.data[0].id).toBe(2);
+
+    // No range params → today only (fake clock = 2026-09-16), not the whole month/year.
+    const byDefault = await service.findAssignedFormDetail(req, 4, {});
+    expect(byDefault.data.occurrences.meta).toMatchObject({
+      date: '2026-09-16',
+      dueFrom: '2026-09-16',
+      dueTo: '2026-09-16',
+      month: null,
+      total: 0,
+    });
   });
 
   it('filters View Details occurrences by responseStatus', async () => {

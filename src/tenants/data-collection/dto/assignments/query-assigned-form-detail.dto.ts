@@ -50,8 +50,8 @@ export class QueryAssignedFormDetailDto {
   page?: number;
 
   @ApiPropertyOptional({
-    example: 31,
-    description: 'Occurrence page size (max 100). Default 31 (≈ one month).',
+    example: 15,
+    description: 'Occurrence page size (max 100). Default 31.',
   })
   @IsOptional()
   @Type(() => Number)
@@ -62,7 +62,8 @@ export class QueryAssignedFormDetailDto {
     example: '2026-09',
     description:
       'UTC calendar month for occurrence history (YYYY-MM). ' +
-      'Default: current UTC month. Ignored when `date` or dueFrom/dueTo are set.',
+      'When omitted (and no date/dueFrom/dueTo), defaults to **today only** — not the whole month. ' +
+      'Pass `month` explicitly for a full calendar month.',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}$/, {
@@ -74,7 +75,8 @@ export class QueryAssignedFormDetailDto {
     example: '2026-09-17',
     description:
       'Filter to a single due date (YYYY-MM-DD, UTC). Overrides month. ' +
-      'Takes precedence over dueFrom/dueTo when set.',
+      'Takes precedence over dueFrom/dueTo when set. ' +
+      'Default when no range params are sent = today (UTC).',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
