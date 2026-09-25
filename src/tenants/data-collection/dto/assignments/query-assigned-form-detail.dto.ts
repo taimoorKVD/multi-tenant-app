@@ -62,7 +62,7 @@ export class QueryAssignedFormDetailDto {
     example: '2026-09',
     description:
       'UTC calendar month for occurrence history (YYYY-MM). ' +
-      'When omitted (and no date/dueFrom/dueTo), defaults to **today only** — not the whole month. ' +
+      'When omitted (and no date/dueFrom/dueTo), default range is assign start → today+1 (UTC). ' +
       'Pass `month` explicitly for a full calendar month.',
   })
   @IsOptional()
@@ -75,8 +75,7 @@ export class QueryAssignedFormDetailDto {
     example: '2026-09-17',
     description:
       'Filter to a single due date (YYYY-MM-DD, UTC). Overrides month. ' +
-      'Takes precedence over dueFrom/dueTo when set. ' +
-      'Default when no range params are sent = today (UTC).',
+      'Takes precedence over dueFrom/dueTo when set.',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
@@ -107,8 +106,9 @@ export class QueryAssignedFormDetailDto {
   @ApiPropertyOptional({
     enum: ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES,
     description:
-      'Filter by assignment occurrence status. `upcoming` = pending/in_progress with dueAt ≥ today (UTC). ' +
-      '`not_started` aliases pending. Default `all` (excludes cancelled). ' +
+      'Filter by assignment occurrence status. `upcoming` = pending/in_progress with dueAt ≥ today (UTC); ' +
+      'when used without month/date/dueFrom/dueTo, lists all upcoming occurrences with pagination ' +
+      '(does not apply the default assign-start → today+1 window). Default `all` (excludes cancelled). ' +
       'For review outcomes use `responseStatus`.',
   })
   @IsOptional()

@@ -481,13 +481,9 @@ export class AssignmentsService {
     return `t:${row.templateId}:jp:${row.jobPositionId ?? 'none'}`;
   }
 
-  /** Distinct occurrence id within a series (shared: one id for the whole group). */
+  /** Distinct occurrence id within a series — one row per due calendar day. */
   private assignedFormsOccurrenceId(row: DataCollectionAssignment): string {
-    const mode = row.assignmentType || AssignmentType.INDIVIDUAL;
-    if (mode === AssignmentType.SHARED) {
-      return row.sharedGroupKey || `due:${new Date(row.dueAt).toISOString()}`;
-    }
-    return String(row.id);
+    return `due:${new Date(row.dueAt).toISOString()}`;
   }
 
   private isOpenAssignedFormsStatus(status: AssignmentStatus): boolean {
@@ -633,16 +629,25 @@ export class AssignmentsService {
     return series;
   }
 
-  /** Lower rank = preferred representative for a shared occurrence. */
+  /** Lower rank = preferred representative for a same-due occurrence. */
   private occurrencePreferRank(row: DataCollectionAssignment): number {
     switch (row.status) {
-      case AssignmentStatus.IN_PROGRESS:
+      case AssignmentStatus.COMPLETED: {
+        // Prefer the peer who actually submitted (submission lives on their row).
+        if (
+          row.completedByUserId != null &&
+          row.assigneeUserId != null &&
+          Number(row.completedByUserId) === Number(row.assigneeUserId)
+        ) {
+          return -1;
+        }
         return 0;
-      case AssignmentStatus.OVERDUE:
+      }
+      case AssignmentStatus.IN_PROGRESS:
         return 1;
-      case AssignmentStatus.PENDING:
+      case AssignmentStatus.OVERDUE:
         return 2;
-      case AssignmentStatus.COMPLETED:
+      case AssignmentStatus.PENDING:
         return 3;
       case AssignmentStatus.CANCELLED:
         return 9;
@@ -993,6 +998,127 @@ export class AssignmentsService {
     return map;
   }
 
+  /** Peer assignment ids keyed by sharedGroupKey (for shared submission lookup). */
+  private async loadSharedGroupAssignmentIds(
+    req: any,
+    sharedGroupKeys: string[],
+  ): Promise<Map<string, number[]>> {
+    const map = new Map<string, number[]>();
+    const keys = [...new Set(sharedGroupKeys.filter((k) => !!k))];
+    if (!keys.length) return map;
+
+    const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const peers: DataCollectionAssignment[] = await repo.find({
+      where: { sharedGroupKey: In(keys) },
+      select: ['id', 'sharedGroupKey'],
+    });
+
+    for (const peer of peers) {
+      if (!peer.sharedGroupKey || peer.id == null) continue;
+      const list = map.get(peer.sharedGroupKey) || [];
+      if (!list.includes(peer.id)) list.push(peer.id);
+      map.set(peer.sharedGroupKey, list);
+    }
+    return map;
+  }
+
+  /**
+   * Map each occurrence row → its submission.
+   * Shared mode: submission is stored on the submitter's assignment id; resolve via peers.
+   */
+  private async loadSubmissionsForOccurrenceRows(
+    req: any,
+    rows: DataCollectionAssignment[],
+  ): Promise<Map<number, DataCollectionSubmission>> {
+    const byRowId = new Map<number, DataCollectionSubmission>();
+    if (!rows.length) return byRowId;
+
+    const sharedKeys = [
+      ...new Set(
+        rows
+          .map((row) => row.sharedGroupKey)
+          .filter((key): key is string => !!key),
+      ),
+    ];
+    const peerIdsByKey = await this.loadSharedGroupAssignmentIds(req, sharedKeys);
+
+    const assignmentIds = [
+      ...new Set([
+        ...rows.map((row) => row.id),
+        ...[...peerIdsByKey.values()].flat(),
+      ]),
+    ];
+    const byAssignmentId = await this.loadSubmissionsByAssignmentIds(req, assignmentIds);
+
+    const unresolvedShared: DataCollectionAssignment[] = [];
+    for (const row of rows) {
+      let submission = byAssignmentId.get(row.id) || null;
+      if (!submission && row.sharedGroupKey) {
+        for (const peerId of peerIdsByKey.get(row.sharedGroupKey) || []) {
+          submission = byAssignmentId.get(peerId) || null;
+          if (submission) break;
+        }
+      }
+      if (submission) {
+        byRowId.set(row.id, submission);
+      } else if ((row.assignmentType || AssignmentType.INDIVIDUAL) === AssignmentType.SHARED) {
+        unresolvedShared.push(row);
+      }
+    }
+
+    if (unresolvedShared.length) {
+      const fallbackByDue = await this.loadSharedSubmissionsByTemplateDue(req, unresolvedShared);
+      for (const row of unresolvedShared) {
+        const key = `${row.templateId}:${new Date(row.dueAt).toISOString()}`;
+        const submission = fallbackByDue.get(key);
+        if (submission) byRowId.set(row.id, submission);
+      }
+    }
+
+    return byRowId;
+  }
+
+  /**
+   * Fallback when sharedGroupKey drifted across versions: find a finalized
+   * submission on any COMPLETED peer for the same template + due day.
+   */
+  private async loadSharedSubmissionsByTemplateDue(
+    req: any,
+    rows: DataCollectionAssignment[],
+  ): Promise<Map<string, DataCollectionSubmission>> {
+    const result = new Map<string, DataCollectionSubmission>();
+    if (!rows.length) return result;
+
+    const templateIds = [...new Set(rows.map((row) => row.templateId))];
+    const dueAts = [...new Set(rows.map((row) => new Date(row.dueAt).toISOString()))].map(
+      (iso) => new Date(iso),
+    );
+
+    const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const peers: DataCollectionAssignment[] = await assignmentRepo.find({
+      where: {
+        templateId: In(templateIds),
+        dueAt: In(dueAts),
+        status: AssignmentStatus.COMPLETED,
+      },
+      select: ['id', 'templateId', 'dueAt'],
+    });
+    if (!peers.length) return result;
+
+    const byAssignmentId = await this.loadSubmissionsByAssignmentIds(
+      req,
+      peers.map((peer) => peer.id),
+    );
+
+    for (const peer of peers) {
+      const submission = byAssignmentId.get(peer.id);
+      if (!submission) continue;
+      const key = `${peer.templateId}:${new Date(peer.dueAt).toISOString()}`;
+      if (!result.has(key)) result.set(key, submission);
+    }
+    return result;
+  }
+
   private async loadTemplateVersionsByIds(
     req: any,
     versionIds: number[],
@@ -1276,8 +1402,13 @@ export class AssignmentsService {
 
       const [assignmentSummary] = await this.serializeAssignedFormsSeries(req, [series], actorId);
 
-      const dueRange = this.resolveAssignedFormDetailDueRange(query, now);
       const occurrenceStatus = this.resolveAssignedFormOccurrenceStatus(query.status, now);
+      const dueRange = this.resolveAssignedFormDetailDueRange(
+        query,
+        now,
+        series.startDate,
+        occurrenceStatus.upcomingOnly,
+      );
 
       let filteredOccurrences = [...series.occurrenceRows];
       if (dueRange) {
@@ -1326,8 +1457,11 @@ export class AssignmentsService {
         });
       }
 
+      // Upcoming: nearest first for pagination. Default history: newest first.
       filteredOccurrences.sort((a, b) => {
-        const dueDiff = new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
+        const dueDiff = occurrenceStatus.upcomingOnly
+          ? new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
+          : new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
         return dueDiff !== 0 ? dueDiff : b.id - a.id;
       });
 
@@ -1339,6 +1473,17 @@ export class AssignmentsService {
       const pageRows = filteredOccurrences.slice(skip, skip + limit);
 
       const occurrences = await this.serializeAssignedFormOccurrences(req, pageRows, actorId);
+
+      const metaDueFrom =
+        dueRange?.start.toISOString().slice(0, 10) ??
+        (occurrenceStatus.upcomingOnly
+          ? this.startOfDayUtc(now).toISOString().slice(0, 10)
+          : null);
+      const metaDueTo =
+        dueRange?.end.toISOString().slice(0, 10) ??
+        (occurrenceStatus.upcomingOnly && series.endDate
+          ? this.startOfDayUtc(series.endDate).toISOString().slice(0, 10)
+          : null);
 
       return {
         success: true,
@@ -1369,8 +1514,8 @@ export class AssignmentsService {
               limit,
               month: dueRange?.month ?? null,
               date: dueRange?.date ?? null,
-              dueFrom: dueRange?.start.toISOString().slice(0, 10) ?? null,
-              dueTo: dueRange?.end.toISOString().slice(0, 10) ?? null,
+              dueFrom: metaDueFrom,
+              dueTo: metaDueTo,
               status: query.status || 'all',
               responseStatus: responseStatuses.length ? responseStatuses : null,
             },
@@ -1391,9 +1536,12 @@ export class AssignmentsService {
       date?: string;
       dueFrom?: string;
       dueTo?: string;
+      status?: string;
     },
     now: Date,
-  ): { start: Date; end: Date; month: string | null; date: string | null } {
+    assignStartDate?: Date | null,
+    upcomingOnly = false,
+  ): { start: Date; end: Date; month: string | null; date: string | null } | null {
     // Single calendar day (UI date picker).
     if (query.date) {
       const day = this.parseUtcDateOnly(query.date);
@@ -1437,14 +1585,23 @@ export class AssignmentsService {
       return { start, end, month: query.month, date: null };
     }
 
-    // Default: today only — avoid listing a month/year of future upcoming tasks.
+    // status=upcoming: no default date window — return all upcoming, paginated.
+    if (upcomingOnly || query.status === 'upcoming') {
+      return null;
+    }
+
+    // Default: assign start → current date + 1 (one upcoming day), not a full month/year.
     const today = this.startOfDayUtc(now);
-    const date = today.toISOString().slice(0, 10);
+    const endDay = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    let start = assignStartDate ? this.startOfDayUtc(assignStartDate) : today;
+    if (start.getTime() > endDay.getTime()) {
+      start = today;
+    }
     return {
-      start: today,
-      end: this.endOfDayUtc(today),
+      start,
+      end: this.endOfDayUtc(endDay),
       month: null,
-      date,
+      date: null,
     };
   }
 
@@ -1469,10 +1626,7 @@ export class AssignmentsService {
     rows: DataCollectionAssignment[],
     viewerUserId: number | null,
   ) {
-    const submissionsByAssignment = await this.loadSubmissionsByAssignmentIds(
-      req,
-      rows.map((row) => row.id),
-    );
+    const submissionsByAssignment = await this.loadSubmissionsForOccurrenceRows(req, rows);
 
     const completedByIds = rows
       .map((row) => {
@@ -2021,6 +2175,14 @@ export class AssignmentsService {
     });
 
     if (!existing) {
+      // Frequency rematerialize uses a new versionId in occurrenceKey. If this
+      // assignee already completed the same due day, keep that row (submission
+      // stays linked) instead of creating an empty open clone.
+      const fulfilled = await this.findCompletedOccurrenceForDue(assignmentRepo, params);
+      if (fulfilled) {
+        await this.cancelOpenDuplicatesForDue(assignmentRepo, params, fulfilled.id);
+        return fulfilled;
+      }
       return this.createAssignmentRow(assignmentRepo, params);
     }
 
@@ -2051,6 +2213,11 @@ export class AssignmentsService {
     const reopenExisting = await assignmentRepo.findOne({ where: { occurrenceKey: reopenKey } });
 
     if (!reopenExisting) {
+      const fulfilled = await this.findCompletedOccurrenceForDue(assignmentRepo, params);
+      if (fulfilled) {
+        await this.cancelOpenDuplicatesForDue(assignmentRepo, params, fulfilled.id);
+        return fulfilled;
+      }
       return this.createAssignmentRow(assignmentRepo, {
         ...params,
         occurrenceKey: reopenKey,
@@ -2078,6 +2245,83 @@ export class AssignmentsService {
 
     // Reopen slot itself was manually cancelled again — leave it; no further clones.
     return reopenExisting;
+  }
+
+  /**
+   * Find a COMPLETED assignment for the same template + assignee + due day,
+   * regardless of template version / occurrenceKey (frequency rematerialize).
+   */
+  private async findCompletedOccurrenceForDue(
+    assignmentRepo: any,
+    params: {
+      templateId: number;
+      dueAt: Date;
+      assigneeUserId: number | null;
+      jobPositionId: number | null;
+    },
+  ): Promise<DataCollectionAssignment | null> {
+    const where: Record<string, unknown> = {
+      templateId: params.templateId,
+      dueAt: params.dueAt,
+      status: AssignmentStatus.COMPLETED,
+    };
+    if (params.assigneeUserId != null) {
+      where.assigneeUserId = params.assigneeUserId;
+    } else if (params.jobPositionId != null) {
+      where.jobPositionId = params.jobPositionId;
+    } else {
+      return null;
+    }
+
+    const row = await assignmentRepo.findOne({ where });
+    return row || null;
+  }
+
+  /**
+   * Cancel open rematerialize clones for a due day that is already completed,
+   * so my-work / history do not show a fake overdue beside the real submission.
+   */
+  private async cancelOpenDuplicatesForDue(
+    assignmentRepo: any,
+    params: {
+      templateId: number;
+      dueAt: Date;
+      assigneeUserId: number | null;
+      jobPositionId: number | null;
+      actorId: number | null;
+    },
+    keepAssignmentId: number,
+  ): Promise<void> {
+    const qb = assignmentRepo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({
+        status: AssignmentStatus.CANCELLED,
+        cancelReason: AssignmentCancelReason.REPUBLISH,
+        updatedBy: params.actorId,
+      })
+      .where('template_id = :templateId', { templateId: params.templateId })
+      .andWhere('due_at = :dueAt', { dueAt: params.dueAt })
+      .andWhere('id != :keepId', { keepId: keepAssignmentId })
+      .andWhere('status IN (:...statuses)', {
+        statuses: [
+          AssignmentStatus.PENDING,
+          AssignmentStatus.IN_PROGRESS,
+          AssignmentStatus.OVERDUE,
+        ],
+      });
+
+    if (params.assigneeUserId != null) {
+      qb.andWhere('assignee_user_id = :userId', { userId: params.assigneeUserId });
+    } else if (params.jobPositionId != null) {
+      qb.andWhere('job_position_id = :jobPositionId', {
+        jobPositionId: params.jobPositionId,
+      });
+    } else {
+      return;
+    }
+
+    await qb.execute();
   }
 
   /**
