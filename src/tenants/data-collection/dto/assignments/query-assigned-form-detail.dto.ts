@@ -62,8 +62,8 @@ export class QueryAssignedFormDetailDto {
     example: '2026-09',
     description:
       'UTC calendar month for occurrence history (YYYY-MM). ' +
-      'When omitted (and no date/dueFrom/dueTo), default is the next 1 upcoming occurrence only. ' +
-      'Pass `month` explicitly for a full calendar month, or `status=upcoming` for all upcoming (paginated).',
+      'When omitted (and no date/dueFrom/dueTo), default is overdue + completed + in_progress ' +
+      '+ the next 1 upcoming occurrence. Pass `month` for a full calendar month, or `status=upcoming` for all upcoming.',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}$/, {
@@ -107,8 +107,8 @@ export class QueryAssignedFormDetailDto {
     enum: ASSIGNED_FORM_OCCURRENCE_STATUS_VALUES,
     description:
       'Filter by assignment occurrence status. `upcoming` = pending/in_progress with dueAt ≥ today (UTC); ' +
-      'lists all upcoming with pagination (not limited to one). ' +
-      'Default with no range/`status` = next 1 upcoming only. ' +
+      'lists all upcoming with pagination. ' +
+      'Default with no range/`status` = overdue + completed + in_progress + next 1 upcoming. ' +
       'For review outcomes use `responseStatus`.',
   })
   @IsOptional()

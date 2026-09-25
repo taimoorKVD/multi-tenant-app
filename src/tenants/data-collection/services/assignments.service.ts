@@ -1407,7 +1407,7 @@ export class AssignmentsService {
         query.date || query.month || query.dueFrom || query.dueTo,
       );
       const dueRange = this.resolveAssignedFormDetailDueRange(query);
-      const defaultNextUpcomingOnly =
+      const defaultOccurrenceList =
         !hasExplicitDueRange &&
         !occurrenceStatus.upcomingOnly &&
         (!query.status || query.status === 'all');
@@ -1424,7 +1424,7 @@ export class AssignmentsService {
           occurrenceStatus.statuses!.includes(row.status),
         );
       }
-      if (occurrenceStatus.upcomingOnly || defaultNextUpcomingOnly) {
+      if (occurrenceStatus.upcomingOnly) {
         const startOfToday = this.startOfDayUtc(now).getTime();
         filteredOccurrences = filteredOccurrences.filter(
           (row) =>
@@ -1432,6 +1432,38 @@ export class AssignmentsService {
               row.status === AssignmentStatus.IN_PROGRESS) &&
             this.startOfDayUtc(row.dueAt).getTime() >= startOfToday,
         );
+      }
+
+      // Default: overdue + completed + in_progress (all) + only the next 1 upcoming.
+      if (defaultOccurrenceList) {
+        const startOfToday = this.startOfDayUtc(now).getTime();
+        const nextUpcoming = [...filteredOccurrences]
+          .filter(
+            (row) =>
+              (row.status === AssignmentStatus.PENDING ||
+                row.status === AssignmentStatus.IN_PROGRESS) &&
+              this.startOfDayUtc(row.dueAt).getTime() >= startOfToday,
+          )
+          .sort((a, b) => {
+            const dueDiff = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+            return dueDiff !== 0 ? dueDiff : a.id - b.id;
+          })[0];
+
+        filteredOccurrences = filteredOccurrences.filter((row) => {
+          if (row.status === AssignmentStatus.OVERDUE) return true;
+          if (row.status === AssignmentStatus.COMPLETED) return true;
+          if (row.status === AssignmentStatus.IN_PROGRESS) {
+            // Past/open in-progress always; future in-progress only if it is the next upcoming.
+            if (this.startOfDayUtc(row.dueAt).getTime() < startOfToday) return true;
+            return nextUpcoming != null && row.id === nextUpcoming.id;
+          }
+          if (row.status === AssignmentStatus.PENDING) {
+            // Past pending (should usually be overdue) + the single next upcoming.
+            if (this.startOfDayUtc(row.dueAt).getTime() < startOfToday) return true;
+            return nextUpcoming != null && row.id === nextUpcoming.id;
+          }
+          return false;
+        });
       }
 
       const responseStatuses = [
@@ -1459,19 +1491,13 @@ export class AssignmentsService {
         });
       }
 
-      // Upcoming lists / default next-upcoming: nearest first. Other history: newest first.
-      const sortUpcomingFirst = occurrenceStatus.upcomingOnly || defaultNextUpcomingOnly;
+      // Upcoming-only lists: nearest first. Default + history: newest first.
       filteredOccurrences.sort((a, b) => {
-        const dueDiff = sortUpcomingFirst
+        const dueDiff = occurrenceStatus.upcomingOnly
           ? new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
           : new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
         return dueDiff !== 0 ? dueDiff : b.id - a.id;
       });
-
-      // Default (no range/status): only the next 1 upcoming occurrence.
-      if (defaultNextUpcomingOnly) {
-        filteredOccurrences = filteredOccurrences.slice(0, 1);
-      }
 
       const page = Math.max(1, query.page ?? 1);
       const limit = Math.min(Math.max(1, query.limit ?? 31), 100);
@@ -1482,22 +1508,31 @@ export class AssignmentsService {
 
       const occurrences = await this.serializeAssignedFormOccurrences(req, pageRows, actorId);
 
-      const nextUpcomingDue =
-        defaultNextUpcomingOnly && pageRows[0]
-          ? this.startOfDayUtc(pageRows[0].dueAt).toISOString().slice(0, 10)
-          : null;
+      const startOfTodayIso = this.startOfDayUtc(now).toISOString().slice(0, 10);
+      const nextUpcomingInList = defaultOccurrenceList
+        ? filteredOccurrences.find(
+            (row) =>
+              (row.status === AssignmentStatus.PENDING ||
+                row.status === AssignmentStatus.IN_PROGRESS) &&
+              this.startOfDayUtc(row.dueAt).getTime() >= this.startOfDayUtc(now).getTime(),
+          )
+        : null;
       const metaDueFrom =
         dueRange?.start.toISOString().slice(0, 10) ??
-        nextUpcomingDue ??
-        (occurrenceStatus.upcomingOnly
-          ? this.startOfDayUtc(now).toISOString().slice(0, 10)
+        (occurrenceStatus.upcomingOnly || defaultOccurrenceList
+          ? series.startDate
+            ? this.startOfDayUtc(series.startDate).toISOString().slice(0, 10)
+            : startOfTodayIso
           : null);
       const metaDueTo =
         dueRange?.end.toISOString().slice(0, 10) ??
-        nextUpcomingDue ??
         (occurrenceStatus.upcomingOnly && series.endDate
           ? this.startOfDayUtc(series.endDate).toISOString().slice(0, 10)
-          : null);
+          : nextUpcomingInList
+            ? this.startOfDayUtc(nextUpcomingInList.dueAt).toISOString().slice(0, 10)
+            : defaultOccurrenceList
+              ? startOfTodayIso
+              : null);
 
       return {
         success: true,
