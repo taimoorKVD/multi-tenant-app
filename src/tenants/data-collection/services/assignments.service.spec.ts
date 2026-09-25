@@ -41,7 +41,25 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
 
   beforeEach(() => {
     savedRows = [];
-    findOneMock = jest.fn().mockResolvedValue(null);
+    findOneMock = jest.fn(async ({ where }: any) => {
+      if (!where) return null;
+      if (where.occurrenceKey) {
+        return savedRows.find((row) => row.occurrenceKey === where.occurrenceKey) || null;
+      }
+      if (where.status === AssignmentStatus.COMPLETED) {
+        return (
+          savedRows.find((row) => {
+            if (row.templateId !== where.templateId) return false;
+            if (row.status !== AssignmentStatus.COMPLETED) return false;
+            if (new Date(row.dueAt).getTime() !== new Date(where.dueAt).getTime()) return false;
+            if (where.assigneeUserId != null) return row.assigneeUserId === where.assigneeUserId;
+            if (where.jobPositionId != null) return row.jobPositionId === where.jobPositionId;
+            return false;
+          }) || null
+        );
+      }
+      return null;
+    });
     createMock = jest.fn((row) => ({ ...row }));
     saveMock = jest.fn(async (row) => {
       const saved = { id: savedRows.length + 1, ...row };
@@ -521,7 +539,25 @@ describe('AssignmentsService materializeFromTemplate (all frequency → assign a
 
   beforeEach(() => {
     savedRows = [];
-    findOneMock = jest.fn().mockResolvedValue(null);
+    findOneMock = jest.fn(async ({ where }: any) => {
+      if (!where) return null;
+      if (where.occurrenceKey) {
+        return savedRows.find((row) => row.occurrenceKey === where.occurrenceKey) || null;
+      }
+      if (where.status === AssignmentStatus.COMPLETED) {
+        return (
+          savedRows.find((row) => {
+            if (row.templateId !== where.templateId) return false;
+            if (row.status !== AssignmentStatus.COMPLETED) return false;
+            if (new Date(row.dueAt).getTime() !== new Date(where.dueAt).getTime()) return false;
+            if (where.assigneeUserId != null) return row.assigneeUserId === where.assigneeUserId;
+            if (where.jobPositionId != null) return row.jobPositionId === where.jobPositionId;
+            return false;
+          }) || null
+        );
+      }
+      return null;
+    });
     createMock = jest.fn((row) => ({ ...row }));
     saveMock = jest.fn(async (row) => {
       const saved = { id: savedRows.length + 1, ...row };
@@ -856,7 +892,7 @@ describe('AssignmentsService materializeFromTemplate (all frequency → assign a
       },
     } as any;
 
-    findOneMock.mockResolvedValue(null);
+    findOneMock.mockClear();
     saveMock.mockClear();
     createMock.mockClear();
 
@@ -873,11 +909,69 @@ describe('AssignmentsService materializeFromTemplate (all frequency → assign a
       forNewUser.every((a) => a.dueAt.toISOString().slice(0, 10) >= '2026-09-23'),
     ).toBe(true);
 
-    // Existing assignees still get the full schedule window (incl. past).
+    // Existing completed Sept 16 is reused (not cloned empty) after rematerialize.
     const forExisting = created.filter((a) => a.assigneeUserId === 101);
-    expect(forExisting.some((a) => a.dueAt.toISOString().slice(0, 10) === '2026-09-16')).toBe(
-      true,
+    const sept16 = forExisting.filter((a) => a.dueAt.toISOString().slice(0, 10) === '2026-09-16');
+    expect(sept16).toHaveLength(1);
+    expect(sept16[0].status).toBe(AssignmentStatus.COMPLETED);
+    expect(sept16[0].id).toBe(1);
+
+    jest.useRealTimers();
+  });
+
+  it('reuses completed occurrence across frequency rematerialize instead of empty clone', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-20T12:00:00.000Z'));
+
+    savedRows = [
+      {
+        id: 50,
+        templateId: 10,
+        templateVersionId: 20,
+        assigneeUserId: 101,
+        jobPositionId: null,
+        dueAt: new Date('2026-09-16T00:00:00.000Z'),
+        status: AssignmentStatus.COMPLETED,
+        occurrenceKey: '10:20:2026-09-16T00:00:00.000Z:u:101',
+        completedAt: new Date('2026-09-16T10:00:00.000Z'),
+        completedByUserId: 101,
+      },
+    ];
+
+    const template = {
+      id: 10,
+      schema: {
+        assign: { mode: 'individual', users: [101], jobPosition: null },
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-16',
+          recurring: { every: 1, interval: 'day', repeatCount: 5 },
+        },
+      },
+    } as any;
+
+    const created = await service.materializeFromTemplate(
+      req,
+      template,
+      { id: 21, schemaSnapshot: template.schema } as any,
+      1,
     );
+
+    const sept16 = created.filter((a) => a.dueAt.toISOString().slice(0, 10) === '2026-09-16');
+    expect(sept16).toHaveLength(1);
+    expect(sept16[0]).toMatchObject({
+      id: 50,
+      status: AssignmentStatus.COMPLETED,
+      occurrenceKey: '10:20:2026-09-16T00:00:00.000Z:u:101',
+    });
+    // No new open row created for the already-completed day.
+    expect(
+      created.some(
+        (a) =>
+          a.dueAt.toISOString().slice(0, 10) === '2026-09-16' &&
+          a.status !== AssignmentStatus.COMPLETED,
+      ),
+    ).toBe(false);
 
     jest.useRealTimers();
   });
@@ -934,7 +1028,7 @@ describe('AssignmentsService materializeFromTemplate (all frequency → assign a
       },
     } as any;
 
-    findOneMock.mockResolvedValue(null);
+    findOneMock.mockClear();
     const created = await service.materializeFromTemplate(
       req,
       template,
@@ -1881,15 +1975,16 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     });
     expect(byDate.data.occurrences.data[0].id).toBe(2);
 
-    // No range params → today only (fake clock = 2026-09-16), not the whole month/year.
+    // No range params → assign start (min dueAt) through today+1.
     const byDefault = await service.findAssignedFormDetail(req, 4, {});
     expect(byDefault.data.occurrences.meta).toMatchObject({
-      date: '2026-09-16',
-      dueFrom: '2026-09-16',
-      dueTo: '2026-09-16',
+      dueFrom: '2026-09-15',
+      dueTo: '2026-09-17',
       month: null,
-      total: 0,
+      date: null,
+      total: 1,
     });
+    expect(byDefault.data.occurrences.data[0].id).toBe(2);
   });
 
   it('filters View Details occurrences by responseStatus', async () => {
@@ -2020,5 +2115,271 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     });
     expect(result.data.occurrences.data).toHaveLength(1);
     expect(result.data.occurrences.data[0].id).toBe(2);
+  });
+
+  it('attaches shared submission when occurrence row is a non-submitter peer', async () => {
+    const template = {
+      id: 9,
+      name: 'Daily Kitchen Checklist',
+      schema: {
+        formName: 'Daily Kitchen Checklist',
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-16',
+          recurring: { every: 1, interval: 'day', repeatCount: 1 },
+        },
+      },
+      status: 'active',
+      isActive: true,
+    };
+
+    // Representative historically preferred lowest id (Lee Hunt) who did not submit.
+    const peerViewer = {
+      id: 9,
+      templateId: 9,
+      templateVersionId: 13,
+      assigneeUserId: 2,
+      jobPositionId: null,
+      dueAt: new Date('2026-09-16T00:00:00.000Z'),
+      status: AssignmentStatus.COMPLETED,
+      assignmentType: 'shared',
+      sharedGroupKey: '9:13:2026-09-16T00:00:00.000Z:shared',
+      completedByUserId: 5,
+      completedAt: new Date('2026-09-16T14:30:33.236Z'),
+      template,
+      createdAt: new Date('2026-09-16T01:00:00.000Z'),
+      updatedAt: new Date('2026-09-16T14:30:33.236Z'),
+    };
+    const peerSubmitter = {
+      ...peerViewer,
+      id: 12,
+      assigneeUserId: 5,
+    };
+
+    const detailQb: any = {};
+    for (const method of ['leftJoinAndSelect', 'andWhere', 'orderBy', 'addOrderBy']) {
+      detailQb[method] = jest.fn().mockReturnValue(detailQb);
+    }
+    detailQb.getMany = jest.fn().mockResolvedValue([peerViewer, peerSubmitter]);
+
+    const findOneMock = jest.fn().mockResolvedValue(peerViewer);
+    createQueryBuilderMock.mockReset();
+    createQueryBuilderMock.mockReturnValue(detailQb);
+
+    findAssignmentsMock.mockImplementation(async (opts: any) => {
+      const where = opts?.where || {};
+      if (where.sharedGroupKey) {
+        const keys = Array.isArray(where.sharedGroupKey)
+          ? where.sharedGroupKey
+          : where.sharedGroupKey?.value || [where.sharedGroupKey];
+        const keyList = Array.isArray(keys) ? keys : [keys];
+        return [peerViewer, peerSubmitter].filter((row) =>
+          keyList.some((k: any) => String(k).includes('9:13') || k === row.sharedGroupKey),
+        );
+      }
+      if (where.status === AssignmentStatus.COMPLETED || where.status === 'completed') {
+        return [peerViewer, peerSubmitter];
+      }
+      return [peerViewer, peerSubmitter];
+    });
+
+    findSubmissionsMock.mockResolvedValue([
+      {
+        id: 99,
+        assignmentId: 12,
+        templateVersionId: 13,
+        submittedBy: 5,
+        answers: { fld_shift: 'Morning' },
+        status: 'submitted',
+        submittedAt: new Date('2026-09-16T14:30:33.236Z'),
+        createdBy: 5,
+        updatedBy: 5,
+        createdAt: new Date('2026-09-16T14:30:33.236Z'),
+        updatedAt: new Date('2026-09-16T14:30:33.236Z'),
+      },
+    ]);
+    findUsersMock.mockResolvedValue([
+      { id: 2, name: 'Lee Hunt' },
+      { id: 5, name: 'Eleanor Mayoo' },
+    ]);
+    findVersionsMock.mockResolvedValue([
+      {
+        id: 13,
+        templateId: 9,
+        schemaSnapshot: template.schema,
+      },
+    ]);
+
+    req.tenantConnection.getRepository = jest.fn((entity: any) => {
+      if (entity?.name === 'DataCollectionAssignment') {
+        return {
+          createQueryBuilder: createQueryBuilderMock,
+          find: findAssignmentsMock,
+          findOne: findOneMock,
+        };
+      }
+      if (entity?.name === 'User') {
+        return { find: findUsersMock };
+      }
+      if (entity?.name === 'DataCollectionSubmission') {
+        return { find: findSubmissionsMock };
+      }
+      if (entity?.name === 'TemplateVersion') {
+        return { find: findVersionsMock };
+      }
+      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
+    });
+
+    const result = await service.findAssignedFormDetail(req, 9, { date: '2026-09-16' });
+    const occurrence = result.data.occurrences.data[0];
+
+    // Prefer submitter peer as representative when collapsing the shared due day.
+    expect(occurrence.id).toBe(12);
+    expect(occurrence.submissionId).toBe(99);
+    expect(occurrence.submission).toMatchObject({
+      id: 99,
+      answers: { fld_shift: 'Morning' },
+    });
+  });
+
+  it('paginates all upcoming occurrences when status=upcoming (no default date window)', async () => {
+    jest.setSystemTime(new Date('2026-09-25T12:00:00.000Z'));
+
+    const template = {
+      id: 12,
+      name: 'Template 1',
+      schema: {
+        formName: 'Template 1',
+        frequency: {
+          type: 'recurring',
+          date: '2026-09-25',
+          recurring: { every: 1, interval: 'day', repeatCount: 5 },
+        },
+      },
+      status: 'active',
+      isActive: true,
+    };
+
+    const seed = {
+      id: 100,
+      templateId: 12,
+      templateVersionId: 40,
+      assigneeUserId: 7,
+      jobPositionId: null,
+      dueAt: new Date('2026-09-25T00:00:00.000Z'),
+      status: AssignmentStatus.COMPLETED,
+      assignmentType: 'shared',
+      sharedGroupKey: '12:40:2026-09-25T00:00:00.000Z:shared',
+      completedByUserId: 7,
+      completedAt: new Date('2026-09-25T10:00:00.000Z'),
+      template,
+      createdAt: new Date('2026-09-25T01:00:00.000Z'),
+      updatedAt: new Date('2026-09-25T10:00:00.000Z'),
+    };
+
+    const detailRows = [
+      seed,
+      {
+        ...seed,
+        id: 101,
+        dueAt: new Date('2026-09-26T00:00:00.000Z'),
+        status: AssignmentStatus.PENDING,
+        sharedGroupKey: '12:40:2026-09-26T00:00:00.000Z:shared',
+        completedByUserId: null,
+        completedAt: null,
+      },
+      {
+        ...seed,
+        id: 102,
+        dueAt: new Date('2026-09-27T00:00:00.000Z'),
+        status: AssignmentStatus.PENDING,
+        sharedGroupKey: '12:40:2026-09-27T00:00:00.000Z:shared',
+        completedByUserId: null,
+        completedAt: null,
+      },
+      {
+        ...seed,
+        id: 103,
+        dueAt: new Date('2026-09-28T00:00:00.000Z'),
+        status: AssignmentStatus.PENDING,
+        sharedGroupKey: '12:40:2026-09-28T00:00:00.000Z:shared',
+        completedByUserId: null,
+        completedAt: null,
+      },
+      {
+        ...seed,
+        id: 104,
+        dueAt: new Date('2026-09-29T00:00:00.000Z'),
+        status: AssignmentStatus.PENDING,
+        sharedGroupKey: '12:40:2026-09-29T00:00:00.000Z:shared',
+        completedByUserId: null,
+        completedAt: null,
+      },
+    ];
+
+    const detailQb: any = {};
+    for (const method of ['leftJoinAndSelect', 'andWhere', 'orderBy', 'addOrderBy']) {
+      detailQb[method] = jest.fn().mockReturnValue(detailQb);
+    }
+    detailQb.getMany = jest.fn().mockResolvedValue(detailRows);
+
+    const findOneMock = jest.fn().mockResolvedValue(seed);
+    createQueryBuilderMock.mockReset();
+    createQueryBuilderMock.mockReturnValue(detailQb);
+    findSubmissionsMock.mockResolvedValue([]);
+    findAssignmentsMock.mockResolvedValue([]);
+    findUsersMock.mockResolvedValue([{ id: 7, name: 'Cyrus Mccarty' }]);
+    findVersionsMock.mockResolvedValue([]);
+
+    req.tenantConnection.getRepository = jest.fn((entity: any) => {
+      if (entity?.name === 'DataCollectionAssignment') {
+        return {
+          createQueryBuilder: createQueryBuilderMock,
+          find: findAssignmentsMock,
+          findOne: findOneMock,
+        };
+      }
+      if (entity?.name === 'User') {
+        return { find: findUsersMock };
+      }
+      if (entity?.name === 'DataCollectionSubmission') {
+        return { find: findSubmissionsMock };
+      }
+      if (entity?.name === 'TemplateVersion') {
+        return { find: findVersionsMock };
+      }
+      return { createQueryBuilder: createQueryBuilderMock, find: jest.fn().mockResolvedValue([]) };
+    });
+
+    const page1 = await service.findAssignedFormDetail(req, 100, {
+      page: 1,
+      limit: 2,
+      status: 'upcoming',
+    });
+
+    expect(page1.data.occurrences.meta).toMatchObject({
+      total: 4,
+      page: 1,
+      lastPage: 2,
+      limit: 2,
+      status: 'upcoming',
+      dueFrom: '2026-09-25',
+      dueTo: '2026-09-29',
+    });
+    expect(page1.data.occurrences.data).toHaveLength(2);
+    expect(page1.data.occurrences.data.map((row: any) => row.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-26',
+      '2026-09-27',
+    ]);
+
+    const page2 = await service.findAssignedFormDetail(req, 100, {
+      page: 2,
+      limit: 2,
+      status: 'upcoming',
+    });
+    expect(page2.data.occurrences.data.map((row: any) => row.dueAt.toISOString().slice(0, 10))).toEqual([
+      '2026-09-28',
+      '2026-09-29',
+    ]);
   });
 });
