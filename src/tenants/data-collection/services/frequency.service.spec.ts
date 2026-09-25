@@ -418,6 +418,26 @@ describe('FrequencyService', () => {
       expect(isoDates(dates)).toEqual(['2026-09-01', '2026-09-02', '2026-09-03']);
     });
 
+    it('when endDate is set, expands through the window even if repeatCount is smaller', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        startDate: '2026-09-27',
+        endDate: '2026-10-01',
+        every: 2,
+        interval: 'day',
+        repeatCount: 2,
+        times: ['01:00', '05:00'],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-27T01:00:00.000Z',
+        '2026-09-27T05:00:00.000Z',
+        '2026-09-29T01:00:00.000Z',
+        '2026-09-29T05:00:00.000Z',
+        '2026-10-01T01:00:00.000Z',
+        '2026-10-01T05:00:00.000Z',
+      ]);
+    });
+
     it('does not clamp an explicit finite repeatCount to 100', () => {
       const dates = service.expandOccurrences({
         type: 'recurring',
@@ -839,6 +859,372 @@ describe('FrequencyService', () => {
           ),
         ).toEqual(['2026-09-17']);
       });
+    });
+  });
+
+  describe('flat UI payload + time / times', () => {
+    it('atOnce with 24h time materializes that UTC clock (15:06 → 3:06 PM)', () => {
+      const dates = service.expandOccurrences({
+        type: 'atOnce',
+        date: '2026-09-26',
+        time: '15:06',
+        startDate: null,
+        endDate: null,
+        every: 1,
+        interval: 'month',
+        repeatCount: 1,
+        monthMode: 'dayOfMonth',
+        dayOfMonth: 1,
+        weekOrder: 'first',
+        onTheMonth: 'january',
+        daysOfWeek: [],
+        yearMonth: 'january',
+        yearDay: 1,
+        times: [],
+      });
+      expect(dates).toHaveLength(1);
+      expect(dates[0].toISOString()).toBe('2026-09-26T15:06:00.000Z');
+      expect(service.formatTimeAmPm(15, 6)).toBe('3:06 PM');
+      expect(service.formatDateTimeAmPm(dates[0])).toBe('Sep 26, 2026, 3:06 PM');
+      expect(service.formatFrequencyLabel({
+        type: 'atOnce',
+        date: '2026-09-26',
+        time: '15:06',
+      })).toBe('Once · Sep 26, 2026, 3:06 PM');
+    });
+
+    it('parses AM/PM time strings', () => {
+      expect(service.parseClockTime('3:06 PM')).toEqual({ hours: 15, minutes: 6 });
+      expect(service.parseClockTime('12:00 AM')).toEqual({ hours: 0, minutes: 0 });
+      expect(service.parseClockTime('12:00 PM')).toEqual({ hours: 12, minutes: 0 });
+    });
+
+    it('enriches 24h time for edit UI (22:33 → 10:33 PM parts)', () => {
+      const enriched = service.enrichFrequencyForUi({
+        type: 'atOnce',
+        date: '2026-09-25',
+        time: '22:33',
+      });
+      expect(enriched).toMatchObject({
+        time: '22:33',
+        timeAmPm: '10:33 PM',
+        timeParts: { hour: '10', minute: '33', period: 'PM' },
+      });
+    });
+
+    it('daily flat: startDate→endDate × times', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        date: null,
+        time: null,
+        startDate: '2026-09-27',
+        endDate: '2026-10-01',
+        every: 2,
+        interval: 'day',
+        repeatCount: 2,
+        monthMode: 'dayOfMonth',
+        dayOfMonth: 1,
+        weekOrder: 'first',
+        onTheMonth: 'january',
+        daysOfWeek: [],
+        yearMonth: 'january',
+        yearDay: 1,
+        times: ['01:00', '05:00'],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-27T01:00:00.000Z',
+        '2026-09-27T05:00:00.000Z',
+        '2026-09-29T01:00:00.000Z',
+        '2026-09-29T05:00:00.000Z',
+        '2026-10-01T01:00:00.000Z',
+        '2026-10-01T05:00:00.000Z',
+      ]);
+    });
+
+    it('weekly flat: daysOfWeek within startDate→endDate with single time', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        startDate: '2026-09-21', // Monday
+        endDate: '2026-10-02',
+        every: 1,
+        interval: 'week',
+        repeatCount: 1,
+        daysOfWeek: ['monday', 'wednesday'],
+        time: '09:30',
+        times: [],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-21T09:30:00.000Z',
+        '2026-09-23T09:30:00.000Z',
+        '2026-09-28T09:30:00.000Z',
+        '2026-09-30T09:30:00.000Z',
+      ]);
+    });
+
+    it('monthly flat: dayOfMonth within startDate→endDate with times', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        startDate: '2026-01-01',
+        endDate: '2026-03-31',
+        every: 1,
+        interval: 'month',
+        repeatCount: 2,
+        monthMode: 'dayOfMonth',
+        dayOfMonth: 15,
+        times: ['08:00', '14:00'],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-01-15T08:00:00.000Z',
+        '2026-01-15T14:00:00.000Z',
+        '2026-02-15T08:00:00.000Z',
+        '2026-02-15T14:00:00.000Z',
+        '2026-03-15T08:00:00.000Z',
+        '2026-03-15T14:00:00.000Z',
+      ]);
+    });
+
+    it('yearly flat: yearMonth/yearDay within startDate→endDate with time', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        startDate: '2026-01-01',
+        endDate: '2028-12-31',
+        every: 1,
+        interval: 'year',
+        repeatCount: 1,
+        monthMode: 'dayOfMonth',
+        yearMonth: 'january',
+        yearDay: 1,
+        time: '10:00',
+        times: [],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-01-01T10:00:00.000Z',
+        '2027-01-01T10:00:00.000Z',
+        '2028-01-01T10:00:00.000Z',
+      ]);
+    });
+
+    it('recurring with repeatCount:1 still applies times[]', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        startDate: '2026-09-27',
+        endDate: '2026-09-28',
+        every: 1,
+        interval: 'day',
+        repeatCount: 1,
+        times: ['09:00'],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-27T09:00:00.000Z',
+        '2026-09-28T09:00:00.000Z',
+      ]);
+    });
+
+    it('prefers times[] over singular time', () => {
+      const dates = service.expandOccurrences({
+        type: 'atOnce',
+        date: '2026-09-26',
+        time: '15:06',
+        times: ['01:00', '05:00'],
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-26T01:00:00.000Z',
+        '2026-09-26T05:00:00.000Z',
+      ]);
+    });
+
+    it('reads times from nested recurring (monthly screenshot payload)', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        date: null,
+        time: null,
+        startDate: '2026-09-25',
+        endDate: '2026-10-01',
+        jobPosition: null,
+        recurring: {
+          time: null,
+          every: 1,
+          times: ['12:04'],
+          yearDay: 1,
+          interval: 'month',
+          monthMode: 'dayOfMonth',
+          weekOrder: 'first',
+          yearMonth: 'january',
+          dayOfMonth: 1,
+          daysOfWeek: [],
+          onTheMonth: 'january',
+          repeatCount: 1,
+        },
+      });
+      // dayOfMonth:1 with start mid-month skips Sep 1; Oct 1 is in window at 12:04.
+      expect(dates.map((d) => d.toISOString())).toEqual(['2026-10-01T12:04:00.000Z']);
+    });
+
+    it('nested weekly: Tue/Sat × times within startDate→endDate', () => {
+      // 2026-09-25 = Friday → Sat 26, Tue 29, Sat Oct 3 (inclusive)
+      const dates = service.expandOccurrences({
+        date: null,
+        time: null,
+        type: 'recurring',
+        endDate: '2026-10-03',
+        startDate: '2026-09-25',
+        jobPosition: null,
+        recurring: {
+          time: null,
+          every: 1,
+          times: ['20:13', '11:09'],
+          yearDay: 1,
+          interval: 'week',
+          monthMode: 'dayOfMonth',
+          weekOrder: 'first',
+          yearMonth: 'january',
+          dayOfMonth: 1,
+          daysOfWeek: ['tuesday', 'saturday'],
+          onTheMonth: 'january',
+          repeatCount: 2,
+        },
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-26T11:09:00.000Z',
+        '2026-09-26T20:13:00.000Z',
+        '2026-09-29T11:09:00.000Z',
+        '2026-09-29T20:13:00.000Z',
+        '2026-10-03T11:09:00.000Z',
+        '2026-10-03T20:13:00.000Z',
+      ]);
+    });
+
+    it('nested yearly: Sep 25 × times within startDate→endDate', () => {
+      // Only 2026-09-25 falls in [2026-09-25, 2027-01-01]; 2027-09-25 is after endDate.
+      const dates = service.expandOccurrences({
+        date: '2026-09-25',
+        time: null,
+        type: 'recurring',
+        endDate: '2027-01-01',
+        startDate: '2026-09-25',
+        jobPosition: null,
+        recurring: {
+          time: null,
+          every: 1,
+          times: ['17:11', '03:13'],
+          yearDay: 25,
+          interval: 'year',
+          monthMode: 'dayOfMonth',
+          weekOrder: 'first',
+          yearMonth: 'september',
+          dayOfMonth: 1,
+          daysOfWeek: [],
+          onTheMonth: 'january',
+          repeatCount: 2,
+        },
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual([
+        '2026-09-25T03:13:00.000Z',
+        '2026-09-25T17:11:00.000Z',
+      ]);
+    });
+
+    it('nested recurring times — daily / weekly / yearly', () => {
+      expect(
+        service
+          .expandOccurrences({
+            type: 'recurring',
+            startDate: '2026-09-27',
+            endDate: '2026-09-29',
+            recurring: {
+              every: 1,
+              interval: 'day',
+              repeatCount: 1,
+              times: ['08:15', '20:00'],
+            },
+          })
+          .map((d) => d.toISOString()),
+      ).toEqual([
+        '2026-09-27T08:15:00.000Z',
+        '2026-09-27T20:00:00.000Z',
+        '2026-09-28T08:15:00.000Z',
+        '2026-09-28T20:00:00.000Z',
+        '2026-09-29T08:15:00.000Z',
+        '2026-09-29T20:00:00.000Z',
+      ]);
+
+      expect(
+        service
+          .expandOccurrences({
+            type: 'recurring',
+            startDate: '2026-09-21',
+            endDate: '2026-09-23',
+            recurring: {
+              every: 1,
+              interval: 'week',
+              repeatCount: 1,
+              daysOfWeek: ['monday', 'wednesday'],
+              times: ['09:00'],
+            },
+          })
+          .map((d) => d.toISOString()),
+      ).toEqual(['2026-09-21T09:00:00.000Z', '2026-09-23T09:00:00.000Z']);
+
+      expect(
+        service
+          .expandOccurrences({
+            type: 'recurring',
+            startDate: '2026-01-01',
+            endDate: '2027-12-31',
+            recurring: {
+              every: 1,
+              interval: 'year',
+              repeatCount: 1,
+              monthMode: 'dayOfMonth',
+              yearMonth: 'january',
+              yearDay: 1,
+              times: ['10:00'],
+            },
+          })
+          .map((d) => d.toISOString()),
+      ).toEqual(['2026-01-01T10:00:00.000Z', '2027-01-01T10:00:00.000Z']);
+    });
+
+    it('enriches nested recurring.times for edit UI', () => {
+      const enriched = service.enrichFrequencyForUi({
+        type: 'recurring',
+        time: null,
+        startDate: '2026-09-25',
+        endDate: '2026-10-01',
+        recurring: {
+          every: 1,
+          interval: 'month',
+          repeatCount: 1,
+          times: ['12:04'],
+          monthMode: 'dayOfMonth',
+          dayOfMonth: 1,
+        },
+      });
+      expect(enriched).toMatchObject({
+        timesAmPm: ['12:04 PM'],
+        timesParts: [{ hour: '12', minute: '04', period: 'PM' }],
+        recurring: {
+          times: ['12:04'],
+          timesAmPm: ['12:04 PM'],
+          timesParts: [{ hour: '12', minute: '04', period: 'PM' }],
+        },
+      });
+    });
+
+    it('root times take precedence over nested recurring.times', () => {
+      const dates = service.expandOccurrences({
+        type: 'recurring',
+        startDate: '2026-09-27',
+        endDate: '2026-09-27',
+        times: ['01:00'],
+        recurring: {
+          every: 1,
+          interval: 'day',
+          repeatCount: 1,
+          times: ['12:04'],
+        },
+      });
+      expect(dates.map((d) => d.toISOString())).toEqual(['2026-09-27T01:00:00.000Z']);
     });
   });
 });

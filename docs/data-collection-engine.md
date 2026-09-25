@@ -62,22 +62,61 @@ Legacy alias: `assign.assignmentType` / `report.assignmentType` still accepted (
 
 ### 3. Frequency (Create Form — step 3)
 
-Matches the Frequency card:
+Matches the Frequency card (flat UI payload preferred):
 
 | UI control | Schema field |
 |------------|--------------|
 | Frequency Type (`atOnce` / `recurring`) | `frequency.type` |
-| Date | `frequency.date` (e.g. `"2026-08-21"`) |
+| Date (at once) | `frequency.date` (e.g. `"2026-09-26"`) |
+| Start / End (recurring window) | `frequency.startDate`, `frequency.endDate` |
+| Time (at once) | `frequency.time` (`"HH:mm"` 24h or `"h:mm AM/PM"`) |
+| Times (recurring) | `frequency.times` — always used for recurring (`repeatCount` 1 or more), e.g. `["09:00"]` or `["01:00","05:00"]` |
 | Job position (optional) | `frequency.jobPosition` (`null` or id) |
-| Recurring config | `frequency.recurring` (`null` for atOnce) |
+| Recurring config | Flat on `frequency` (`every`, `interval`, `repeatCount`, …) or nested `frequency.recurring` |
 
-**Recurring shapes accepted** (normalized by `FrequencyService`):
+**At once example:**
+
+```json
+{
+  "type": "atOnce",
+  "date": "2026-09-26",
+  "time": "15:06",
+  "startDate": null,
+  "endDate": null,
+  "every": 1,
+  "interval": "month",
+  "repeatCount": 1,
+  "times": []
+}
+```
+
+→ one assignment due `2026-09-26T15:06:00.000Z` (display **3:06 PM**).
+
+**Recurring daily example (startDate → endDate × times):**
+
+```json
+{
+  "type": "recurring",
+  "date": null,
+  "time": null,
+  "startDate": "2026-09-27",
+  "endDate": "2026-10-01",
+  "every": 2,
+  "interval": "day",
+  "repeatCount": 2,
+  "times": ["01:00", "05:00"]
+}
+```
+
+→ dates Sep 27, Sep 29, Oct 1 × each time → 6 assignments.
+
+**Nested recurring shapes still accepted** (normalized by `FrequencyService`):
 
 ```json
 // Canonical
 { "interval": 1, "unit": "day", "repeat": 5, "monthlyRule": { "type": "dayOfMonth", "day": 15 } }
 
-// UI Frequency card
+// Nested UI Frequency card
 {
   "every": 1,
   "interval": "day",
@@ -90,21 +129,19 @@ Matches the Frequency card:
 
 Notes:
 
-- `repeatCount: 1` / omitted → open-ended series (next ~12 months)
+- `startDate`/`endDate` bound the recurring window; when `endDate` is set it is the stop condition (not truncated by `repeatCount`)
+- `time` (at once) or `times[]` (recurring, any `repeatCount`) set the UTC clock on each occurrence; 24h values like `15:06` / `22:33` display as AM/PM (`3:06 PM` / `10:33 PM`)
+- `times` / `time` may live on the frequency root **or** nested under `recurring` / `schedule` (root wins if both are set)
+- Template GET/list responses enrich frequency with read-only UI helpers (not stored):
+  - `timeAmPm` / `timeParts: { hour, minute, period }` for at-once
+  - `timesAmPm` / `timesParts[]` for recurring (also mirrored onto nested `recurring` when that is where `times` lives)
+  Bind the Hour / Minute / Period pickers from `timeParts` / `timesParts` (e.g. `"22:33"` → `{ hour: "10", minute: "33", period: "PM" }`), not by treating `22` as a 12-hour hour.
+- Recurring `times` creates one assignment per occurrence date × each time (length 1 is fine)
+- Without `time`/`times`, dueAt stays UTC midnight (legacy date-only)
+- `repeatCount: 1` / omitted with no `endDate` → open-ended series (next ~12 months)
 - Weekly `daysOfWeek` expands to those weekdays
 - Monthly: `dayOfMonth` (incl. `-1` = last day) and `nthWeekday`
-- Legacy aliases still accepted: `one_time`, `startDate`, `schedule`
-
-Example at-once payload from frontend:
-
-```json
-{
-  "jobPosition": null,
-  "date": "2026-08-21",
-  "type": "atOnce",
-  "recurring": null
-}
-```
+- Legacy aliases still accepted: `one_time`, nested `recurring` / `schedule`
 
 Wizard footer actions map to API behavior:
 
@@ -143,9 +180,12 @@ Full payload stored on `dc_templates.schema` (and frozen on publish into `dc_tem
   "report": { "mode": "shared", "users": null, "jobPosition": [1] },
   "frequency": {
     "type": "atOnce",
-    "date": "2026-08-21",
+    "date": "2026-09-26",
+    "time": "15:06",
+    "startDate": null,
+    "endDate": null,
     "jobPosition": null,
-    "recurring": null
+    "times": []
   },
   "sections": [
     {
@@ -311,7 +351,7 @@ Publish/create/update responses include `emailNotify: { sent, failed, skipped }`
 
 | Capability | Detail |
 |------------|--------|
-| `FrequencyService` | Expands one-time / recurring dates; UI + canonical recurring; `dayOfMonth` incl. `-1`; `nthWeekday`; weekly `daysOfWeek` |
+| `FrequencyService` | Expands one-time / recurring dueAts; flat + nested UI; `startDate`/`endDate` window; `time`/`times` (AM/PM); `dayOfMonth` incl. `-1`; `nthWeekday`; weekly `daysOfWeek` |
 | Materialization | One `dc_assignments` row per occurrence × assignee |
 | Assignees | Explicit `assign.users` + users resolved from `assign.jobPosition` |
 | Shared group | `assign.mode=shared` sets `sharedGroupKey` + `assignmentType=shared`; one submit marks the whole group completed |

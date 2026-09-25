@@ -50,6 +50,44 @@ describe('TemplatesService', () => {
             : {}),
         };
       }),
+      resolveScheduleRaw: jest.fn().mockImplementation((frequency: any) => {
+        if (frequency?.recurring && typeof frequency.recurring === 'object') {
+          return frequency.recurring;
+        }
+        if (frequency?.schedule && typeof frequency.schedule === 'object') {
+          return frequency.schedule;
+        }
+        const flatKeys = [
+          'every',
+          'interval',
+          'repeatCount',
+          'repeat',
+          'unit',
+          'daysOfWeek',
+          'monthMode',
+          'dayOfMonth',
+        ];
+        if (flatKeys.some((key) => frequency?.[key] != null && frequency[key] !== '')) {
+          return frequency;
+        }
+        return null;
+      }),
+      resolveOccurrenceTimes: jest.fn().mockImplementation((frequency: any) => {
+        const fromTimes = Array.isArray(frequency?.times)
+          ? frequency.times.filter((t: any) => t != null && String(t).trim() !== '')
+          : [];
+        if (fromTimes.length) {
+          return fromTimes.map((t: string) => {
+            const [h, m] = String(t).split(':').map(Number);
+            return { hours: h || 0, minutes: m || 0 };
+          });
+        }
+        if (frequency?.time != null && String(frequency.time).trim() !== '') {
+          const [h, m] = String(frequency.time).split(':').map(Number);
+          return [{ hours: h || 0, minutes: m || 0 }];
+        }
+        return [{ hours: 0, minutes: 0 }];
+      }),
     };
     service = new TemplatesService(
       assignmentsService as any,

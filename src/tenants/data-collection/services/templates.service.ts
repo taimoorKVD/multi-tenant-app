@@ -137,7 +137,8 @@ export class TemplatesService {
   /**
    * Semantic frequency equality:
    * - UI vs canonical recurring shapes (every/interval vs interval/unit)
-   * - date vs startDate
+   * - flat UI root fields vs nested `recurring`
+   * - date vs startDate, endDate, time / times
    * - omitted recurring date inherits previous anchor (Frequency card has no date field)
    */
   private frequenciesEquivalent(previous: unknown, next: unknown): boolean {
@@ -155,18 +156,31 @@ export class TemplatesService {
     // Recurring UI often omits date on save — keep the previously published anchor.
     if (!this.frequencyHasDate(nxt) && this.frequencyHasDate(prev)) {
       nxt.date = prev.date ?? prev.startDate;
+      if (nxt.startDate == null || nxt.startDate === '') {
+        nxt.startDate = prev.startDate ?? prev.date;
+      }
     }
 
     const prevDate = String(prev.date ?? prev.startDate ?? '').trim();
     const nextDate = String(nxt.date ?? nxt.startDate ?? '').trim();
     if (prevDate !== nextDate) return false;
 
+    const prevEnd = String(prev.endDate ?? '').trim();
+    const nextEnd = String(nxt.endDate ?? '').trim();
+    if (prevEnd !== nextEnd) return false;
+
+    if (
+      this.canonicalizeOccurrenceTimes(prev) !== this.canonicalizeOccurrenceTimes(nxt)
+    ) {
+      return false;
+    }
+
     if (this.normalizeFrequencyType(prev.type) === 'atonce') {
       return true;
     }
 
-    const prevSchedule = (prev.recurring ?? prev.schedule ?? null) as Record<string, any> | null;
-    const nextSchedule = (nxt.recurring ?? nxt.schedule ?? null) as Record<string, any> | null;
+    const prevSchedule = this.frequencyService.resolveScheduleRaw(prev as any);
+    const nextSchedule = this.frequencyService.resolveScheduleRaw(nxt as any);
 
     if (!prevSchedule && !nextSchedule) return true;
     if (!prevSchedule || !nextSchedule) return false;
@@ -176,6 +190,14 @@ export class TemplatesService {
     return (
       JSON.stringify(this.canonicalizeJson(prevNormalized)) ===
       JSON.stringify(this.canonicalizeJson(nextNormalized))
+    );
+  }
+
+  /** Stable fingerprint for time / times so rematerialize runs when clock slots change. */
+  private canonicalizeOccurrenceTimes(frequency: Record<string, unknown>): string {
+    const times = this.frequencyService.resolveOccurrenceTimes(frequency as any);
+    return JSON.stringify(
+      times.map((t) => `${String(t.hours).padStart(2, '0')}:${String(t.minutes).padStart(2, '0')}`),
     );
   }
 
@@ -281,6 +303,9 @@ export class TemplatesService {
         const prevDate = prevFrequency?.date ?? prevFrequency?.startDate;
         if (prevDate !== null && prevDate !== undefined && String(prevDate).trim() !== '') {
           frequency.date = prevDate;
+          if (frequency.startDate == null || String(frequency.startDate).trim() === '') {
+            frequency.startDate = prevDate;
+          }
         }
       }
     }
@@ -383,8 +408,9 @@ export class TemplatesService {
       }
 
       qb.orderBy('template.createdAt', 'DESC').skip(skip).take(limit);
-      const [data, total] = await qb.getManyAndCount();
+      const [rows, total] = await qb.getManyAndCount();
       const lastPage = Math.ceil(total / limit) || 1;
+      const data = rows.map((row) => this.serializeTemplate(row));
 
       return { success: true, meta: { total, page, lastPage }, data };
     } catch (error) {
@@ -400,11 +426,31 @@ export class TemplatesService {
         where: { id },
       });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
-      return { success: true, data: template };
+      return { success: true, data: this.serializeTemplate(template) };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to retrieve template');
     }
+  }
+
+  /**
+   * Response-only: attach AM/PM helpers on frequency so edit forms can bind
+   * Hour/Minute/Period from stored 24h `time` / `times` (e.g. `"22:33"` → 10:33 PM).
+   * Does not mutate the persisted jsonb row.
+   */
+  private serializeTemplate(template: DataCollectionTemplate): DataCollectionTemplate {
+    const schema = template.schema;
+    if (!schema || typeof schema !== 'object' || !schema.frequency) {
+      return template;
+    }
+
+    return {
+      ...template,
+      schema: {
+        ...schema,
+        frequency: this.frequencyService.enrichFrequencyForUi(schema.frequency as any),
+      },
+    };
   }
 
   async update(req: any, id: number, dto: UpdateTemplateDto) {

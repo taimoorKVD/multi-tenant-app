@@ -128,6 +128,143 @@ describe('AssignmentsService materializeFromTemplate (frequency flow)', () => {
     expect(created[4].occurrenceKey).toBe('10:20:2026-09-06T00:00:00.000Z:u:101');
   });
 
+  it('materializes atOnce with time and daily startDate→endDate × times', async () => {
+    const atOnceTemplate = {
+      ...template,
+      schema: {
+        assign: { users: [101], jobPosition: [] },
+        frequency: {
+          type: 'atOnce',
+          date: '2026-09-26',
+          time: '15:06',
+          startDate: null,
+          endDate: null,
+          every: 1,
+          interval: 'month',
+          repeatCount: 1,
+          times: [],
+        },
+      },
+    } as any;
+    const atOnce = await service.materializeFromTemplate(
+      req,
+      atOnceTemplate,
+      { id: 20, schemaSnapshot: atOnceTemplate.schema } as any,
+      1,
+    );
+    expect(atOnce).toHaveLength(1);
+    expect(atOnce[0].dueAt.toISOString()).toBe('2026-09-26T15:06:00.000Z');
+    expect(atOnce[0].occurrenceKey).toBe('10:20:2026-09-26T15:06:00.000Z:u:101');
+
+    savedRows = [];
+    const dailyTemplate = {
+      ...template,
+      schema: {
+        assign: { users: [101], jobPosition: [] },
+        frequency: {
+          type: 'recurring',
+          date: null,
+          time: null,
+          startDate: '2026-09-27',
+          endDate: '2026-10-01',
+          every: 2,
+          interval: 'day',
+          repeatCount: 2,
+          times: ['01:00', '05:00'],
+        },
+      },
+    } as any;
+    const daily = await service.materializeFromTemplate(
+      req,
+      dailyTemplate,
+      { id: 20, schemaSnapshot: dailyTemplate.schema } as any,
+      1,
+    );
+    expect(daily.map((a) => a.dueAt.toISOString())).toEqual([
+      '2026-09-27T01:00:00.000Z',
+      '2026-09-27T05:00:00.000Z',
+      '2026-09-29T01:00:00.000Z',
+      '2026-09-29T05:00:00.000Z',
+      '2026-10-01T01:00:00.000Z',
+      '2026-10-01T05:00:00.000Z',
+    ]);
+  });
+
+  it('materializes nested weekly Tue/Sat and yearly Sep 25 with times', async () => {
+    const weeklyTemplate = {
+      ...template,
+      schema: {
+        assign: { users: [101], jobPosition: [] },
+        frequency: {
+          date: null,
+          time: null,
+          type: 'recurring',
+          endDate: '2026-10-03',
+          startDate: '2026-09-25',
+          jobPosition: null,
+          recurring: {
+            time: null,
+            every: 1,
+            times: ['20:13', '11:09'],
+            interval: 'week',
+            daysOfWeek: ['tuesday', 'saturday'],
+            repeatCount: 2,
+          },
+        },
+      },
+    } as any;
+    const weekly = await service.materializeFromTemplate(
+      req,
+      weeklyTemplate,
+      { id: 20, schemaSnapshot: weeklyTemplate.schema } as any,
+      1,
+    );
+    expect(weekly.map((a) => a.dueAt.toISOString())).toEqual([
+      '2026-09-26T11:09:00.000Z',
+      '2026-09-26T20:13:00.000Z',
+      '2026-09-29T11:09:00.000Z',
+      '2026-09-29T20:13:00.000Z',
+      '2026-10-03T11:09:00.000Z',
+      '2026-10-03T20:13:00.000Z',
+    ]);
+
+    savedRows = [];
+    const yearlyTemplate = {
+      ...template,
+      schema: {
+        assign: { users: [101], jobPosition: [] },
+        frequency: {
+          date: '2026-09-25',
+          time: null,
+          type: 'recurring',
+          endDate: '2027-01-01',
+          startDate: '2026-09-25',
+          jobPosition: null,
+          recurring: {
+            time: null,
+            every: 1,
+            times: ['17:11', '03:13'],
+            yearDay: 25,
+            interval: 'year',
+            monthMode: 'dayOfMonth',
+            yearMonth: 'september',
+            repeatCount: 2,
+          },
+        },
+      },
+    } as any;
+    const yearly = await service.materializeFromTemplate(
+      req,
+      yearlyTemplate,
+      { id: 20, schemaSnapshot: yearlyTemplate.schema } as any,
+      1,
+    );
+    expect(yearly.map((a) => a.dueAt.toISOString())).toEqual([
+      '2026-09-25T03:13:00.000Z',
+      '2026-09-25T17:11:00.000Z',
+    ]);
+  });
+
   it.each([
     {
       name: 'atOnce',
@@ -1388,6 +1525,18 @@ describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', (
     expect((service as any).openStatusForDueAt(dueYesterday)).toBe(AssignmentStatus.OVERDUE);
   });
 
+  it('marks timed dueAts overdue after the clock time passes', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-26T15:07:00.000Z'));
+
+    expect((service as any).openStatusForDueAt(new Date('2026-09-26T15:06:00.000Z'))).toBe(
+      AssignmentStatus.OVERDUE,
+    );
+    expect((service as any).openStatusForDueAt(new Date('2026-09-26T16:00:00.000Z'))).toBe(
+      AssignmentStatus.PENDING,
+    );
+  });
+
   it('marks overdue only when due_at is before start of today UTC', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-09-16T17:25:00.000Z'));
@@ -1421,8 +1570,13 @@ describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', (
     expect(andWhereMock).toHaveBeenCalledWith('due_at >= :startOfToday', {
       startOfToday: new Date('2026-09-16T00:00:00.000Z'),
     });
-    expect(result.data.affected).toBe(2);
-    expect(executeMock).toHaveBeenCalledTimes(3);
+    expect(andWhereMock).toHaveBeenCalledWith('due_at < :now', {
+      now: new Date('2026-09-16T17:25:00.000Z'),
+    });
+    // Midnight overdue + timed overdue (each mock returns affected: 2).
+    expect(result.data.affected).toBe(4);
+    // 2 overdue updates + 4 heal updates
+    expect(executeMock).toHaveBeenCalledTimes(6);
   });
 });
 

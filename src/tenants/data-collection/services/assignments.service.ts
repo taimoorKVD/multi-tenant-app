@@ -788,13 +788,23 @@ export class AssignmentsService {
     return status as AssignmentStatus;
   }
 
-  private formatDueDateLabel(dueAt: Date): string {
-    return new Intl.DateTimeFormat('en-US', {
+  private formatDueDateLabel(dueAt: Date, options?: { includeTime?: boolean }): string {
+    const value = dueAt instanceof Date ? dueAt : new Date(dueAt);
+    const datePart = new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
       timeZone: 'UTC',
-    }).format(dueAt instanceof Date ? dueAt : new Date(dueAt));
+    }).format(value);
+
+    const includeTime = options?.includeTime !== false;
+    if (includeTime && this.frequencyService.hasClockTime(value)) {
+      return `${datePart}, ${this.frequencyService.formatTimeAmPm(
+        value.getUTCHours(),
+        value.getUTCMinutes(),
+      )}`;
+    }
+    return datePart;
   }
 
   private statusLabel(status: AssignmentStatus): string {
@@ -1292,12 +1302,12 @@ export class AssignmentsService {
         frequency,
         frequencyLabel,
         startDate,
-        startDateLabel: startDate ? this.formatDueDateLabel(startDate) : null,
+        startDateLabel: startDate ? this.formatDueDateLabel(startDate, { includeTime: false }) : null,
         endDate,
-        endDateLabel: endDate ? this.formatDueDateLabel(endDate) : null,
+        endDateLabel: endDate ? this.formatDueDateLabel(endDate, { includeTime: false }) : null,
         periodLabel:
           startDate && endDate
-            ? `${this.formatDueDateLabel(startDate)} → ${this.formatDueDateLabel(endDate)}`
+            ? `${this.formatDueDateLabel(startDate, { includeTime: false })} → ${this.formatDueDateLabel(endDate, { includeTime: false })}`
             : null,
         dueAt: nextDueAt,
         dueDateLabel: this.formatDueDateLabel(nextDueAt),
@@ -2122,10 +2132,15 @@ export class AssignmentsService {
   }
 
   /**
-   * dueAt is stored as UTC midnight of the due calendar day, so overdue is
-   * "due day has fully passed", not "any time after midnight today".
+   * Midnight UTC dueAts stay open for the whole due day (legacy date-only schedules).
+   * Timed dueAts (e.g. 15:06 → 3:06 PM) become overdue once that instant has passed.
    */
   private openStatusForDueAt(dueAt: Date, now = new Date()): AssignmentStatus {
+    if (this.frequencyService.hasClockTime(dueAt)) {
+      return dueAt.getTime() < now.getTime()
+        ? AssignmentStatus.OVERDUE
+        : AssignmentStatus.PENDING;
+    }
     return this.startOfDayUtc(dueAt).getTime() < this.startOfDayUtc(now).getTime()
       ? AssignmentStatus.OVERDUE
       : AssignmentStatus.PENDING;
@@ -2387,44 +2402,85 @@ export class AssignmentsService {
   async markOverdue(req: any) {
     try {
       const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
-      // Compare against start of today so same-day (UTC midnight) dueAts stay open all day.
-      const startOfToday = this.startOfDayUtc(new Date());
+      const now = new Date();
+      // Midnight UTC dueAts stay open all due day; timed dueAts overdue after the clock time.
+      const startOfToday = this.startOfDayUtc(now);
+      const midnightUtc =
+        `EXTRACT(HOUR FROM due_at AT TIME ZONE 'UTC') = 0` +
+        ` AND EXTRACT(MINUTE FROM due_at AT TIME ZONE 'UTC') = 0` +
+        ` AND EXTRACT(SECOND FROM due_at AT TIME ZONE 'UTC') = 0`;
 
-      const result = await repo
+      const midnightOverdue = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
         .set({ status: AssignmentStatus.OVERDUE })
         .where('status IN (:...statuses)', {
           statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
         })
+        .andWhere(midnightUtc)
         .andWhere('due_at < :startOfToday', { startOfToday })
         .execute();
 
-      // Heal rows marked overdue too early under the old due_at < now rule.
-      const startedHealed = await repo
+      const timedOverdue = await repo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({ status: AssignmentStatus.OVERDUE })
+        .where('status IN (:...statuses)', {
+          statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
+        })
+        .andWhere(`NOT (${midnightUtc})`)
+        .andWhere('due_at < :now', { now })
+        .execute();
+
+      // Heal rows marked overdue too early (still before their effective cutoff).
+      const startedHealedMidnight = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
         .set({ status: AssignmentStatus.IN_PROGRESS })
         .where('status = :status', { status: AssignmentStatus.OVERDUE })
+        .andWhere(midnightUtc)
         .andWhere('due_at >= :startOfToday', { startOfToday })
         .andWhere('updated_at > created_at')
         .execute();
 
-      const pendingHealed = await repo
+      const pendingHealedMidnight = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
         .set({ status: AssignmentStatus.PENDING })
         .where('status = :status', { status: AssignmentStatus.OVERDUE })
+        .andWhere(midnightUtc)
         .andWhere('due_at >= :startOfToday', { startOfToday })
+        .execute();
+
+      const startedHealedTimed = await repo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({ status: AssignmentStatus.IN_PROGRESS })
+        .where('status = :status', { status: AssignmentStatus.OVERDUE })
+        .andWhere(`NOT (${midnightUtc})`)
+        .andWhere('due_at >= :now', { now })
+        .andWhere('updated_at > created_at')
+        .execute();
+
+      const pendingHealedTimed = await repo
+        .createQueryBuilder()
+        .update(DataCollectionAssignment)
+        .set({ status: AssignmentStatus.PENDING })
+        .where('status = :status', { status: AssignmentStatus.OVERDUE })
+        .andWhere(`NOT (${midnightUtc})`)
+        .andWhere('due_at >= :now', { now })
         .execute();
 
       return {
         success: true,
         message: 'Overdue assignments updated',
         data: {
-          affected: result.affected ?? 0,
+          affected: (midnightOverdue.affected ?? 0) + (timedOverdue.affected ?? 0),
           healed:
-            (startedHealed.affected ?? 0) + (pendingHealed.affected ?? 0),
+            (startedHealedMidnight.affected ?? 0) +
+            (pendingHealedMidnight.affected ?? 0) +
+            (startedHealedTimed.affected ?? 0) +
+            (pendingHealedTimed.affected ?? 0),
         },
       };
     } catch (error) {
