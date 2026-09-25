@@ -218,9 +218,8 @@ export class AssignmentsController {
     description:
       'Single API for the View Details drawer. Pass any occurrence `id` from the listing row. ' +
       'Returns assignment summary (form, assignees, frequency, period, progress totals) plus ' +
-      'paginated occurrence history. Default range = assign start date → current date + 1 day (UTC) ' +
-      '(history through tomorrow, not a full month/year of upcoming). ' +
-      'Pass `month=YYYY-MM` or dueFrom/dueTo for a wider range. ' +
+      'paginated occurrence history. Default = the next 1 upcoming occurrence only. ' +
+      'Pass `status=upcoming` for all upcoming (paginated), or `month` / `date` / dueFrom/dueTo for a wider range. ' +
       'Filter occurrences by assignment `status` and/or submission `responseStatus` (submitted|flagged|failed|approved). ' +
       'Completed occurrences include full `submission` (answers + template.schema) for read-only View.',
   })
@@ -236,7 +235,7 @@ export class AssignmentsController {
     required: false,
     type: String,
     example: '2026-09',
-    description: 'Full UTC calendar month. Omit to use assign-start → today+1 default.',
+    description: 'Full UTC calendar month. Omit for default (next 1 upcoming only).',
   })
   @ApiQuery({
     name: 'date',
@@ -261,9 +260,8 @@ export class AssignmentsController {
       'cancelled',
     ],
     description:
-      'Assignment occurrence status. `upcoming` skips the default assign-start→today+1 window ' +
-      'and returns all pending/in_progress from today onward (paginated). ' +
-      'For review outcomes use responseStatus.',
+      'Assignment occurrence status. `upcoming` returns all pending/in_progress from today onward (paginated). ' +
+      'Default with no range params = next 1 upcoming only. For review outcomes use responseStatus.',
   })
   @ApiQuery({
     name: 'responseStatus',

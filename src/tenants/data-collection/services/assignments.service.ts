@@ -1403,12 +1403,14 @@ export class AssignmentsService {
       const [assignmentSummary] = await this.serializeAssignedFormsSeries(req, [series], actorId);
 
       const occurrenceStatus = this.resolveAssignedFormOccurrenceStatus(query.status, now);
-      const dueRange = this.resolveAssignedFormDetailDueRange(
-        query,
-        now,
-        series.startDate,
-        occurrenceStatus.upcomingOnly,
+      const hasExplicitDueRange = Boolean(
+        query.date || query.month || query.dueFrom || query.dueTo,
       );
+      const dueRange = this.resolveAssignedFormDetailDueRange(query);
+      const defaultNextUpcomingOnly =
+        !hasExplicitDueRange &&
+        !occurrenceStatus.upcomingOnly &&
+        (!query.status || query.status === 'all');
 
       let filteredOccurrences = [...series.occurrenceRows];
       if (dueRange) {
@@ -1422,7 +1424,7 @@ export class AssignmentsService {
           occurrenceStatus.statuses!.includes(row.status),
         );
       }
-      if (occurrenceStatus.upcomingOnly) {
+      if (occurrenceStatus.upcomingOnly || defaultNextUpcomingOnly) {
         const startOfToday = this.startOfDayUtc(now).getTime();
         filteredOccurrences = filteredOccurrences.filter(
           (row) =>
@@ -1457,13 +1459,19 @@ export class AssignmentsService {
         });
       }
 
-      // Upcoming: nearest first for pagination. Default history: newest first.
+      // Upcoming lists / default next-upcoming: nearest first. Other history: newest first.
+      const sortUpcomingFirst = occurrenceStatus.upcomingOnly || defaultNextUpcomingOnly;
       filteredOccurrences.sort((a, b) => {
-        const dueDiff = occurrenceStatus.upcomingOnly
+        const dueDiff = sortUpcomingFirst
           ? new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
           : new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime();
         return dueDiff !== 0 ? dueDiff : b.id - a.id;
       });
+
+      // Default (no range/status): only the next 1 upcoming occurrence.
+      if (defaultNextUpcomingOnly) {
+        filteredOccurrences = filteredOccurrences.slice(0, 1);
+      }
 
       const page = Math.max(1, query.page ?? 1);
       const limit = Math.min(Math.max(1, query.limit ?? 31), 100);
@@ -1474,13 +1482,19 @@ export class AssignmentsService {
 
       const occurrences = await this.serializeAssignedFormOccurrences(req, pageRows, actorId);
 
+      const nextUpcomingDue =
+        defaultNextUpcomingOnly && pageRows[0]
+          ? this.startOfDayUtc(pageRows[0].dueAt).toISOString().slice(0, 10)
+          : null;
       const metaDueFrom =
         dueRange?.start.toISOString().slice(0, 10) ??
+        nextUpcomingDue ??
         (occurrenceStatus.upcomingOnly
           ? this.startOfDayUtc(now).toISOString().slice(0, 10)
           : null);
       const metaDueTo =
         dueRange?.end.toISOString().slice(0, 10) ??
+        nextUpcomingDue ??
         (occurrenceStatus.upcomingOnly && series.endDate
           ? this.startOfDayUtc(series.endDate).toISOString().slice(0, 10)
           : null);
@@ -1536,11 +1550,7 @@ export class AssignmentsService {
       date?: string;
       dueFrom?: string;
       dueTo?: string;
-      status?: string;
     },
-    now: Date,
-    assignStartDate?: Date | null,
-    upcomingOnly = false,
   ): { start: Date; end: Date; month: string | null; date: string | null } | null {
     // Single calendar day (UI date picker).
     if (query.date) {
@@ -1585,24 +1595,8 @@ export class AssignmentsService {
       return { start, end, month: query.month, date: null };
     }
 
-    // status=upcoming: no default date window — return all upcoming, paginated.
-    if (upcomingOnly || query.status === 'upcoming') {
-      return null;
-    }
-
-    // Default: assign start → current date + 1 (one upcoming day), not a full month/year.
-    const today = this.startOfDayUtc(now);
-    const endDay = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-    let start = assignStartDate ? this.startOfDayUtc(assignStartDate) : today;
-    if (start.getTime() > endDay.getTime()) {
-      start = today;
-    }
-    return {
-      start,
-      end: this.endOfDayUtc(endDay),
-      month: null,
-      date: null,
-    };
+    // No explicit range: caller applies default (next 1 upcoming) or status=upcoming (all).
+    return null;
   }
 
   private resolveAssignedFormOccurrenceStatus(

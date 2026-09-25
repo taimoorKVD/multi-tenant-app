@@ -1975,16 +1975,18 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     });
     expect(byDate.data.occurrences.data[0].id).toBe(2);
 
-    // No range params → assign start (min dueAt) through today+1.
+    // No range params → next 1 upcoming only (fake clock = 2026-09-16; Oct 1 is next upcoming).
     const byDefault = await service.findAssignedFormDetail(req, 4, {});
     expect(byDefault.data.occurrences.meta).toMatchObject({
-      dueFrom: '2026-09-15',
-      dueTo: '2026-09-17',
+      dueFrom: '2026-10-01',
+      dueTo: '2026-10-01',
       month: null,
       date: null,
       total: 1,
     });
-    expect(byDefault.data.occurrences.data[0].id).toBe(2);
+    expect(byDefault.data.occurrences.data).toHaveLength(1);
+    expect(byDefault.data.occurrences.data[0].id).toBe(4);
+    expect(byDefault.data.occurrences.data[0].status).toBe(AssignmentStatus.PENDING);
   });
 
   it('filters View Details occurrences by responseStatus', async () => {
