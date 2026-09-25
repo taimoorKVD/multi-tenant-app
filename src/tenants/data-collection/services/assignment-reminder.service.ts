@@ -89,26 +89,48 @@ export class AssignmentReminderService {
     const templateRepo = connection.getRepository(DataCollectionTemplate);
 
     const now = new Date();
-    // dueAt is UTC midnight of the due day — only mark overdue after that calendar day ends.
+    // Midnight UTC dueAts: overdue after the due calendar day ends.
+    // Timed dueAts (e.g. 15:06): overdue once that instant has passed.
     const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+    const midnightUtc =
+      `EXTRACT(HOUR FROM due_at AT TIME ZONE 'UTC') = 0` +
+      ` AND EXTRACT(MINUTE FROM due_at AT TIME ZONE 'UTC') = 0` +
+      ` AND EXTRACT(SECOND FROM due_at AT TIME ZONE 'UTC') = 0`;
 
-    const overdueResult = await assignmentRepo
+    const midnightOverdue = await assignmentRepo
       .createQueryBuilder()
       .update(DataCollectionAssignment)
       .set({ status: AssignmentStatus.OVERDUE })
       .where('status IN (:...statuses)', {
         statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
       })
+      .andWhere(midnightUtc)
       .andWhere('due_at < :startOfToday', { startOfToday })
       .execute();
 
-    // Heal rows marked overdue too early under the old due_at < now rule.
+    const timedOverdue = await assignmentRepo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({ status: AssignmentStatus.OVERDUE })
+      .where('status IN (:...statuses)', {
+        statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
+      })
+      .andWhere(`NOT (${midnightUtc})`)
+      .andWhere('due_at < :now', { now })
+      .execute();
+
+    const overdueResult = {
+      affected: (midnightOverdue.affected ?? 0) + (timedOverdue.affected ?? 0),
+    };
+
+    // Heal rows marked overdue too early under the old due_at < now rule (midnight only).
     await assignmentRepo
       .createQueryBuilder()
       .update(DataCollectionAssignment)
       .set({ status: AssignmentStatus.IN_PROGRESS })
       .where('status = :status', { status: AssignmentStatus.OVERDUE })
+      .andWhere(midnightUtc)
       .andWhere('due_at >= :startOfToday', { startOfToday })
       .andWhere('updated_at > created_at')
       .execute();
@@ -118,7 +140,28 @@ export class AssignmentReminderService {
       .update(DataCollectionAssignment)
       .set({ status: AssignmentStatus.PENDING })
       .where('status = :status', { status: AssignmentStatus.OVERDUE })
+      .andWhere(midnightUtc)
       .andWhere('due_at >= :startOfToday', { startOfToday })
+      .execute();
+
+    // Heal timed rows still before their due clock time.
+    await assignmentRepo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({ status: AssignmentStatus.IN_PROGRESS })
+      .where('status = :status', { status: AssignmentStatus.OVERDUE })
+      .andWhere(`NOT (${midnightUtc})`)
+      .andWhere('due_at >= :now', { now })
+      .andWhere('updated_at > created_at')
+      .execute();
+
+    await assignmentRepo
+      .createQueryBuilder()
+      .update(DataCollectionAssignment)
+      .set({ status: AssignmentStatus.PENDING })
+      .where('status = :status', { status: AssignmentStatus.OVERDUE })
+      .andWhere(`NOT (${midnightUtc})`)
+      .andWhere('due_at >= :now', { now })
       .execute();
 
     const dueToday = await assignmentRepo.find({
