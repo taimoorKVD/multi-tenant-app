@@ -1975,18 +1975,20 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     });
     expect(byDate.data.occurrences.data[0].id).toBe(2);
 
-    // No range params → next 1 upcoming only (fake clock = 2026-09-16; Oct 1 is next upcoming).
+    // No range params → overdue/completed/in_progress + next 1 upcoming.
+    // Fake clock = 2026-09-16 → include Sept 15 overdue + Oct 1 upcoming.
     const byDefault = await service.findAssignedFormDetail(req, 4, {});
     expect(byDefault.data.occurrences.meta).toMatchObject({
-      dueFrom: '2026-10-01',
+      dueFrom: '2026-09-15',
       dueTo: '2026-10-01',
       month: null,
       date: null,
-      total: 1,
+      total: 2,
     });
-    expect(byDefault.data.occurrences.data).toHaveLength(1);
-    expect(byDefault.data.occurrences.data[0].id).toBe(4);
+    expect(byDefault.data.occurrences.data).toHaveLength(2);
+    expect(byDefault.data.occurrences.data.map((row: any) => row.id)).toEqual([4, 2]);
     expect(byDefault.data.occurrences.data[0].status).toBe(AssignmentStatus.PENDING);
+    expect(byDefault.data.occurrences.data[1].status).toBe(AssignmentStatus.OVERDUE);
   });
 
   it('filters View Details occurrences by responseStatus', async () => {
