@@ -194,6 +194,7 @@ export class AssignmentsService {
     options?: {
       viewerUserId?: number | null;
       completedByName?: string | null;
+      timeZone?: string | null;
     },
   ) {
     const formName = this.resolveFormName(assignment.template);
@@ -212,11 +213,15 @@ export class AssignmentsService {
     });
 
     // Expose `mode` only; drop legacy `assignmentType` from API payloads.
+    const timeZone = options?.timeZone;
+    const dueTimeFields = this.frequencyService.buildDueTimeFields(assignment.dueAt, timeZone);
     const payload = {
       ...assignment,
       mode,
       formName,
       templateName: formName,
+      dueDateLabel: this.formatDueDateLabel(assignment.dueAt, { timeZone }),
+      ...dueTimeFields,
       submissionId: submissionPayload?.id ?? null,
       submission: submissionPayload,
       completion,
@@ -243,6 +248,7 @@ export class AssignmentsService {
       .filter((id): id is number => id != null && Number.isFinite(id));
 
     const namesById = await this.loadUserNamesByIds(req, completedByIds);
+    const timeZone = this.resolveRequestTimeZone(req);
 
     return rows.map((row) => {
       const submission = submissionsByAssignment.get(row.id) || null;
@@ -250,6 +256,7 @@ export class AssignmentsService {
       return this.serializeAssignment(row, submission, {
         viewerUserId,
         completedByName: completedByUserId != null ? namesById.get(completedByUserId) || null : null,
+        timeZone,
       });
     });
   }
@@ -294,6 +301,13 @@ export class AssignmentsService {
           dueStart: dueDay.start,
           dueEnd: dueDay.end,
         });
+      }
+
+      // Employee portal: timed slots unlock at dueAt (e.g. 3:00 PM). Do not show them
+      // before that clock time. Midnight (legacy date-only) dueAts are already ≤ now
+      // for the rest of their UTC day, so they stay visible all day.
+      if (mineOnly) {
+        qb.andWhere('assignment.dueAt <= :availableAsOf', { availableAsOf: new Date() });
       }
 
       if (query.templateId) {
@@ -788,21 +802,27 @@ export class AssignmentsService {
     return status as AssignmentStatus;
   }
 
-  private formatDueDateLabel(dueAt: Date, options?: { includeTime?: boolean }): string {
+  private resolveRequestTimeZone(req?: any): string {
+    return this.frequencyService.getFrequencyTimeZone(req?.tenant?.timezone);
+  }
+
+  private formatDueDateLabel(
+    dueAt: Date,
+    options?: { includeTime?: boolean; timeZone?: string | null },
+  ): string {
     const value = dueAt instanceof Date ? dueAt : new Date(dueAt);
+    const timeZone = this.frequencyService.getFrequencyTimeZone(options?.timeZone);
     const datePart = new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      timeZone: 'UTC',
+      timeZone,
     }).format(value);
 
     const includeTime = options?.includeTime !== false;
     if (includeTime && this.frequencyService.hasClockTime(value)) {
-      return `${datePart}, ${this.frequencyService.formatTimeAmPm(
-        value.getUTCHours(),
-        value.getUTCMinutes(),
-      )}`;
+      const parts = this.frequencyService.getZonedClockParts(value, timeZone);
+      return `${datePart}, ${this.frequencyService.formatTimeAmPm(parts.hours, parts.minutes)}`;
     }
     return datePart;
   }
@@ -1257,6 +1277,7 @@ export class AssignmentsService {
     }
 
     const namesById = await this.loadUserNamesByIds(req, [...assigneeIds]);
+    const timeZone = this.resolveRequestTimeZone(req);
 
     return series.map((item) => {
       const row = item.representative;
@@ -1289,6 +1310,7 @@ export class AssignmentsService {
       const nextDueAt = item.nextDueAt ?? row.dueAt;
       const startDate = item.startDate;
       const endDate = item.endDate;
+      const dueTimeFields = this.frequencyService.buildDueTimeFields(nextDueAt, timeZone);
 
       return {
         id: row.id,
@@ -1302,17 +1324,22 @@ export class AssignmentsService {
         frequency,
         frequencyLabel,
         startDate,
-        startDateLabel: startDate ? this.formatDueDateLabel(startDate, { includeTime: false }) : null,
+        startDateLabel: startDate
+          ? this.formatDueDateLabel(startDate, { includeTime: false, timeZone })
+          : null,
         endDate,
-        endDateLabel: endDate ? this.formatDueDateLabel(endDate, { includeTime: false }) : null,
+        endDateLabel: endDate
+          ? this.formatDueDateLabel(endDate, { includeTime: false, timeZone })
+          : null,
         periodLabel:
           startDate && endDate
-            ? `${this.formatDueDateLabel(startDate, { includeTime: false })} → ${this.formatDueDateLabel(endDate, { includeTime: false })}`
+            ? `${this.formatDueDateLabel(startDate, { includeTime: false, timeZone })} → ${this.formatDueDateLabel(endDate, { includeTime: false, timeZone })}`
             : null,
         dueAt: nextDueAt,
-        dueDateLabel: this.formatDueDateLabel(nextDueAt),
+        dueDateLabel: this.formatDueDateLabel(nextDueAt, { timeZone }),
         nextDueAt,
-        nextDueLabel: this.formatDueDateLabel(nextDueAt),
+        nextDueLabel: this.formatDueDateLabel(nextDueAt, { timeZone }),
+        ...dueTimeFields,
         status: row.status,
         statusLabel: this.statusLabel(row.status),
         mode,
@@ -1685,6 +1712,7 @@ export class AssignmentsService {
       ...[...submissionsByAssignment.values()].map((s) => s.templateVersionId),
     ];
     const versionsById = await this.loadTemplateVersionsByIds(req, versionIds);
+    const timeZone = this.resolveRequestTimeZone(req);
 
     return rows.map((row) => {
       const submission = submissionsByAssignment.get(row.id) || null;
@@ -1740,7 +1768,8 @@ export class AssignmentsService {
             ? namesById.get(row.assigneeUserId) || `User #${row.assigneeUserId}`
             : null,
         dueAt: row.dueAt,
-        dueDateLabel: this.formatDueDateLabel(row.dueAt),
+        dueDateLabel: this.formatDueDateLabel(row.dueAt, { timeZone }),
+        ...this.frequencyService.buildDueTimeFields(row.dueAt, timeZone),
         status: row.status,
         statusLabel: isUpcomingPending ? 'Upcoming' : this.statusLabel(row.status),
         mode,
@@ -1809,6 +1838,9 @@ export class AssignmentsService {
       }
       if (assignment.status === AssignmentStatus.CANCELLED) {
         throw new BadRequestException('Assignment is cancelled');
+      }
+      if (new Date(assignment.dueAt).getTime() > Date.now()) {
+        throw new BadRequestException('This task is not available until its scheduled time');
       }
 
       const template = assignment.template;
@@ -1940,7 +1972,11 @@ export class AssignmentsService {
       return [];
     }
 
-    const dueDates = this.frequencyService.expandOccurrences(frequency);
+    const dueDates = this.frequencyService.expandOccurrences(
+      frequency,
+      undefined,
+      req?.tenant?.timezone,
+    );
     if (!dueDates.length) {
       throw new BadRequestException('Frequency produced no occurrence dates. Check date and recurring settings.');
     }
@@ -2132,15 +2168,11 @@ export class AssignmentsService {
   }
 
   /**
-   * Midnight UTC dueAts stay open for the whole due day (legacy date-only schedules).
-   * Timed dueAts (e.g. 15:06 → 3:06 PM) become overdue once that instant has passed.
+   * Overdue after the due UTC calendar day ends (midnight and timed slots).
+   * Timed dueAts unlock in the employee portal at dueAt; employees can complete
+   * anytime for the rest of that day before this overdue rule applies.
    */
   private openStatusForDueAt(dueAt: Date, now = new Date()): AssignmentStatus {
-    if (this.frequencyService.hasClockTime(dueAt)) {
-      return dueAt.getTime() < now.getTime()
-        ? AssignmentStatus.OVERDUE
-        : AssignmentStatus.PENDING;
-    }
     return this.startOfDayUtc(dueAt).getTime() < this.startOfDayUtc(now).getTime()
       ? AssignmentStatus.OVERDUE
       : AssignmentStatus.PENDING;
@@ -2402,85 +2434,44 @@ export class AssignmentsService {
   async markOverdue(req: any) {
     try {
       const repo = req.tenantConnection.getRepository(DataCollectionAssignment);
-      const now = new Date();
-      // Midnight UTC dueAts stay open all due day; timed dueAts overdue after the clock time.
-      const startOfToday = this.startOfDayUtc(now);
-      const midnightUtc =
-        `EXTRACT(HOUR FROM due_at AT TIME ZONE 'UTC') = 0` +
-        ` AND EXTRACT(MINUTE FROM due_at AT TIME ZONE 'UTC') = 0` +
-        ` AND EXTRACT(SECOND FROM due_at AT TIME ZONE 'UTC') = 0`;
+      // Due calendar day must fully pass (UTC). Timed slots unlock at dueAt in my-work;
+      // employees keep the rest of that day before overdue applies.
+      const startOfToday = this.startOfDayUtc(new Date());
 
-      const midnightOverdue = await repo
+      const result = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
         .set({ status: AssignmentStatus.OVERDUE })
         .where('status IN (:...statuses)', {
           statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
         })
-        .andWhere(midnightUtc)
         .andWhere('due_at < :startOfToday', { startOfToday })
         .execute();
 
-      const timedOverdue = await repo
-        .createQueryBuilder()
-        .update(DataCollectionAssignment)
-        .set({ status: AssignmentStatus.OVERDUE })
-        .where('status IN (:...statuses)', {
-          statuses: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS],
-        })
-        .andWhere(`NOT (${midnightUtc})`)
-        .andWhere('due_at < :now', { now })
-        .execute();
-
-      // Heal rows marked overdue too early (still before their effective cutoff).
-      const startedHealedMidnight = await repo
+      // Heal rows marked overdue too early (still due today or later).
+      const startedHealed = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
         .set({ status: AssignmentStatus.IN_PROGRESS })
         .where('status = :status', { status: AssignmentStatus.OVERDUE })
-        .andWhere(midnightUtc)
         .andWhere('due_at >= :startOfToday', { startOfToday })
         .andWhere('updated_at > created_at')
         .execute();
 
-      const pendingHealedMidnight = await repo
+      const pendingHealed = await repo
         .createQueryBuilder()
         .update(DataCollectionAssignment)
         .set({ status: AssignmentStatus.PENDING })
         .where('status = :status', { status: AssignmentStatus.OVERDUE })
-        .andWhere(midnightUtc)
         .andWhere('due_at >= :startOfToday', { startOfToday })
-        .execute();
-
-      const startedHealedTimed = await repo
-        .createQueryBuilder()
-        .update(DataCollectionAssignment)
-        .set({ status: AssignmentStatus.IN_PROGRESS })
-        .where('status = :status', { status: AssignmentStatus.OVERDUE })
-        .andWhere(`NOT (${midnightUtc})`)
-        .andWhere('due_at >= :now', { now })
-        .andWhere('updated_at > created_at')
-        .execute();
-
-      const pendingHealedTimed = await repo
-        .createQueryBuilder()
-        .update(DataCollectionAssignment)
-        .set({ status: AssignmentStatus.PENDING })
-        .where('status = :status', { status: AssignmentStatus.OVERDUE })
-        .andWhere(`NOT (${midnightUtc})`)
-        .andWhere('due_at >= :now', { now })
         .execute();
 
       return {
         success: true,
         message: 'Overdue assignments updated',
         data: {
-          affected: (midnightOverdue.affected ?? 0) + (timedOverdue.affected ?? 0),
-          healed:
-            (startedHealedMidnight.affected ?? 0) +
-            (pendingHealedMidnight.affected ?? 0) +
-            (startedHealedTimed.affected ?? 0) +
-            (pendingHealedTimed.affected ?? 0),
+          affected: result.affected ?? 0,
+          healed: (startedHealed.affected ?? 0) + (pendingHealed.affected ?? 0),
         },
       };
     } catch (error) {

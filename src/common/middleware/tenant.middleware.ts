@@ -143,6 +143,7 @@ export class TenantMiddleware implements NestMiddleware {
         '/api/countries',
         '/api/states',
         '/api/cities',
+        '/api/timezones',
         '/api/collection',
         '/api/docs',
         '/api/cron',
@@ -307,8 +308,11 @@ export class TenantMiddleware implements NestMiddleware {
       // ✅ CONNECT DB
       // =========================
       let connection;
+      let tenantRecord;
       try {
-        connection = await this.tenantsService.getTenantConnection(tenant);
+        const ctx = await this.tenantsService.resolveTenantContext(tenant);
+        tenantRecord = ctx.tenant;
+        connection = ctx.connection;
       } catch (error) {
         // TEMPORARY: during setup, allow email-driven public requests to continue even if tenant slug is unresolved.
         if (
@@ -321,6 +325,7 @@ export class TenantMiddleware implements NestMiddleware {
       }
 
       req['tenantId'] = tenant;
+      req['tenant'] = tenantRecord;
       req['tenantConnection'] = connection;
 
       return next();

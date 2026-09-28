@@ -24,6 +24,7 @@ import {TENANT_INDUSTRIES} from './tenant-industries';
 import {Permission} from '../../tenants/permission/entities';
 import {ApiResponse} from '../../common/abstract';
 import {resolvePermissionModuleName} from '../../common/utils/permission-module';
+import {isValidIanaTimeZone} from '../../common/utils/timezone.util';
 import { FORM_BUILDER_MODULE_SEEDS, FormBuilderFieldSeed } from '../../tenants/form-builder/config/module-seeds';
 import {
   DynamicModule,
@@ -342,6 +343,19 @@ export class TenantsService {
     return [code, number].filter(Boolean).join(' ');
   }
 
+  /** Empty / undefined → null; otherwise must be a valid IANA zone. */
+  private normalizeTimezone(value?: string | null): string | null {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    if (!isValidIanaTimeZone(trimmed)) {
+      throw new BadRequestException(
+        `Invalid timezone "${trimmed}". Use an IANA name such as Asia/Karachi or America/New_York.`,
+      );
+    }
+    return trimmed;
+  }
+
   private serializeTenant(
     tenant: Tenant,
     extras?: {
@@ -376,6 +390,7 @@ export class TenantsService {
       city: tenant.city ?? null,
       address: tenant.address ?? null,
       postalCode: tenant.postalCode ?? null,
+      timezone: tenant.timezone ?? null,
       status: tenant.status || 'active',
       plan: extras?.plan ?? null,
       planId: extras?.planId ?? null,
@@ -632,7 +647,7 @@ export class TenantsService {
     }
   }
 
-  async getTenantConnection(identifier: string): Promise<DataSource> {
+  async resolveTenantContext(identifier: string): Promise<{ tenant: Tenant; connection: DataSource }> {
     const tenant = await this.findOneFlexible(identifier);
     if (!tenant) {
       throw new UnauthorizedException(`Tenant not found for "${identifier}"`);
@@ -645,13 +660,19 @@ export class TenantsService {
     }
 
     try {
-      return await getTenantDataSource(tenant.dbName);
+      const connection = await getTenantDataSource(tenant.dbName);
+      return { tenant, connection };
     } catch (err) {
       console.error(`❌ ERROR connecting tenant DB "${tenant.dbName}"`, err);
       throw new BadRequestException(
           `Unable to connect to database "${tenant.dbName}" for tenant "${identifier}"`,
       );
     }
+  }
+
+  async getTenantConnection(identifier: string): Promise<DataSource> {
+    const { connection } = await this.resolveTenantContext(identifier);
+    return connection;
   }
 
   async assertTenantAvailable(name: string, domain: string) {
@@ -696,6 +717,7 @@ export class TenantsService {
         city: dto.city?.trim() || null,
         address: dto.address?.trim() || null,
         postalCode: dto.postalCode?.trim() || null,
+        timezone: this.normalizeTimezone(dto.timezone),
         status: dto.trialDays && dto.trialDays > 0 ? 'trial' : 'active',
       });
       await this.tenantRepo.save(tenantRecord);
@@ -1287,6 +1309,7 @@ export class TenantsService {
       if (dto.city !== undefined) tenant.city = dto.city.trim() || null;
       if (dto.address !== undefined) tenant.address = dto.address.trim() || null;
       if (dto.postalCode !== undefined) tenant.postalCode = dto.postalCode.trim() || null;
+      if (dto.timezone !== undefined) tenant.timezone = this.normalizeTimezone(dto.timezone);
       if (dto.customDomain !== undefined) tenant.customDomain = dto.customDomain.trim() || null;
 
       const saved = await this.tenantRepo.save(tenant).catch((dbError) => {

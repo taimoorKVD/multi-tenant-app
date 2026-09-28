@@ -863,6 +863,62 @@ describe('FrequencyService', () => {
   });
 
   describe('flat UI payload + time / times', () => {
+    it('interprets wall-clock times in tenant timezone (Asia/Karachi)', () => {
+      // 2:56 PM Pakistan = 14:56 local = 09:56 UTC
+      const dates = service.expandOccurrences(
+        {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'day',
+            repeatCount: 1,
+            times: ['14:56'],
+          },
+        },
+        undefined,
+        'Asia/Karachi',
+      );
+      expect(dates.map((d) => d.toISOString())).toEqual(['2026-09-28T09:56:00.000Z']);
+      expect(service.formatDateTimeAmPm(dates[0], 'Asia/Karachi')).toBe('Sep 28, 2026, 2:56 PM');
+      expect(service.buildDueTimeFields(dates[0], 'Asia/Karachi')).toEqual({
+        hasDueTime: true,
+        dueTime: '14:56',
+        dueTimeAmPm: '2:56 PM',
+        dueTimeParts: { hour: '02', minute: '56', period: 'PM' },
+      });
+    });
+
+    it('prefers tenant timezone override; defaults to UTC when unset', () => {
+      const dates = service.expandOccurrences(
+        {
+          type: 'atOnce',
+          date: '2026-09-28',
+          time: '14:56',
+        },
+        undefined,
+        'Asia/Karachi',
+      );
+      expect(dates.map((d) => d.toISOString())).toEqual(['2026-09-28T09:56:00.000Z']);
+      expect(service.buildDueTimeFields(dates[0], 'Asia/Karachi')).toEqual({
+        hasDueTime: true,
+        dueTime: '14:56',
+        dueTimeAmPm: '2:56 PM',
+        dueTimeParts: { hour: '02', minute: '56', period: 'PM' },
+      });
+      expect(service.getFrequencyTimeZone('America/New_York')).toBe('America/New_York');
+      expect(service.getFrequencyTimeZone('Not/AZone')).toBe('UTC');
+      expect(service.getFrequencyTimeZone(null)).toBe('UTC');
+
+      const utcDates = service.expandOccurrences({
+        type: 'atOnce',
+        date: '2026-09-28',
+        time: '14:56',
+      });
+      expect(utcDates.map((d) => d.toISOString())).toEqual(['2026-09-28T14:56:00.000Z']);
+    });
+
     it('atOnce with 24h time materializes that UTC clock (15:06 → 3:06 PM)', () => {
       const dates = service.expandOccurrences({
         type: 'atOnce',
@@ -1225,6 +1281,239 @@ describe('FrequencyService', () => {
         },
       });
       expect(dates.map((d) => d.toISOString())).toEqual(['2026-09-27T01:00:00.000Z']);
+    });
+  });
+
+  describe('all frequency types with tenant timezone selected', () => {
+    // 14:56 Asia/Karachi (UTC+5) → 09:56Z; 14:56 America/New_York (EDT UTC-4 on 2026-09-28) → 18:56Z
+    const cases: Array<{
+      label: string;
+      timeZone: string;
+      localTime: string;
+      expectedIso: string;
+      frequency: Record<string, unknown>;
+    }> = [
+      {
+        label: 'atOnce',
+        timeZone: 'Asia/Karachi',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T09:56:00.000Z',
+        frequency: { type: 'atOnce', date: '2026-09-28', time: '14:56' },
+      },
+      {
+        label: 'daily',
+        timeZone: 'Asia/Karachi',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T09:56:00.000Z',
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: { every: 1, interval: 'day', repeatCount: 1, times: ['14:56'] },
+        },
+      },
+      {
+        label: 'weekly (Mon)',
+        timeZone: 'Asia/Karachi',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T09:56:00.000Z', // 2026-09-28 is Monday
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'week',
+            repeatCount: 1,
+            daysOfWeek: ['monday'],
+            times: ['14:56'],
+          },
+        },
+      },
+      {
+        label: 'monthly dayOfMonth',
+        timeZone: 'Asia/Karachi',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T09:56:00.000Z',
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'month',
+            repeatCount: 1,
+            monthMode: 'dayOfMonth',
+            dayOfMonth: 28,
+            times: ['14:56'],
+          },
+        },
+      },
+      {
+        label: 'yearly',
+        timeZone: 'Asia/Karachi',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T09:56:00.000Z',
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'year',
+            repeatCount: 1,
+            yearMonth: 'september',
+            yearDay: 28,
+            times: ['14:56'],
+          },
+        },
+      },
+      {
+        label: 'atOnce America/New_York',
+        timeZone: 'America/New_York',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T18:56:00.000Z',
+        frequency: { type: 'atOnce', date: '2026-09-28', time: '14:56' },
+      },
+      {
+        label: 'daily America/New_York',
+        timeZone: 'America/New_York',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T18:56:00.000Z',
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          times: ['14:56'],
+          every: 1,
+          interval: 'day',
+          repeatCount: 1,
+        },
+      },
+      {
+        label: 'weekly America/New_York',
+        timeZone: 'America/New_York',
+        localTime: '09:00',
+        expectedIso: '2026-09-28T13:00:00.000Z',
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'week',
+            daysOfWeek: ['monday'],
+            times: ['09:00'],
+          },
+        },
+      },
+      {
+        label: 'monthly Europe/London (BST)',
+        timeZone: 'Europe/London',
+        localTime: '14:56',
+        expectedIso: '2026-09-28T13:56:00.000Z', // BST = UTC+1 in September
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          recurring: {
+            every: 1,
+            interval: 'month',
+            monthMode: 'dayOfMonth',
+            dayOfMonth: 28,
+            times: ['14:56'],
+          },
+        },
+      },
+      {
+        label: 'multi times daily Asia/Karachi',
+        timeZone: 'Asia/Karachi',
+        localTime: '09:00,17:30',
+        expectedIso: '2026-09-28T04:00:00.000Z,2026-09-28T12:30:00.000Z',
+        frequency: {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'day',
+            times: ['09:00', '17:30'],
+          },
+        },
+      },
+    ];
+
+    it.each(cases)(
+      '$label → wall-clock $localTime in $timeZone',
+      ({ timeZone, localTime, expectedIso, frequency }) => {
+        const dates = service.expandOccurrences(frequency as any, undefined, timeZone);
+        expect(dates.map((d) => d.toISOString())).toEqual(expectedIso.split(','));
+
+        for (let i = 0; i < dates.length; i++) {
+          const expectedLocal = localTime.split(',')[i];
+          const fields = service.buildDueTimeFields(dates[i], timeZone);
+          expect(fields.hasDueTime).toBe(true);
+          expect(fields.dueTime).toBe(expectedLocal);
+        }
+      },
+    );
+
+    it('unset tenant timezone keeps UTC wall-clock for all types', () => {
+      const payloads = [
+        { type: 'atOnce', date: '2026-09-28', time: '14:56' },
+        {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: { every: 1, interval: 'day', times: ['14:56'] },
+        },
+        {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'week',
+            daysOfWeek: ['monday'],
+            times: ['14:56'],
+          },
+        },
+        {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'month',
+            monthMode: 'dayOfMonth',
+            dayOfMonth: 28,
+            times: ['14:56'],
+          },
+        },
+        {
+          type: 'recurring',
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          recurring: {
+            every: 1,
+            interval: 'year',
+            yearMonth: 'september',
+            yearDay: 28,
+            times: ['14:56'],
+          },
+        },
+      ];
+
+      for (const frequency of payloads) {
+        const dates = service.expandOccurrences(frequency as any);
+        expect(dates.map((d) => d.toISOString())).toEqual(['2026-09-28T14:56:00.000Z']);
+        expect(service.buildDueTimeFields(dates[0])).toEqual({
+          hasDueTime: true,
+          dueTime: '14:56',
+          dueTimeAmPm: '2:56 PM',
+          dueTimeParts: { hour: '02', minute: '56', period: 'PM' },
+        });
+      }
     });
   });
 });

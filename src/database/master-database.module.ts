@@ -9,6 +9,7 @@ import {JobPosition} from '../master/job-position/entities';
 import {City} from '../master/cities/entities';
 import {Country} from '../master/countries/entities';
 import {State} from '../master/states/entities';
+import {Timezone} from '../master/timezones/entities';
 import {
   EmailLog,
   EmailTemplate,
@@ -41,6 +42,7 @@ import {
       City,
       Country,
       State,
+      Timezone,
       EmailTemplate,
       EmailTemplateRecipient,
       GlobalMailSetting,

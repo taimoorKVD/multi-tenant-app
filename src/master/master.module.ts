@@ -12,6 +12,7 @@ import {JwtService} from "@nestjs/jwt";
 import {CountriesModule} from './countries/countries.module';
 import {CitiesModule} from './cities/cities.module';
 import {StatesModule} from './states/states.module';
+import {TimezonesModule} from './timezones/timezones.module';
 import {MailAdminModule} from './mail/mail-admin.module';
 import { ActivityLogsModule } from './activity-logs';
 import { ActivityLogInterceptor } from '../common/interceptors/activity-log.interceptor';
@@ -32,6 +33,7 @@ import { PublicSignupModule } from './billing/public-signup/public-signup.module
     CountriesModule,
     CitiesModule,
     StatesModule,
+    TimezonesModule,
     MailAdminModule,
     ActivityLogsModule,
     SystemModule,

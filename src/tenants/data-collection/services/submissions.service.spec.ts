@@ -1,5 +1,6 @@
 import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
+import { FrequencyService } from './frequency.service';
 import {
   DataCollectionAssignment,
   DataCollectionSubmission,
@@ -9,6 +10,8 @@ import {
   TemplateVersion,
 } from '../entities';
 import { User } from '../../users/entities';
+
+const frequencyService = new FrequencyService();
 
 function withFlagAndEventSupport(req: any) {
   const flagRepo = {
@@ -131,7 +134,7 @@ describe('SubmissionsService findAll / findOne template enrichment', () => {
     };
     withFlagAndEventSupport(req);
 
-    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any);
+    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any, frequencyService);
     return { service, req, submissionRepo, assignmentRepo, templateRepo, versionRepo, userRepo };
   }
 
@@ -211,7 +214,7 @@ describe('SubmissionsService findAll / findOne template enrichment', () => {
 describe('SubmissionsService assign.mode shared completion', () => {
   it('marks shared siblings completed when one assignee submits', async () => {
     const runAfterSubmit = jest.fn().mockResolvedValue({ actions: [] });
-    const service = new SubmissionsService({ runAfterSubmit } as any);
+    const service = new SubmissionsService({ runAfterSubmit } as any, frequencyService);
 
     const assignment = {
       id: 5,
@@ -318,7 +321,7 @@ describe('SubmissionsService assign.mode shared completion', () => {
 
   it('completes only the current assignment when assign.mode is individual', async () => {
     const runAfterSubmit = jest.fn().mockResolvedValue({ actions: [] });
-    const service = new SubmissionsService({ runAfterSubmit } as any);
+    const service = new SubmissionsService({ runAfterSubmit } as any, frequencyService);
 
     const assignment = {
       id: 5,
@@ -502,9 +505,12 @@ describe('SubmissionsService assign.mode shared completion', () => {
     };
     withFlagAndEventSupport(req);
 
-    const service = new SubmissionsService({
-      runAfterSubmit: jest.fn(),
-    } as any);
+    const service = new SubmissionsService(
+      {
+        runAfterSubmit: jest.fn(),
+      } as any,
+      new FrequencyService(),
+    );
 
     const result = await service.create(req, 5, {
       answers: { fld_001: 'kept on leave' },
@@ -627,7 +633,7 @@ describe('SubmissionsService review workflow', () => {
       },
     };
 
-    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any);
+    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any, frequencyService);
     return { service, req, submissionRepo, flagRepo, eventRepo, submission };
   }
 
@@ -706,7 +712,7 @@ describe('SubmissionsService review workflow', () => {
     const { flagRepo } = withFlagAndEventSupport(req);
     flagRepo.count.mockResolvedValue(0);
 
-    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any);
+    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any, frequencyService);
     const result = await service.create(req, 5, { submit: true } as any);
     expect(result.data.status).toBe('submitted');
   });
@@ -786,7 +792,7 @@ describe('SubmissionsService review workflow', () => {
     const { flagRepo } = withFlagAndEventSupport(req);
     flagRepo.count.mockResolvedValue(2);
 
-    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any);
+    const service = new SubmissionsService({ runAfterSubmit: jest.fn() } as any, frequencyService);
     const result = await service.create(req, 5, { submit: true } as any);
     expect(result.data.status).toBe('flagged');
   });

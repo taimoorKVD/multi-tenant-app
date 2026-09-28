@@ -9,6 +9,7 @@ import {JobPositionModule as MasterJobPositionModule} from '../master/job-positi
 import {CountriesModule as MasterCountriesModule} from '../master/countries/countries.module';
 import {CitiesModule as MasterCitiesModule} from '../master/cities/cities.module';
 import {StatesModule as MasterStatesModule} from '../master/states/states.module';
+import {TimezonesModule as MasterTimezonesModule} from '../master/timezones/timezones.module';
 import {MailAdminModule as MasterMailAdminModule} from '../master/mail/mail-admin.module';
 import {ActivityLogsModule as MasterActivityLogsModule} from '../master/activity-logs/activity-logs.module';
 import {TenantAuthModule} from '../tenants/auth/auth.module';
@@ -71,6 +72,7 @@ export function setupSwagger(app: INestApplication) {
             MasterCountriesModule,
             MasterCitiesModule,
             MasterStatesModule,
+            MasterTimezonesModule,
             MasterMailAdminModule,
             MasterActivityLogsModule,
             MasterDashboardModule,
@@ -126,6 +128,7 @@ export function setupSwagger(app: INestApplication) {
                     'Country Management',
                     'State Management',
                     'City Management',
+                    'Timezone Management',
                     'Email Management',
                     'Activity Logs',
                     'Plan Management',

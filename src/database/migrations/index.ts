@@ -22,3 +22,5 @@ export * from './1701010023000-CreateWebsiteSignupsTable';
 export * from './1701010024000-AddOneTimeLoginTokenToWebsiteSignups';
 export * from './1701010025000-AddYearlyPricingToPlansTable';
 export * from './1701010026000-AddModuleToPermissionsTable';
+export * from './1701010027000-AddTenantTimezone';
+export * from './1701010028000-CreateTimezonesTable';

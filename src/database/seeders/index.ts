@@ -20,3 +20,4 @@ export * from './019-tenant.seeder';
 export * from './020-tenant-job-positions.seeder';
 export * from './021-vendors.seeder';
 export * from './022-items.seeder';
+export * from './023-timezone.seeder';

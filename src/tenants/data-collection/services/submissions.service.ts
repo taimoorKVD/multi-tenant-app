@@ -24,6 +24,7 @@ import { CreateSubmissionDto, UpdateSubmissionDto } from '../dto/submissions/sub
 import { FailSubmissionDto } from '../dto/submissions/submission-flag.dto';
 import { QuerySubmissionDto } from '../dto/submissions/query-submission.dto';
 import { buildAssignmentCompletion } from '../utils/assignment-completion.util';
+import { FrequencyService } from './frequency.service';
 import {
   assertSubmissionStatusTransition,
   isFinalizedSubmissionStatus,
@@ -34,7 +35,10 @@ import { WorkflowActionsService } from './workflow-actions.service';
 
 @Injectable()
 export class SubmissionsService {
-  constructor(private readonly workflowActions: WorkflowActionsService) {}
+  constructor(
+    private readonly workflowActions: WorkflowActionsService,
+    private readonly frequencyService: FrequencyService,
+  ) {}
 
   private getActorId(req: any): number | null {
     const candidate = req.user?.id ?? req.user?.sub ?? req.user?.userId ?? null;
@@ -124,6 +128,7 @@ export class SubmissionsService {
     options?: {
       viewerUserId?: number | null;
       completedByName?: string | null;
+      timeZone?: string | null;
     },
   ) {
     const schema = (version?.schemaSnapshot ?? template?.schema ?? null) as Record<
@@ -189,6 +194,11 @@ export class SubmissionsService {
       template: templatePayload,
       mode,
       completion,
+      dueAt: assignment?.dueAt ?? null,
+      ...this.frequencyService.buildDueTimeFields(
+        assignment?.dueAt ?? null,
+        options?.timeZone,
+      ),
     };
   }
 
@@ -298,6 +308,7 @@ export class SubmissionsService {
       .filter((id): id is number => id != null && Number.isFinite(id));
 
     const namesById = await this.loadUserNamesByIds(req, completedByIds);
+    const timeZone = this.frequencyService.getFrequencyTimeZone(req?.tenant?.timezone);
 
     return submissions.map((submission) => {
       const assignment = assignmentsById.get(submission.assignmentId) || null;
@@ -310,6 +321,7 @@ export class SubmissionsService {
         viewerUserId,
         completedByName:
           completedByUserId != null ? namesById.get(completedByUserId) || null : null,
+        timeZone,
       });
     });
   }
