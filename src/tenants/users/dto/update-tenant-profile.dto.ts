@@ -32,4 +32,14 @@ export class UpdateTenantProfileDto {
   @IsString()
   @MaxLength(30)
   phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    example: 'Asia/Karachi',
+    description:
+      'IANA timezone for this workspace (org). Pick from GET /timezones. Empty string clears to UTC default.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string;
 }

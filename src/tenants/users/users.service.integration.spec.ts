@@ -35,6 +35,14 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
     syncUsers: jest.fn().mockResolvedValue(undefined),
   };
 
+  const tenantsServiceMock = {
+    findOneFlexible: jest.fn().mockResolvedValue({ id: 1, timezone: null }),
+  };
+
+  const masterTenantRepoMock = {
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+
   beforeAll(async () => {
     dataSource = await getTenantDataSource('tenant_kingdomvision');
     service = new UsersService(
@@ -42,6 +50,8 @@ describeIntegration('UsersService integration (tenant_kingdomvision)', () => {
       mailServiceMock,
       new DynamicFieldsService(),
       permissionSessionSyncMock as any,
+      tenantsServiceMock as any,
+      masterTenantRepoMock as any,
     );
 
     userRepo = dataSource.getRepository(User);

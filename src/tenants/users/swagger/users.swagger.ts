@@ -36,6 +36,7 @@ export const TenantUsersSwagger = {
               email: 'admin@brian.com',
               phone: null,
               phone_number: null,
+              timezone: 'Asia/Karachi',
               role: { id: 1, name: 'Admin' },
               account_type: 'Admin',
               job_position: null,
@@ -55,17 +56,18 @@ export const TenantUsersSwagger = {
       ApiOperation({
         summary: 'Update current tenant profile',
         description:
-          'Updates first_name / last_name (or name) and phone for the logged-in user. Email and role are read-only and ignored if sent.',
+          'Updates first_name / last_name (or name), phone, and workspace timezone for the logged-in user. Email and role are read-only and ignored if sent. `timezone` is stored on the tenant org (IANA name from GET /timezones).',
       }),
       ApiBody({
         type: UpdateTenantProfileDto,
         examples: {
           valid: {
-            summary: 'Update name and phone',
+            summary: 'Update name, phone, and timezone',
             value: {
               first_name: 'brian',
               last_name: 'Smith',
               phone: '+1 555 0100',
+              timezone: 'Asia/Karachi',
             },
           },
         },
@@ -87,6 +89,7 @@ export const TenantUsersSwagger = {
               email: 'admin@brian.com',
               phone: '+1 555 0100',
               phone_number: '+1 555 0100',
+              timezone: 'Asia/Karachi',
               role: { id: 1, name: 'Admin' },
               account_type: 'Admin',
               job_position: null,

@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Not, Repository } from 'typeorm';
 import * as nodemailer from 'nodemailer';
 import { TenantAbstractService } from '../../common/abstract';
@@ -22,6 +23,9 @@ import {
   toNodemailerLogoAttachments,
 } from '../../mail/utils/email-logo.util';
 import { PermissionSessionSyncService } from '../auth/permission-session-sync.service';
+import { Tenant } from '../../master/tenants/entities';
+import { TenantsService } from '../../master/tenants/tenants.service';
+import { isValidIanaTimeZone } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -32,6 +36,9 @@ export class UsersService extends TenantAbstractService<User> {
     private readonly mailService: MailService,
     private readonly dynamicFields: DynamicFieldsService,
     private readonly permissionSessionSync: PermissionSessionSyncService,
+    private readonly tenantsService: TenantsService,
+    @InjectRepository(Tenant)
+    private readonly masterTenantRepo: Repository<Tenant>,
   ) {
     super(dataSource.getRepository(User));
   }
@@ -946,7 +953,10 @@ export class UsersService extends TenantAbstractService<User> {
     };
   }
 
-  private buildProfilePayload(user: User) {
+  private buildProfilePayload(
+    user: User,
+    options?: { timezone?: string | null },
+  ) {
     const { first_name, last_name } = this.splitDisplayName(user.name);
     return {
       id: user.id,
@@ -956,6 +966,7 @@ export class UsersService extends TenantAbstractService<User> {
       email: user.email,
       phone: user.phoneNumber,
       phone_number: user.phoneNumber,
+      timezone: options?.timezone ?? null,
       role: user.role
         ? {
             id: user.role.id,
@@ -970,6 +981,54 @@ export class UsersService extends TenantAbstractService<User> {
       created_at: user.createdAt,
       updated_at: user.updatedAt,
     };
+  }
+
+  private async resolveWorkspaceTimezone(req: any): Promise<string | null> {
+    if (req?.tenant?.timezone != null) {
+      return req.tenant.timezone ?? null;
+    }
+    const identifier = req?.tenantId || req?.tenant?.subdomain || req?.tenant?.dbName;
+    if (!identifier) return null;
+    const tenant = await this.tenantsService.findOneFlexible(String(identifier));
+    return tenant?.timezone ?? null;
+  }
+
+  private normalizeProfileTimezone(value?: string | null): string | null {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    if (!isValidIanaTimeZone(trimmed)) {
+      throw new BadRequestException(
+        `Invalid timezone "${trimmed}". Use an IANA name such as Asia/Karachi or America/New_York.`,
+      );
+    }
+    return trimmed;
+  }
+
+  private async updateWorkspaceTimezone(req: any, timezone?: string): Promise<string | null> {
+    if (timezone === undefined) {
+      return this.resolveWorkspaceTimezone(req);
+    }
+
+    const normalized = this.normalizeProfileTimezone(timezone);
+    const identifier = req?.tenantId || req?.tenant?.subdomain || req?.tenant?.dbName;
+    if (!identifier) {
+      throw new BadRequestException('Unable to resolve workspace for timezone update');
+    }
+
+    const tenant =
+      req?.tenant?.id != null
+        ? req.tenant
+        : await this.tenantsService.findOneFlexible(String(identifier));
+    if (!tenant?.id) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    await this.masterTenantRepo.update({ id: tenant.id }, { timezone: normalized });
+    if (req.tenant) {
+      req.tenant.timezone = normalized;
+    }
+    return normalized;
   }
 
   async getOwnProfile(req: any) {
@@ -988,12 +1047,14 @@ export class UsersService extends TenantAbstractService<User> {
         throw new NotFoundException('User not found');
       }
 
+      const timezone = await this.resolveWorkspaceTimezone(req);
+
       return {
         success: true,
         message: 'Profile fetched successfully',
         tenant: req.tenantConnection?.options?.database,
         tenant_slug: req.tenantId || null,
-        data: this.buildProfilePayload(user),
+        data: this.buildProfilePayload(user, { timezone }),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -1039,6 +1100,8 @@ export class UsersService extends TenantAbstractService<User> {
             : String(phoneValue).trim();
       }
 
+      const timezone = await this.updateWorkspaceTimezone(req, dto.timezone);
+
       // Email and role are read-only on profile screen.
       const saved = await repo.save(user);
       const refreshed = await repo.findOne({
@@ -1051,7 +1114,7 @@ export class UsersService extends TenantAbstractService<User> {
         message: 'Profile updated successfully',
         tenant: req.tenantConnection?.options?.database,
         tenant_slug: req.tenantId || null,
-        data: this.buildProfilePayload(refreshed as User),
+        data: this.buildProfilePayload(refreshed as User, { timezone }),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;

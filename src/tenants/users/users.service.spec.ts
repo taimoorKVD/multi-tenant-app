@@ -30,6 +30,14 @@ describe('UsersService dynamic fields', () => {
     syncUsers: jest.fn().mockResolvedValue(undefined),
   };
 
+  const tenantsServiceMock = {
+    findOneFlexible: jest.fn().mockResolvedValue({ id: 1, timezone: 'Asia/Karachi' }),
+  };
+
+  const masterTenantRepoMock = {
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     service = new UsersService(
@@ -37,6 +45,8 @@ describe('UsersService dynamic fields', () => {
       mailServiceMock,
       dynamicFieldsService,
       permissionSessionSyncMock as any,
+      tenantsServiceMock as any,
+      masterTenantRepoMock as any,
     );
   });
 
