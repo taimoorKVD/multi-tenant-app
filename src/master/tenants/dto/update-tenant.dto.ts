@@ -87,6 +87,16 @@ export class UpdateTenantDto {
   @MaxLength(20)
   postalCode?: string;
 
+  @ApiPropertyOptional({
+    example: 'Asia/Karachi',
+    description:
+      'IANA timezone for data-collection frequency wall-clock times. Empty string clears to UTC default.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string;
+
   @ApiPropertyOptional({ example: 'luxuryresorts.co.uk' })
   @IsOptional()
   @IsString()

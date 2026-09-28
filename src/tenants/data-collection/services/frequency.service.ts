@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isValidIanaTimeZone } from '../../../common/utils/timezone.util';
 import {
   FrequencyType,
   FrequencyUnit,
@@ -127,6 +128,16 @@ const MAX_OCCURRENCES_WITHIN_HORIZON = 1000;
 
 @Injectable()
 export class FrequencyService {
+  /**
+   * IANA timezone for frequency `time` / `times`.
+   * Priority: tenant override → UTC.
+   */
+  getFrequencyTimeZone(override?: string | null): string {
+    const tz = String(override || '').trim();
+    if (tz && isValidIanaTimeZone(tz)) return tz;
+    return 'UTC';
+  }
+
   /** UTC today as YYYY-MM-DD when Recurring UI omits `date`. */
   private todayUtcDateOnly(): string {
     const now = new Date();
@@ -303,9 +314,11 @@ export class FrequencyService {
   expandOccurrences(
     frequency: FrequencyInput | null | undefined,
     maxOccurrences = MAX_OCCURRENCES_WITHIN_HORIZON,
+    timeZoneOverride?: string | null,
   ): Date[] {
     if (!frequency) return [];
 
+    const timeZone = this.getFrequencyTimeZone(timeZoneOverride);
     const end = frequency.endDate ? this.parseDateOnly(String(frequency.endDate)) : null;
     const type = String(frequency.type || FrequencyType.AT_ONCE).toLowerCase();
 
@@ -338,12 +351,12 @@ export class FrequencyService {
 
     if (isAtOnce) {
       if (end && start > end) return [];
-      return this.applyTimesToDates([start], clockTimes);
+      return this.applyTimesToDates([start], clockTimes, timeZone);
     }
 
     const raw = this.resolveScheduleRaw(frequency);
     if (!raw) {
-      return this.applyTimesToDates([start], clockTimes);
+      return this.applyTimesToDates([start], clockTimes, timeZone);
     }
 
     // When endDate bounds the window, expand until that day (recurring `times[]`
@@ -372,7 +385,7 @@ export class FrequencyService {
         horizonExclusive,
         dateBudget,
       );
-      return this.applyTimesToDates(weeklyDates, clockTimes);
+      return this.applyTimesToDates(weeklyDates, clockTimes, timeZone);
     }
 
     let cursor = new Date(start.getTime());
@@ -395,7 +408,7 @@ export class FrequencyService {
       cursor = next;
     }
 
-    return this.applyTimesToDates(dates, clockTimes);
+    return this.applyTimesToDates(dates, clockTimes, timeZone);
   }
 
   /**
@@ -624,13 +637,20 @@ export class FrequencyService {
     return enriched;
   }
 
-  formatDateTimeAmPm(date: Date): string {
-    const datePart = this.formatShortDate(date);
+  formatDateTimeAmPm(date: Date, timeZoneOverride?: string | null): string {
+    const timeZone = this.getFrequencyTimeZone(timeZoneOverride);
+    const datePart = new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone,
+    }).format(date);
     if (!this.hasClockTime(date)) return datePart;
-    return `${datePart}, ${this.formatTimeAmPm(date.getUTCHours(), date.getUTCMinutes())}`;
+    const parts = this.getZonedClockParts(date, timeZone);
+    return `${datePart}, ${this.formatTimeAmPm(parts.hours, parts.minutes)}`;
   }
 
-  /** True when dueAt carries a non-midnight clock time. */
+  /** True when dueAt carries a non-midnight UTC clock (legacy date-only uses UTC midnight). */
   hasClockTime(date: Date): boolean {
     return (
       date.getUTCHours() !== 0 ||
@@ -640,27 +660,115 @@ export class FrequencyService {
     );
   }
 
+  /**
+   * Convert a calendar day + wall-clock time in `timeZone` to a UTC Instant.
+   * Example (Asia/Karachi, UTC+5): 2026-09-28 14:56 → 2026-09-28T09:56:00.000Z
+   */
+  wallClockToUtc(
+    year: number,
+    monthIndex: number,
+    day: number,
+    hours: number,
+    minutes: number,
+    timeZone = this.getFrequencyTimeZone(),
+  ): Date {
+    if (timeZone === 'UTC' || timeZone === 'Etc/UTC' || timeZone === 'GMT') {
+      return new Date(Date.UTC(year, monthIndex, day, hours, minutes, 0, 0));
+    }
+
+    const wallAsUtc = Date.UTC(year, monthIndex, day, hours, minutes, 0, 0);
+    const getOffsetMs = (instant: Date): number => {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(instant);
+      const num = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+      const asUtc = Date.UTC(
+        num('year'),
+        num('month') - 1,
+        num('day'),
+        num('hour'),
+        num('minute'),
+        num('second'),
+      );
+      return asUtc - instant.getTime();
+    };
+
+    let utcMs = wallAsUtc - getOffsetMs(new Date(wallAsUtc));
+    utcMs = wallAsUtc - getOffsetMs(new Date(utcMs));
+    return new Date(utcMs);
+  }
+
+  getZonedClockParts(
+    date: Date,
+    timeZone = this.getFrequencyTimeZone(),
+  ): { hours: number; minutes: number } {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    const num = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    return { hours: num('hour') || 0, minutes: num('minute') || 0 };
+  }
+
+  /**
+   * Display helpers for assignment/submission APIs (tenant wall-clock).
+   * Midnight UTC dueAts are treated as date-only (no time to show).
+   */
+  buildDueTimeFields(
+    dueAt: Date | string | null | undefined,
+    timeZoneOverride?: string | null,
+  ): {
+    hasDueTime: boolean;
+    dueTime: string | null;
+    dueTimeAmPm: string | null;
+    dueTimeParts: { hour: string; minute: string; period: 'AM' | 'PM' } | null;
+  } {
+    if (dueAt == null) {
+      return { hasDueTime: false, dueTime: null, dueTimeAmPm: null, dueTimeParts: null };
+    }
+    const value = dueAt instanceof Date ? dueAt : new Date(dueAt);
+    if (Number.isNaN(value.getTime()) || !this.hasClockTime(value)) {
+      return { hasDueTime: false, dueTime: null, dueTimeAmPm: null, dueTimeParts: null };
+    }
+    const timeZone = this.getFrequencyTimeZone(timeZoneOverride);
+    const { hours, minutes } = this.getZonedClockParts(value, timeZone);
+    return {
+      hasDueTime: true,
+      dueTime: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+      dueTimeAmPm: this.formatTimeAmPm(hours, minutes),
+      dueTimeParts: this.toTimeParts(hours, minutes),
+    };
+  }
+
   private applyTimesToDates(
     dates: Date[],
     times: Array<{ hours: number; minutes: number }>,
+    timeZone = this.getFrequencyTimeZone(),
   ): Date[] {
     if (!dates.length) return [];
     const clocks = times.length ? times : [{ hours: 0, minutes: 0 }];
     const result: Date[] = [];
     for (const day of dates) {
+      const year = day.getUTCFullYear();
+      const month = day.getUTCMonth();
+      const date = day.getUTCDate();
       for (const clock of clocks) {
+        // Legacy date-only (no time / midnight) stays UTC midnight of that calendar day.
+        if (clock.hours === 0 && clock.minutes === 0) {
+          result.push(new Date(Date.UTC(year, month, date, 0, 0, 0, 0)));
+          continue;
+        }
         result.push(
-          new Date(
-            Date.UTC(
-              day.getUTCFullYear(),
-              day.getUTCMonth(),
-              day.getUTCDate(),
-              clock.hours,
-              clock.minutes,
-              0,
-              0,
-            ),
-          ),
+          this.wallClockToUtc(year, month, date, clock.hours, clock.minutes, timeZone),
         );
       }
     }

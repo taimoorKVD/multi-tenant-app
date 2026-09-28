@@ -88,6 +88,16 @@ export class CreateTenantDto {
   @MaxLength(20)
   postalCode?: string;
 
+  @ApiPropertyOptional({
+    example: 'Asia/Karachi',
+    description:
+      'IANA timezone for data-collection frequency wall-clock times. When omitted, defaults to UTC.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string;
+
   @ApiProperty({ example: 2, description: 'Selected subscription plan id' })
   @Type(() => Number)
   @IsInt()

@@ -28,6 +28,7 @@ export interface ITenantResponse {
     city?: string | null;
     address?: string | null;
     postalCode?: string | null;
+    timezone?: string | null;
     status?: string | null;
     plan?: string | null;
     planId?: number | null;

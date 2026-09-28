@@ -24,6 +24,7 @@ import {
   TenantJobPositionsSeeder,
   VendorsSeeder,
   ItemsSeeder,
+  TimezoneSeeder,
 } from '../seeders';
 
 (async () => {
@@ -37,6 +38,7 @@ import {
     new CountrySeeder(),
     new StateSeeder(),
     new CitySeeder(),
+    new TimezoneSeeder(),
     new GlobalMailSettingSeeder(),
     new UserEmailTemplateSeeder(),
     new FormBuilderModulesSeeder(),

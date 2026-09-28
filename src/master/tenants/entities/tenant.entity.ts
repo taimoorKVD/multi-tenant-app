@@ -64,6 +64,10 @@ export class Tenant {
   @Column({ type: 'varchar', name: 'postal_code', length: 20, nullable: true })
   postalCode?: string | null;
 
+  /** IANA timezone for frequency wall-clock (e.g. Asia/Karachi). Null → UTC. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  timezone?: string | null;
+
   @Column({ type: 'varchar', name: 'stripe_customer_id', length: 255, nullable: true })
   stripeCustomerId?: string | null;
 

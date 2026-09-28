@@ -4,6 +4,7 @@ describe('TenantMiddleware', () => {
   const mockTenantsService = {
     findOneFlexible: jest.fn(),
     getTenantConnection: jest.fn(),
+    resolveTenantContext: jest.fn(),
   };
 
   const mockJwtService = {
@@ -20,6 +21,10 @@ describe('TenantMiddleware', () => {
       throw new Error('invalid token');
     });
     mockJwtService.decode.mockReturnValue(null);
+    mockTenantsService.resolveTenantContext.mockResolvedValue({
+      tenant: { subdomain: 'test', timezone: null },
+      connection: { options: { database: 'tenant_test' } },
+    });
     mockTenantsService.getTenantConnection.mockResolvedValue({
       options: { database: 'tenant_test' },
     });
@@ -44,6 +49,7 @@ describe('TenantMiddleware', () => {
     await middleware.use(req, {} as any, next);
 
     expect(req.tenantId).toBe('test');
+    expect(req.tenant).toBeDefined();
     expect(req.tenantConnection).toBeDefined();
     expect(next).toHaveBeenCalled();
   });
@@ -64,12 +70,17 @@ describe('TenantMiddleware', () => {
   it('resolves tenant from the email stored at tenant creation for login', async () => {
     const req = createReq('/api/login', 'omais.kv@gmail.com');
     mockTenantsService.findOneFlexible.mockResolvedValueOnce({ subdomain: 'acme' });
+    mockTenantsService.resolveTenantContext.mockResolvedValueOnce({
+      tenant: { subdomain: 'acme', timezone: 'Asia/Karachi' },
+      connection: { options: { database: 'tenant_acme' } },
+    });
 
     const next = jest.fn();
     await middleware.use(req, {} as any, next);
 
     expect(mockTenantsService.findOneFlexible).toHaveBeenCalledWith('omais.kv@gmail.com');
     expect(req.tenantId).toBe('acme');
+    expect(req.tenant?.timezone).toBe('Asia/Karachi');
     expect(req.tenantConnection).toBeDefined();
     expect(next).toHaveBeenCalled();
   });
@@ -87,7 +98,7 @@ describe('TenantMiddleware', () => {
   it('allows forgot-password when derived tenant connection is not found (temporary bypass)', async () => {
     const req = createReq('/api/forgot-password', 'omais.kv@gmail.com');
     mockTenantsService.findOneFlexible.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-    mockTenantsService.getTenantConnection.mockRejectedValueOnce(
+    mockTenantsService.resolveTenantContext.mockRejectedValueOnce(
       new Error('Tenant not found for "gmail"'),
     );
 

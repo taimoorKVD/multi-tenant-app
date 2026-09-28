@@ -7,6 +7,7 @@ import {JobPosition} from '../master/job-position/entities';
 import {City} from '../master/cities/entities';
 import {Country} from '../master/countries/entities';
 import {State} from '../master/states/entities';
+import {Timezone} from '../master/timezones/entities';
 import {
     EmailLog,
     EmailTemplate,
@@ -45,6 +46,8 @@ import {
     AddOneTimeLoginTokenToWebsiteSignups1701010024000,
     AddYearlyPricingToPlansTable1701010025000,
     AddModuleToPermissionsTable1701010026000,
+    AddTenantTimezone1701010027000,
+    CreateTimezonesTable1701010028000,
 } from '../database/migrations';
 
 const env = process.env.NODE_ENV?.toLowerCase() || 'development';
@@ -76,6 +79,7 @@ export const masterDatabaseConfig: DataSourceOptions = {
             City,
             Country,
             State,
+            Timezone,
             EmailTemplate,
             EmailTemplateRecipient,
             GlobalMailSetting,
@@ -114,6 +118,8 @@ export const masterDatabaseConfig: DataSourceOptions = {
                 AddOneTimeLoginTokenToWebsiteSignups1701010024000,
                 AddYearlyPricingToPlansTable1701010025000,
                 AddModuleToPermissionsTable1701010026000,
+                AddTenantTimezone1701010027000,
+                CreateTimezonesTable1701010028000,
         ],
     synchronize: false,
     // migrationsRun: true,

@@ -130,7 +130,8 @@ Matches the Frequency card (flat UI payload preferred):
 Notes:
 
 - `startDate`/`endDate` bound the recurring window; when `endDate` is set it is the stop condition (not truncated by `repeatCount`)
-- `time` (at once) or `times[]` (recurring, any `repeatCount`) set the UTC clock on each occurrence; 24h values like `15:06` / `22:33` display as AM/PM (`3:06 PM` / `10:33 PM`)
+- `time` (at once) or `times[]` (recurring, any `repeatCount`) set the **tenant wall-clock** on each occurrence. IANA zone resolution: `tenant.timezone` → `UTC`. Example: `"14:56"` in Asia/Karachi → 2:56 PM Pakistan → stored dueAt `…T09:56:00.000Z`. Set `timezone` on create/update tenant (master profile). Pick values from `GET /timezones` (seeded IANA list).
+- Employee my-work unlocks timed tasks when `dueAt <= now` (so 2:56 PM local appears at 2:56 PM local, not at UTC 14:56)
 - `times` / `time` may live on the frequency root **or** nested under `recurring` / `schedule` (root wins if both are set)
 - Template GET/list responses enrich frequency with read-only UI helpers (not stored):
   - `timeAmPm` / `timeParts: { hour, minute, period }` for at-once
@@ -382,7 +383,7 @@ Assignment statuses: `pending` \| `in_progress` \| `completed` \| `overdue` \| `
 
 **Assigned Forms** listing: one row per logical assignment (template + assignee for individual, template for shared). Includes frequency, period, progress counts, `nextDue`. Filter by `userId` / `jobPositionId` (multi). Detail endpoint returns summary + paginated occurrences. Do not mix `stats` (occurrence-level) with `assignmentStats` (assignment-level) for UI cards.
 
-**Today’s Work** filters: `status=today` and/or `date=YYYY-MM-DD` (UTC due day). Each item includes `formName`, `mode`, `submissionId`, `submission`, `completion`.
+**Today’s Work** filters: `status=today` and/or `date=YYYY-MM-DD` (UTC due day). Timed frequency slots unlock at `dueAt` — employee my-work hides them until that clock time (e.g. 3:00 PM does not appear at 10:00 AM). Midnight (date-only) tasks stay visible for the whole UTC day. Overdue still applies after the due calendar day ends. Each item includes `formName`, `mode`, `submissionId`, `submission`, `completion`, plus due-time helpers when a clock is set: `hasDueTime`, `dueTime` (`HH:mm`), `dueTimeAmPm`, `dueTimeParts` (same shape on assigned-forms / occurrences / submissions).
 
 Answers are keyed by field `id` and validated against the **pinned template version** (required fields enforced on final submit). One draft per assignment (resume-safe); `submit=true` finalizes.
 

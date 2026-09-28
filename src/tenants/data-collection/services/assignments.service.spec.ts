@@ -1501,6 +1501,19 @@ describe('AssignmentsService findAll / findMyWork (today + date filters)', () =>
       cancelledStatus: AssignmentStatus.CANCELLED,
     });
   });
+
+  it('hides future timed slots from my-work until dueAt', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-28T10:00:00.000Z'));
+
+    await service.findMyWork(req, { page: 1, limit: 15, status: 'today' });
+
+    expect(andWhereMock).toHaveBeenCalledWith('assignment.dueAt <= :availableAsOf', {
+      availableAsOf: new Date('2026-09-28T10:00:00.000Z'),
+    });
+
+    jest.useRealTimers();
+  });
 });
 
 describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', () => {
@@ -1525,15 +1538,19 @@ describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', (
     expect((service as any).openStatusForDueAt(dueYesterday)).toBe(AssignmentStatus.OVERDUE);
   });
 
-  it('marks timed dueAts overdue after the clock time passes', () => {
+  it('keeps same-day timed dueAts pending until the calendar day ends', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-09-26T15:07:00.000Z'));
 
+    // Unlocked at 15:06 but still completable the rest of the UTC day.
     expect((service as any).openStatusForDueAt(new Date('2026-09-26T15:06:00.000Z'))).toBe(
-      AssignmentStatus.OVERDUE,
+      AssignmentStatus.PENDING,
     );
     expect((service as any).openStatusForDueAt(new Date('2026-09-26T16:00:00.000Z'))).toBe(
       AssignmentStatus.PENDING,
+    );
+    expect((service as any).openStatusForDueAt(new Date('2026-09-25T15:06:00.000Z'))).toBe(
+      AssignmentStatus.OVERDUE,
     );
   });
 
@@ -1570,13 +1587,8 @@ describe('AssignmentsService markOverdue / openStatusForDueAt (calendar day)', (
     expect(andWhereMock).toHaveBeenCalledWith('due_at >= :startOfToday', {
       startOfToday: new Date('2026-09-16T00:00:00.000Z'),
     });
-    expect(andWhereMock).toHaveBeenCalledWith('due_at < :now', {
-      now: new Date('2026-09-16T17:25:00.000Z'),
-    });
-    // Midnight overdue + timed overdue (each mock returns affected: 2).
-    expect(result.data.affected).toBe(4);
-    // 2 overdue updates + 4 heal updates
-    expect(executeMock).toHaveBeenCalledTimes(6);
+    expect(result.data.affected).toBe(2);
+    expect(executeMock).toHaveBeenCalledTimes(3);
   });
 });
 

@@ -23,6 +23,7 @@ const tenantExample = {
     city: 'Austin',
     address: '123 Main Street',
     postalCode: '78701',
+    timezone: 'Asia/Karachi',
     status: 'trial',
     plan: 'Standard',
     planId: 2,
@@ -160,6 +161,12 @@ export const TenantSwagger = {
                         city: { type: 'string', example: 'Austin' },
                         address: { type: 'string', example: '123 Main Street' },
                         postalCode: { type: 'string', example: '78701' },
+                        timezone: {
+                            type: 'string',
+                            example: 'Asia/Karachi',
+                            description:
+                                'IANA timezone for data-collection frequency wall-clock. Pick from GET /timezones. Defaults to UTC when omitted.',
+                        },
                         planId: { type: 'number', example: 2 },
                         billingCycle: { type: 'string', example: 'monthly' },
                         trialDays: { type: 'number', example: 14 },
@@ -373,6 +380,7 @@ export const TenantSwagger = {
                         city: 'Austin',
                         address: '123 Main Street',
                         postalCode: '78701',
+                        timezone: 'Asia/Karachi',
                     },
                 },
             }),
