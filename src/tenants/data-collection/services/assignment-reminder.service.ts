@@ -1,20 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+// Re-enable with Assignment Due Reminder cron/emails:
+// import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, In, LessThanOrEqual, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
+// Re-enable with Assignment Due Reminder emails:
+// import { Between, In, LessThanOrEqual, Repository } from 'typeorm';
 import { Tenant } from '../../../master/tenants/entities';
 import { TenantsService } from '../../../master/tenants/tenants.service';
 import {
   AssignmentStatus,
   DataCollectionAssignment,
-  DataCollectionTemplate,
-  TemplateStatus,
+  // DataCollectionTemplate,
+  // TemplateStatus,
 } from '../entities';
-import { WorkflowActionsService } from './workflow-actions.service';
+// import { WorkflowActionsService } from './workflow-actions.service';
 
 /**
- * Hourly job: mark overdue assignments and email assignees whose work is due today
- * (or already overdue and still open).
+ * Assignment due reminders temporarily disabled (were sending too many emails).
+ * Nest hourly cron and reminder email sending are commented out.
  */
 @Injectable()
 export class AssignmentReminderService {
@@ -25,16 +28,17 @@ export class AssignmentReminderService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly tenantsService: TenantsService,
-    private readonly workflowActions: WorkflowActionsService,
+    // private readonly workflowActions: WorkflowActionsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
-  async handleHourlyReminders() {
-    if (process.env.DC_ASSIGNMENT_REMINDERS_ENABLED === 'false') {
-      return;
-    }
-    await this.runForAllTenants();
-  }
+  // Temporarily disabled: hourly Assignment Due Reminder cron.
+  // @Cron(CronExpression.EVERY_HOUR)
+  // async handleHourlyReminders() {
+  //   if (process.env.DC_ASSIGNMENT_REMINDERS_ENABLED === 'false') {
+  //     return;
+  //   }
+  //   await this.runForAllTenants();
+  // }
 
   async runForAllTenants(): Promise<{
     tenantsProcessed: number;
@@ -79,20 +83,21 @@ export class AssignmentReminderService {
 
   async runForTenant(tenant: Tenant): Promise<{ remindersSent: number; overdueMarked: number }> {
     const connection = await this.tenantsService.getTenantConnection(tenant.subdomain);
-    const req = {
-      tenantId: tenant.subdomain,
-      tenantConnection: connection,
-      tenant,
-    };
+    // Re-enable with Assignment Due Reminder emails:
+    // const req = {
+    //   tenantId: tenant.subdomain,
+    //   tenantConnection: connection,
+    //   tenant,
+    // };
 
     const assignmentRepo = connection.getRepository(DataCollectionAssignment);
-    const templateRepo = connection.getRepository(DataCollectionTemplate);
+    // const templateRepo = connection.getRepository(DataCollectionTemplate);
 
     const now = new Date();
     // Overdue after the due UTC calendar day ends (midnight and timed slots alike).
     // Timed tasks unlock at dueAt in the employee portal; same-day completion stays pending.
     const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+    // const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     const overdueResult = await assignmentRepo
       .createQueryBuilder()
@@ -122,54 +127,58 @@ export class AssignmentReminderService {
       .andWhere('due_at >= :startOfToday', { startOfToday })
       .execute();
 
-    const dueToday = await assignmentRepo.find({
-      where: [
-        {
-          status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS, AssignmentStatus.OVERDUE]),
-          dueAt: Between(startOfToday, endOfToday),
-        },
-        {
-          status: AssignmentStatus.OVERDUE,
-          dueAt: LessThanOrEqual(endOfToday),
-        },
-      ],
-    });
+    // Temporarily disabled: Assignment Due Reminder emails were sending too many messages.
+    // Overdue status updates above still run; re-enable the block below when ready.
+    // const dueToday = await assignmentRepo.find({
+    //   where: [
+    //     {
+    //       status: In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS, AssignmentStatus.OVERDUE]),
+    //       dueAt: Between(startOfToday, endOfToday),
+    //     },
+    //     {
+    //       status: AssignmentStatus.OVERDUE,
+    //       dueAt: LessThanOrEqual(endOfToday),
+    //     },
+    //   ],
+    // });
+    //
+    // // Dedupe by id (OVERDUE + dueToday overlap)
+    // const byId = new Map<number, DataCollectionAssignment>();
+    // for (const row of dueToday) byId.set(row.id, row);
+    //
+    // let remindersSent = 0;
+    // for (const assignment of byId.values()) {
+    //   if (!assignment.assigneeUserId) continue;
+    //
+    //   const [assignee] = await this.workflowActions.resolveUsersByIds(req, [
+    //     assignment.assigneeUserId,
+    //   ]);
+    //   if (!assignee?.email) continue;
+    //
+    //   const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
+    //   if (
+    //     !template ||
+    //     template.deletedAt ||
+    //     template.status === TemplateStatus.ARCHIVED ||
+    //     !template.isActive
+    //   ) {
+    //     continue;
+    //   }
+    //
+    //   const result = await this.workflowActions.sendAssignmentDueReminder(req, {
+    //     assignmentId: assignment.id,
+    //     templateName: template.name || `Template #${assignment.templateId}`,
+    //     dueAt: assignment.dueAt,
+    //     status: assignment.status,
+    //     recipient: assignee,
+    //   });
+    //
+    //   if (result.status === 'sent' || result.status === 'queued') {
+    //     remindersSent += 1;
+    //   }
+    // }
 
-    // Dedupe by id (OVERDUE + dueToday overlap)
-    const byId = new Map<number, DataCollectionAssignment>();
-    for (const row of dueToday) byId.set(row.id, row);
-
-    let remindersSent = 0;
-    for (const assignment of byId.values()) {
-      if (!assignment.assigneeUserId) continue;
-
-      const [assignee] = await this.workflowActions.resolveUsersByIds(req, [
-        assignment.assigneeUserId,
-      ]);
-      if (!assignee?.email) continue;
-
-      const template = await templateRepo.findOne({ where: { id: assignment.templateId } });
-      if (
-        !template ||
-        template.deletedAt ||
-        template.status === TemplateStatus.ARCHIVED ||
-        !template.isActive
-      ) {
-        continue;
-      }
-
-      const result = await this.workflowActions.sendAssignmentDueReminder(req, {
-        assignmentId: assignment.id,
-        templateName: template.name || `Template #${assignment.templateId}`,
-        dueAt: assignment.dueAt,
-        status: assignment.status,
-        recipient: assignee,
-      });
-
-      if (result.status === 'sent' || result.status === 'queued') {
-        remindersSent += 1;
-      }
-    }
+    const remindersSent = 0;
 
     return {
       remindersSent,

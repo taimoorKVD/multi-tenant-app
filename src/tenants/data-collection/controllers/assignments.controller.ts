@@ -11,7 +11,8 @@ import {
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantAccess } from '../../../common/decorators/tenant-access.decorator';
 import { AssignmentsService } from '../services/assignments.service';
-import { AssignmentReminderService } from '../services/assignment-reminder.service';
+// Re-enable with Assignment Due Reminder endpoint:
+// import { AssignmentReminderService } from '../services/assignment-reminder.service';
 import { QueryAssignmentDto } from '../dto/assignments/query-assignment.dto';
 import { QueryAssignedFormsDto } from '../dto/assignments/query-assigned-forms.dto';
 import { QueryAssignedFormDetailDto } from '../dto/assignments/query-assigned-form-detail.dto';
@@ -23,7 +24,7 @@ import { StartAssignmentDto } from '../dto/assignments/start-assignment.dto';
 export class AssignmentsController {
   constructor(
     private readonly assignmentsService: AssignmentsService,
-    private readonly assignmentReminderService: AssignmentReminderService,
+    // private readonly assignmentReminderService: AssignmentReminderService,
   ) {}
 
   @Get('my-work')
@@ -361,20 +362,21 @@ export class AssignmentsController {
     return this.assignmentsService.markOverdue(req);
   }
 
-  @Post('send-due-reminders')
-  @TenantAccess('edit-dc-template')
-  @ApiOperation({
-    summary: 'Send due-assignment reminder emails',
-    description:
-      'Runs overdue marking + assignment-due emails for all tenants (same as the hourly cron). Idempotent per assignment/day.',
-  })
-  sendDueReminders() {
-    return this.assignmentReminderService.runForAllTenants().then((data) => ({
-      success: true,
-      message: 'Due reminder run completed',
-      data,
-    }));
-  }
+  // Temporarily disabled: Assignment Due Reminder emails were sending too many.
+  // @Post('send-due-reminders')
+  // @TenantAccess('edit-dc-template')
+  // @ApiOperation({
+  //   summary: 'Send due-assignment reminder emails',
+  //   description:
+  //     'Runs overdue marking + assignment-due emails for all tenants (same as the hourly cron). Idempotent per assignment/day.',
+  // })
+  // sendDueReminders() {
+  //   return this.assignmentReminderService.runForAllTenants().then((data) => ({
+  //     success: true,
+  //     message: 'Due reminder run completed',
+  //     data,
+  //   }));
+  // }
 
   @Get()
   @TenantAccess('view-dc-assignment')
