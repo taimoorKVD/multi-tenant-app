@@ -25,3 +25,4 @@ export {
   FailSubmissionDto,
 } from './submissions/submission-flag.dto';
 export * from './templates/schema';
+export * from './manager-report';

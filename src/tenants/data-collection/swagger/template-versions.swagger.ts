@@ -1,5 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CONDITIONAL_RULES_SWAGGER_EXAMPLE } from './conditional-rules.example';
 
 export const TenantDataCollectionTemplateVersionsSwagger = {
   Tags: () => ApiTags('Data Collection - Template Versions'),
@@ -49,6 +50,7 @@ export const TenantDataCollectionTemplateVersionsSwagger = {
                 report: { mode: 'shared', users: null, jobPosition: [1] },
                 frequency: { type: 'recurring', startDate: '2026-07-17', schedule: { interval: 1, unit: 'month', repeat: 12 } },
                 sections: [{ id: 'sec_001', type: 'responseForm', name: 'Response Form', sortOrder: 1, rows: [] }],
+                conditionalRules: CONDITIONAL_RULES_SWAGGER_EXAMPLE,
               },
               isActive: false,
               createdBy: 1,

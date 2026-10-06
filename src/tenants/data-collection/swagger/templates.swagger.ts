@@ -2,6 +2,7 @@ import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateTemplateDto, UpdateTemplateDto } from '../dto';
 import { TemplateStatus } from '../entities/enums';
+import { CONDITIONAL_RULES_SWAGGER_EXAMPLE } from './conditional-rules.example';
 
 export const TenantDataCollectionTemplatesSwagger = {
   Tags: () => ApiTags('Data Collection - Templates'),
@@ -9,7 +10,7 @@ export const TenantDataCollectionTemplatesSwagger = {
 
   Create: () =>
     applyDecorators(
-      ApiOperation({ summary: 'Create data collection template', description: 'Creates a new data collection template.' }),
+      ApiOperation({ summary: 'Create data collection template', description: 'Creates a new data collection template. Optional `schema.conditionalRules` are stored as JSON and pinned on the published version snapshot.' }),
       ApiBody({
         type: CreateTemplateDto,
         examples: {
@@ -103,6 +104,52 @@ export const TenantDataCollectionTemplatesSwagger = {
               publish: true,
             },
           },
+          withAutomationRules: {
+            summary: 'Create template with schema.conditionalRules',
+            description:
+              'Rules are stored on schema JSON and pinned on publish. Evaluated on final submit against the version snapshot.',
+            value: {
+              name: 'Manager Report',
+              schema: {
+                formName: 'Manager Report',
+                assign: { mode: 'individual', users: null, jobPosition: [2] },
+                report: { mode: 'shared', users: null, jobPosition: [1] },
+                frequency: { type: 'atOnce', date: '2026-08-21', jobPosition: null, recurring: null },
+                sections: [
+                  {
+                    id: 'sec_002',
+                    type: 'dataEntry',
+                    name: 'Data Entry',
+                    sortOrder: 1,
+                    rows: [
+                      {
+                        id: 'row_001',
+                        fields: [
+                          {
+                            id: 'fld_vendor',
+                            label: 'Vendor',
+                            name: 'vendorId',
+                            type: 'select',
+                            optionSource: {
+                              type: 'dynamic',
+                              method: 'GET',
+                              endpoint: 'vendors',
+                              response: { dataPath: 'data', labelKey: 'name', valueKey: 'id' },
+                            },
+                          },
+                          { id: 'fld_cost', label: 'Cost', name: 'cost', type: 'number' },
+                          { id: 'fld_budget', label: 'Budget', name: 'budget', type: 'number' },
+                          { id: 'fld_needs_repair', label: 'Needs repair', name: 'needsRepair', type: 'checkbox' },
+                          { id: 'fld_notes', label: 'Notes', name: 'notes', type: 'textarea' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+                conditionalRules: CONDITIONAL_RULES_SWAGGER_EXAMPLE,
+              },
+            },
+          },
         },
       } as any),
       ApiResponse({
@@ -145,6 +192,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                 assign: { mode: 'individual', users: [3], jobPosition: null },
                 report: { mode: 'individual', users: [3], jobPosition: null },
                 frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
+                conditionalRules: CONDITIONAL_RULES_SWAGGER_EXAMPLE,
                 sections: [
                   {
                     id: 'section_1786359677448_se9uyri',
@@ -209,6 +257,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                 assign: { mode: 'individual', users: [3], jobPosition: null },
                 report: { mode: 'individual', users: [3], jobPosition: null },
                 frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
+                conditionalRules: CONDITIONAL_RULES_SWAGGER_EXAMPLE,
                 sections: [
                   {
                     id: 'section_1786359677448_se9uyri',
@@ -262,6 +311,7 @@ export const TenantDataCollectionTemplatesSwagger = {
                 assign: { mode: 'individual', users: [3], jobPosition: null },
                 report: { mode: 'individual', users: [3], jobPosition: null },
                 frequency: { type: 'atOnce', date: '2026-08-20', jobPosition: null, recurring: null },
+                conditionalRules: CONDITIONAL_RULES_SWAGGER_EXAMPLE,
                 sections: [
                   {
                     id: 'section_1786359677448_se9uyri',

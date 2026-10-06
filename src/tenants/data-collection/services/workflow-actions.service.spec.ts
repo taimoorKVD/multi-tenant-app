@@ -108,4 +108,114 @@ describe('WorkflowActionsService report.mode', () => {
 
     expect(sendDirectSmtpMail).toHaveBeenCalledTimes(2);
   });
+
+  it('does not notify or create requests for disabled conditional rules', async () => {
+    const result = await service.runAfterSubmit(
+      {},
+      {
+        templateId: 1,
+        templateName: 'Form',
+        assignmentId: 1,
+        submissionId: 1,
+        submittedBy: 9,
+        answers: { fld_notes: 'hello' },
+        schema: {
+          report: { users: [1] },
+          conditionalRules: [
+            {
+              id: 'logic_disabled',
+              name: 'off',
+              enabled: false,
+              conditions: {
+                match: 'all',
+                items: [
+                  {
+                    id: 'off_1',
+                    fieldId: 'fld_notes',
+                    operator: 'isNotEmpty',
+                    comparison: { type: 'fixed' },
+                  },
+                ],
+              },
+              actions: [{ id: 'a_maint_off', type: 'maintenanceRequest' }],
+            },
+          ],
+        },
+      },
+    );
+
+    expect(sendDirectSmtpMail).not.toHaveBeenCalled();
+    expect(result.actions.some((action) => action.type === 'maintenanceRequest')).toBe(false);
+    expect(result.actions[0]).toEqual(
+      expect.objectContaining({ type: 'rule', status: 'disabled' }),
+    );
+  });
+
+  it('creates a notification portal row and emails report recipients for sendNotification', async () => {
+    const create = jest.fn((row) => row);
+    const save = jest.fn(async (row) => ({ id: 55, ...row }));
+    const findOne = jest.fn().mockResolvedValue(null);
+    const req = {
+      tenant: { subdomain: 'demo' },
+      tenantConnection: {
+        getRepository: (entity: { name: string }) => {
+          if (entity.name === 'DcManagerRequest') {
+            return { create, save, findOne };
+          }
+          if (entity.name === 'Item') {
+            return { findOne: jest.fn().mockResolvedValue(null) };
+          }
+          return { create: jest.fn(), save: jest.fn(), findOne: jest.fn() };
+        },
+      },
+    };
+
+    const result = await service.runAfterSubmit(req, {
+      templateId: 1,
+      templateName: 'Manager Report',
+      assignmentId: 10,
+      submissionId: 20,
+      submittedBy: 9,
+      templateVersionId: 6,
+      answers: { fld_notes: 'urgent' },
+      schema: {
+        report: { users: [1], mode: 'individual' },
+        conditionalRules: [
+          {
+            id: 'logic_notify',
+            name: 'Current Quantity < Item Par',
+            enabled: true,
+            conditions: {
+              match: 'all',
+              items: [
+                {
+                  id: 'n1',
+                  fieldId: 'fld_notes',
+                  operator: 'isNotEmpty',
+                  comparison: { type: 'fixed' },
+                },
+              ],
+            },
+            actions: [{ id: 'a_notify', type: 'sendNotification' }],
+          },
+        ],
+      },
+    });
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'notification',
+        note: 'Current Quantity < Item Par',
+        actionClientId: 'a_notify',
+        ruleClientId: 'logic_notify',
+      }),
+    );
+    expect(sendDirectSmtpMail).toHaveBeenCalled();
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'notificationRequest', status: 'created' }),
+        expect.objectContaining({ type: 'notify', status: 'sent' }),
+      ]),
+    );
+  });
 });

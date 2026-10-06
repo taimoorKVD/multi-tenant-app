@@ -17,7 +17,7 @@ export class UpdateTemplateDto {
   @ApiPropertyOptional({
     type: TemplateSchemaDto,
     description:
-      'Complete template schema (assign, report, frequency, sections). Stored as JSON — field props like `value` are preserved.',
+      'Complete template schema (assign, report, frequency, sections, optional conditionalRules). Stored as JSON — field props like `value` are preserved.',
   })
   @IsOptional()
   @IsObject()

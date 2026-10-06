@@ -11,7 +11,7 @@ export class CreateTemplateDto {
   @ApiPropertyOptional({
     type: TemplateSchemaDto,
     description:
-      'Complete template schema: assign, report, frequency, and sections (Form Details → Assign & Report → Frequency). Stored as JSON — field props like `value` are preserved.',
+      'Complete template schema: assign, report, frequency, sections, and optional conditionalRules (Form Details → Assign & Report → Frequency → Automation). Stored as JSON — field props like `value` are preserved.',
     example: {
       assign: { mode: 'individual', users: [1], jobPosition: null },
       report: { mode: 'shared', users: null, jobPosition: [1] },
@@ -65,6 +65,25 @@ export class CreateTemplateDto {
               ],
             },
           ],
+        },
+      ],
+      conditionalRules: [
+        {
+          id: 'logic_numeric_or',
+          name: 'Cost over budget',
+          enabled: true,
+          conditions: {
+            match: 'any',
+            items: [
+              {
+                id: 'n_gt_fixed',
+                fieldId: 'fld_cost',
+                operator: 'greaterThan',
+                comparison: { type: 'fixed', value: 500 },
+              },
+            ],
+          },
+          actions: [{ id: 'a_pr', type: 'purchaseRequest' }],
         },
       ],
     },
