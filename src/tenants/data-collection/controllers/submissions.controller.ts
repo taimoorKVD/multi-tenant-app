@@ -46,11 +46,28 @@ export class SubmissionsController {
     description:
       'Validates required fields against the pinned template version when submit=true. ' +
       'When submit=false, upserts a single draft per assignment (resume-safe) and marks the task in progress. ' +
-      'On final submit: draft → submitted when there are no unresolved flags, otherwise draft → flagged.',
+      'On final submit: draft → submitted when there are no unresolved flags, otherwise draft → flagged. ' +
+      'Final submit also evaluates `schema.conditionalRules` on the pinned snapshot (sendNotification, purchaseRequest, maintenanceRequest) and returns `workflow.actions`.',
   })
   @ApiParam({ name: 'assignmentId', type: Number })
   @ApiBody({ type: CreateSubmissionDto })
-  @ApiResponse({ status: 201, description: 'Submission created.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Submission created. On final submit, `workflow` lists evaluated rule actions.',
+    schema: {
+      example: {
+        success: true,
+        message: 'Submission saved',
+        data: { id: 20, assignmentId: 10, status: 'submitted' },
+        workflow: {
+          actions: [
+            { type: 'notify', status: 'sent', mode: 'shared', detail: 'mode=shared; recipients emailed: 2, failed: 0' },
+            { type: 'purchaseRequest', status: 'created', detail: 'requestId=12' },
+          ],
+        },
+      },
+    },
+  })
   create(
     @Req() req: any,
     @Param('assignmentId', ParseIntPipe) assignmentId: number,

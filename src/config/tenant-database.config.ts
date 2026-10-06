@@ -32,6 +32,13 @@ import {
   DataCollectionSubmission,
   DataCollectionSubmissionFlag,
   DataCollectionSubmissionReviewEvent,
+  DcWorkflowExecution,
+  DcManagerRequest,
+  DcManagerCart,
+  DcManagerCartItem,
+  DcManagerOrder,
+  DcManagerOrderItem,
+  DcManagerOrderMessage,
 } from '../tenants/data-collection/entities';
 
 export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
@@ -95,6 +102,13 @@ export const tenantDatabaseConfig = (dbName: string): DataSourceOptions => {
       DataCollectionSubmission,
       DataCollectionSubmissionFlag,
       DataCollectionSubmissionReviewEvent,
+      DcWorkflowExecution,
+      DcManagerRequest,
+      DcManagerCart,
+      DcManagerCartItem,
+      DcManagerOrder,
+      DcManagerOrderItem,
+      DcManagerOrderMessage,
     ],
 
     synchronize: true,

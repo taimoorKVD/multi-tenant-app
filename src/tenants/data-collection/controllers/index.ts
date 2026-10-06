@@ -3,3 +3,4 @@ export { TemplateVersionsController } from './template-versions.controller';
 export { AssignmentsController } from './assignments.controller';
 export { SubmissionsController } from './submissions.controller';
 export { DataCollectionCronController } from './data-collection-cron.controller';
+export { ManagerReportController } from './manager-report.controller';

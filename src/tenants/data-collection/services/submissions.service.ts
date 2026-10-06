@@ -531,6 +531,8 @@ export class SubmissionsService {
           submissionId: saved.id,
           schema: (version.schemaSnapshot || template?.schema || {}) as Record<string, any>,
           submittedBy: actorId,
+          answers: saved.answers || {},
+          templateVersionId: version.id,
         });
       } else {
         await this.markAssignmentInProgressIfOpen(assignmentRepo, assignment, actorId);
@@ -627,6 +629,8 @@ export class SubmissionsService {
           submissionId: saved.id,
           schema: (version.schemaSnapshot || template?.schema || {}) as Record<string, any>,
           submittedBy: actorId,
+          answers: saved.answers || {},
+          templateVersionId: version.id,
         });
       } else if (!shouldSubmit) {
         const openAssignment =

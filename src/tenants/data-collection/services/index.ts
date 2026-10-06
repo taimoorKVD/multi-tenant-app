@@ -5,4 +5,6 @@ export { AssignmentsService } from './assignments.service';
 export { SubmissionsService } from './submissions.service';
 export { SubmissionFlagsService } from './submission-flags.service';
 export { WorkflowActionsService } from './workflow-actions.service';
+export { WorkflowRuleEngineService } from './workflow-rule-engine.service';
+export { ManagerReportService } from './manager-report.service';
 export { AssignmentReminderService } from './assignment-reminder.service';

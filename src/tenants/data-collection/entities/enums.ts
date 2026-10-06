@@ -111,3 +111,78 @@ export enum ConditionalActionType {
   ENABLE = 'enable',
   DISABLE = 'disable',
 }
+
+/** Operators for template `schema.conditionalRules` (automation), not field show/hide. */
+export enum WorkflowConditionOperator {
+  EQUALS = 'equals',
+  NOT_EQUALS = 'notEquals',
+  CONTAINS = 'contains',
+  NOT_CONTAINS = 'notContains',
+  STARTS_WITH = 'startsWith',
+  ENDS_WITH = 'endsWith',
+  GREATER_THAN = 'greaterThan',
+  GREATER_THAN_OR_EQUAL = 'greaterThanOrEqual',
+  LESS_THAN = 'lessThan',
+  LESS_THAN_OR_EQUAL = 'lessThanOrEqual',
+  IS_EMPTY = 'isEmpty',
+  IS_NOT_EMPTY = 'isNotEmpty',
+  CHECKED = 'checked',
+  UNCHECKED = 'unchecked',
+}
+
+export enum WorkflowComparisonType {
+  FIXED = 'fixed',
+  FIELD = 'field',
+  RELATED_DATA = 'relatedData',
+}
+
+export enum WorkflowMatchMode {
+  ALL = 'all',
+  ANY = 'any',
+}
+
+export enum WorkflowActionType {
+  SEND_NOTIFICATION = 'sendNotification',
+  PURCHASE_REQUEST = 'purchaseRequest',
+  MAINTENANCE_REQUEST = 'maintenanceRequest',
+  /** Legacy schema.workflow.actions type */
+  NOTIFY = 'notify',
+}
+
+export enum WorkflowSkipReason {
+  DISABLED = 'disabled',
+  NO_MATCH = 'no_match',
+  ERROR = 'error',
+}
+
+export enum ManagerRequestKind {
+  PURCHASE = 'purchase',
+  MAINTENANCE = 'maintenance',
+  /** Manager Portal Notification tab — created by sendNotification actions. */
+  NOTIFICATION = 'notification',
+}
+
+export enum ManagerRequestStatus {
+  OPEN = 'open',
+  IN_CART = 'in_cart',
+  ORDERED = 'ordered',
+  RECEIVED = 'received',
+  CANCELLED = 'cancelled',
+}
+
+export enum ManagerCartStatus {
+  OPEN = 'open',
+  CHECKED_OUT = 'checked_out',
+}
+
+export enum ManagerOrderStatus {
+  PENDING = 'pending',
+  CONTACTED = 'contacted',
+  DONE = 'done',
+}
+
+export enum ManagerOrderChannel {
+  EMAIL = 'email',
+  PHONE = 'phone',
+  WEBSITE = 'website',
+}

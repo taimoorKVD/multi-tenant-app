@@ -10,6 +10,7 @@ import {
   AssignmentsController,
   SubmissionsController,
   DataCollectionCronController,
+  ManagerReportController,
 } from './controllers';
 import {
   TemplatesService,
@@ -20,6 +21,8 @@ import {
   SubmissionFlagsService,
   WorkflowActionsService,
   AssignmentReminderService,
+  WorkflowRuleEngineService,
+  ManagerReportService,
 } from './services';
 import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
 
@@ -36,6 +39,7 @@ import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
     AssignmentsController,
     SubmissionsController,
     DataCollectionCronController,
+    ManagerReportController,
   ],
   providers: [
     TemplatesService,
@@ -46,6 +50,8 @@ import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
     SubmissionFlagsService,
     WorkflowActionsService,
     AssignmentReminderService,
+    WorkflowRuleEngineService,
+    ManagerReportService,
     DataCollectionPermissionsGuard,
     CronSecretGuard,
   ],
@@ -57,6 +63,8 @@ import { CronSecretGuard, DataCollectionPermissionsGuard } from './guards';
     SubmissionsService,
     SubmissionFlagsService,
     AssignmentReminderService,
+    WorkflowRuleEngineService,
+    ManagerReportService,
   ],
 })
 export class DataCollectionModule {}

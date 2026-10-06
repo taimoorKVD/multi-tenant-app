@@ -1,18 +1,28 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { In } from 'typeorm';
 import * as nodemailer from 'nodemailer';
 import { User } from '../../users/entities';
+import { Item } from '../../items/entities';
 import { emailEscape, renderEmailLayout } from '../../../mail/utils/email-layout.util';
 import {
   prepareEmailLogo,
   toNodemailerLogoAttachments,
   type PreparedEmailLogo,
 } from '../../../mail/utils/email-logo.util';
-import { AssignmentType } from '../entities/enums';
+import {
+  AssignmentType,
+  ManagerRequestKind,
+  ManagerRequestStatus,
+  WorkflowActionType,
+} from '../entities/enums';
+import { DcManagerRequest } from '../entities/dc-manager-request.entity';
+import { DcWorkflowExecution } from '../entities/dc-workflow-execution.entity';
 import {
   parseExclusiveAssignReportTargets,
   resolveAssignReportMode,
 } from '../utils/assignment-completion.util';
+import { extractRequestDisplay } from '../utils/workflow-operators.util';
+import { WorkflowRuleEngineService } from './workflow-rule-engine.service';
 
 export type DcMailRecipient = {
   id: number;
@@ -38,6 +48,8 @@ type SmtpConfig = {
 @Injectable()
 export class WorkflowActionsService {
   private readonly logger = new Logger(WorkflowActionsService.name);
+
+  constructor(@Optional() private readonly ruleEngine?: WorkflowRuleEngineService) {}
 
   private getEnvValue(...keys: string[]): string | undefined {
     for (const key of keys) {
@@ -226,95 +238,119 @@ export class WorkflowActionsService {
       submissionId: number;
       schema: Record<string, any>;
       submittedBy: number | null;
+      answers?: Record<string, any>;
+      templateVersionId?: number;
     },
-  ): Promise<{ actions: Array<{ type: string; status: string; detail?: string }> }> {
+  ): Promise<{ actions: Array<{ type: string; status: string; detail?: string; mode?: string }> }> {
     const schema = context.schema || {};
-    const configured: Array<{ type: string; [key: string]: any }> = Array.isArray(
-      schema.workflow?.actions,
-    )
-      ? schema.workflow.actions
-      : [{ type: 'notify', targets: 'report' }];
-
-    const results: Array<{ type: string; status: string; detail?: string; mode?: string }> = [];
     const submitter = await this.resolveUser(req, context.submittedBy);
-    const submittedAt = new Date().toISOString();
-    const templateName = context.templateName || `Template #${context.templateId}`;
+    const rules = Array.isArray(schema.conditionalRules) ? schema.conditionalRules : null;
+
+    if (!rules) {
+      const configured: Array<{ type: string; [key: string]: any }> = Array.isArray(
+        schema.workflow?.actions,
+      )
+        ? schema.workflow.actions
+        : [{ type: 'notify', targets: 'report' }];
+      return this.runLegacyActions(req, context, schema, configured, submitter);
+    }
+
+    const engine = this.ruleEngine ?? new WorkflowRuleEngineService();
+    const results: Array<{ type: string; status: string; detail?: string; mode?: string }> = [];
+    const answers = context.answers || {};
+    let notified = false;
+
+    for (const rule of rules) {
+      const evaluation = await engine.evaluateRule(req, rule, answers, schema);
+      const actionsFired: Array<{ id?: string; type?: string; status: string }> = [];
+
+      if (evaluation.matched) {
+        for (const action of Array.isArray(rule.actions) ? rule.actions : []) {
+          const type = String(action?.type || '');
+          if (type === WorkflowActionType.SEND_NOTIFICATION || type === WorkflowActionType.NOTIFY) {
+            const portalRow = await this.createManagerRequest(
+              req,
+              context,
+              schema,
+              action,
+              rule,
+              submitter,
+            );
+            results.push({
+              type: 'notificationRequest',
+              status: portalRow.status,
+              detail: portalRow.detail,
+            });
+            actionsFired.push({
+              id: action.id,
+              type: 'notificationRequest',
+              status: portalRow.status,
+            });
+
+            if (!notified) {
+              const notifyResult = await this.notifyReportRecipients(req, context, schema, submitter);
+              results.push(notifyResult);
+              notified = true;
+              actionsFired.push({ id: action.id, type, status: notifyResult.status });
+            } else {
+              actionsFired.push({ id: action.id, type, status: 'deduped' });
+              results.push({ type, status: 'deduped', detail: `rule=${evaluation.ruleId}` });
+            }
+            continue;
+          }
+
+          if (
+            type === WorkflowActionType.PURCHASE_REQUEST ||
+            type === WorkflowActionType.MAINTENANCE_REQUEST
+          ) {
+            const created = await this.createManagerRequest(
+              req,
+              context,
+              schema,
+              action,
+              rule,
+              submitter,
+            );
+            actionsFired.push({ id: action.id, type, status: created.status });
+            results.push({ type, status: created.status, detail: created.detail });
+            continue;
+          }
+
+          actionsFired.push({ id: action?.id, type: type || 'unknown', status: 'skipped' });
+          results.push({ type: type || 'unknown', status: 'skipped' });
+        }
+      } else {
+        results.push({
+          type: 'rule',
+          status: evaluation.skipReason || 'no_match',
+          detail: `rule=${evaluation.ruleId}`,
+        });
+      }
+
+      await this.recordExecution(req, context, evaluation, actionsFired);
+    }
+
+    return { actions: results };
+  }
+
+  private async runLegacyActions(
+    req: any,
+    context: {
+      templateId: number;
+      templateName: string;
+      assignmentId: number;
+      submissionId: number;
+      submittedBy: number | null;
+    },
+    schema: Record<string, any>,
+    configured: Array<{ type: string; [key: string]: any }>,
+    submitter: DcMailRecipient | null,
+  ) {
+    const results: Array<{ type: string; status: string; detail?: string; mode?: string }> = [];
 
     for (const action of configured) {
       if (action.type === 'notify') {
-        const report = schema.report || {};
-        const reportMode = resolveAssignReportMode(report);
-        const recipients = await this.resolveReportRecipients(req, report);
-        const withEmail = recipients.filter((r) => !!r.email);
-
-        if (!withEmail.length) {
-          results.push({
-            type: 'notify',
-            status: 'skipped',
-            detail: 'No report recipients with email',
-            mode: reportMode,
-          });
-          continue;
-        }
-
-        let sent = 0;
-        let failed = 0;
-        const preparedLogo = await prepareEmailLogo();
-        const workspaceUrl = this.getTenantLoginUrl(req);
-        const fields = [
-          { label: 'Form', value: templateName },
-          {
-            label: 'Submitted by',
-            value: submitter?.name || submitter?.email || 'Unknown',
-          },
-          { label: 'Submitted at', value: submittedAt },
-          { label: 'Assignment ID', value: String(context.assignmentId) },
-          { label: 'Submission ID', value: String(context.submissionId) },
-        ];
-
-        if (reportMode === AssignmentType.SHARED) {
-          // One shared notification to the whole report group.
-          const result = await this.sendDirectSmtpMail({
-            to: withEmail.map((r) => r.email!).join(', '),
-            subject: `New submission: ${templateName}`,
-            logo: preparedLogo,
-            html: this.wrapHtml(
-              'New Data Collection Submission',
-              `A form was submitted and your group was listed as shared report recipients.`,
-              fields,
-              'Open Workspace',
-              preparedLogo.logoSrc,
-              workspaceUrl,
-            ),
-          });
-          if (result.status === 'failed') failed = withEmail.length;
-          else sent = withEmail.length;
-        } else {
-          for (const recipient of withEmail) {
-            const result = await this.sendDirectSmtpMail({
-              to: recipient.email!,
-              subject: `New submission: ${templateName}`,
-              logo: preparedLogo,
-              html: this.wrapHtml(
-                'New Data Collection Submission',
-                `Hi ${emailEscape(recipient.name || recipient.email || '')}, a form was submitted and you were listed as a report recipient.`,
-                fields,
-                'Open Workspace',
-                preparedLogo.logoSrc,
-                workspaceUrl,
-              ),
-            });
-            if (result.status === 'failed') failed += 1;
-            else sent += 1;
-          }
-        }
-
-        results.push({
-          type: 'notify',
-          status: failed && !sent ? 'failed' : failed ? 'partial' : 'sent',
-          detail: `mode=${reportMode}; recipients emailed: ${sent}, failed: ${failed}`,
-          mode: reportMode,
-        });
+        results.push(await this.notifyReportRecipients(req, context, schema, submitter));
         continue;
       }
 
@@ -330,6 +366,244 @@ export class WorkflowActionsService {
     }
 
     return { actions: results };
+  }
+
+  async notifyReportRecipients(
+    req: any,
+    context: {
+      templateId: number;
+      templateName: string;
+      assignmentId: number;
+      submissionId: number;
+    },
+    schema: Record<string, any>,
+    submitter: DcMailRecipient | null,
+  ): Promise<{ type: string; status: string; detail?: string; mode?: string }> {
+    const report = schema.report || {};
+    const reportMode = resolveAssignReportMode(report);
+    const recipients = await this.resolveReportRecipients(req, report);
+    const withEmail = recipients.filter((r) => !!r.email);
+    const templateName = context.templateName || `Template #${context.templateId}`;
+    const submittedAt = new Date().toISOString();
+
+    if (!withEmail.length) {
+      return {
+        type: 'notify',
+        status: 'skipped',
+        detail: 'No report recipients with email',
+        mode: reportMode,
+      };
+    }
+
+    let sent = 0;
+    let failed = 0;
+    const preparedLogo = await prepareEmailLogo();
+    const workspaceUrl = this.getTenantLoginUrl(req);
+    const fields = [
+      { label: 'Form', value: templateName },
+      {
+        label: 'Submitted by',
+        value: submitter?.name || submitter?.email || 'Unknown',
+      },
+      { label: 'Submitted at', value: submittedAt },
+      { label: 'Assignment ID', value: String(context.assignmentId) },
+      { label: 'Submission ID', value: String(context.submissionId) },
+    ];
+
+    if (reportMode === AssignmentType.SHARED) {
+      const result = await this.sendDirectSmtpMail({
+        to: withEmail.map((r) => r.email!).join(', '),
+        subject: `New submission: ${templateName}`,
+        logo: preparedLogo,
+        html: this.wrapHtml(
+          'New Data Collection Submission',
+          `A form was submitted and your group was listed as shared report recipients.`,
+          fields,
+          'Open Workspace',
+          preparedLogo.logoSrc,
+          workspaceUrl,
+        ),
+      });
+      if (result.status === 'failed') failed = withEmail.length;
+      else sent = withEmail.length;
+    } else {
+      for (const recipient of withEmail) {
+        const result = await this.sendDirectSmtpMail({
+          to: recipient.email!,
+          subject: `New submission: ${templateName}`,
+          logo: preparedLogo,
+          html: this.wrapHtml(
+            'New Data Collection Submission',
+            `Hi ${emailEscape(recipient.name || recipient.email || '')}, a form was submitted and you were listed as a report recipient.`,
+            fields,
+            'Open Workspace',
+            preparedLogo.logoSrc,
+            workspaceUrl,
+          ),
+        });
+        if (result.status === 'failed') failed += 1;
+        else sent += 1;
+      }
+    }
+
+    return {
+      type: 'notify',
+      status: failed && !sent ? 'failed' : failed ? 'partial' : 'sent',
+      detail: `mode=${reportMode}; recipients emailed: ${sent}, failed: ${failed}`,
+      mode: reportMode,
+    };
+  }
+
+  async sendLayoutMail(options: {
+    req?: any;
+    to: string;
+    subject: string;
+    title: string;
+    intro: string;
+    rows: Array<{ label: string; value: string }>;
+    ctaLabel?: string;
+  }): Promise<{ status: string; detail?: string }> {
+    const preparedLogo = await prepareEmailLogo();
+    const workspaceUrl = this.getTenantLoginUrl(options.req);
+    return this.sendDirectSmtpMail({
+      to: options.to,
+      subject: options.subject,
+      logo: preparedLogo,
+      html: this.wrapHtml(
+        options.title,
+        options.intro,
+        options.rows,
+        options.ctaLabel || 'Open Workspace',
+        preparedLogo.logoSrc,
+        workspaceUrl,
+      ),
+    });
+  }
+
+  private async recordExecution(
+    req: any,
+    context: {
+      templateId: number;
+      assignmentId: number;
+      submissionId: number;
+      templateVersionId?: number;
+    },
+    evaluation: {
+      ruleId: string;
+      ruleName: string;
+      matched: boolean;
+      skipReason: string | null;
+      conditionResults: unknown[];
+    },
+    actionsFired: unknown[],
+  ): Promise<void> {
+    if (!req?.tenantConnection || !context.templateVersionId) return;
+    try {
+      const repo = req.tenantConnection.getRepository(DcWorkflowExecution);
+      await repo.save(
+        repo.create({
+          submissionId: context.submissionId,
+          assignmentId: context.assignmentId,
+          templateId: context.templateId,
+          templateVersionId: context.templateVersionId,
+          ruleClientId: evaluation.ruleId || 'unknown',
+          ruleName: evaluation.ruleName || null,
+          matched: evaluation.matched,
+          skipReason: evaluation.skipReason,
+          conditionResults: evaluation.conditionResults,
+          actionsFired,
+        }),
+      );
+    } catch (error) {
+      this.logger.error(`Failed to record workflow execution: ${(error as Error).message}`);
+    }
+  }
+
+  private async createManagerRequest(
+    req: any,
+    context: {
+      templateId: number;
+      assignmentId: number;
+      submissionId: number;
+      templateVersionId?: number;
+      answers?: Record<string, any>;
+    },
+    schema: Record<string, any>,
+    action: { id?: string; type?: string },
+    rule: { id?: string; name?: string },
+    submitter: DcMailRecipient | null,
+  ): Promise<{ status: string; detail?: string }> {
+    if (!req?.tenantConnection || !context.templateVersionId) {
+      return { status: 'skipped', detail: 'Missing tenant connection or template version' };
+    }
+
+    const kind = this.resolveManagerRequestKind(action.type);
+    const repo = req.tenantConnection.getRepository(DcManagerRequest);
+    const actionClientId = String(action.id || action.type || 'action');
+    const ruleClientId = String(rule.id || 'rule');
+
+    const existing = await repo.findOne({
+      where: {
+        submissionId: context.submissionId,
+        ruleClientId,
+        actionClientId,
+      },
+    });
+    if (existing) {
+      return { status: 'exists', detail: `requestId=${existing.id}` };
+    }
+
+    const display = extractRequestDisplay(schema, context.answers || {});
+    let itemLabel = display.itemLabel;
+    if (!itemLabel && display.itemId) {
+      const item = await req.tenantConnection.getRepository(Item).findOne({
+        where: { id: display.itemId },
+      });
+      itemLabel = item?.itemName || null;
+    }
+
+    const ruleName = String(rule.name || '').trim();
+    const note =
+      kind === ManagerRequestKind.NOTIFICATION
+        ? ruleName || display.note || 'Workflow notification'
+        : display.note;
+
+    const saved = await repo.save(
+      repo.create({
+        kind,
+        status: ManagerRequestStatus.OPEN,
+        submissionId: context.submissionId,
+        assignmentId: context.assignmentId,
+        templateId: context.templateId,
+        templateVersionId: context.templateVersionId,
+        ruleClientId,
+        actionClientId,
+        requestedByUserId: submitter?.id ?? null,
+        requesterName: submitter?.name || submitter?.email || null,
+        itemId: display.itemId,
+        vendorId: display.vendorId,
+        itemLabel,
+        note,
+        quantity: display.quantity,
+        quotedPrice: display.quotedPrice,
+        answersSnapshot: context.answers || {},
+      }),
+    );
+
+    return { status: 'created', detail: `requestId=${saved.id}` };
+  }
+
+  private resolveManagerRequestKind(actionType?: string): ManagerRequestKind {
+    if (
+      actionType === WorkflowActionType.SEND_NOTIFICATION ||
+      actionType === WorkflowActionType.NOTIFY
+    ) {
+      return ManagerRequestKind.NOTIFICATION;
+    }
+    if (actionType === WorkflowActionType.MAINTENANCE_REQUEST) {
+      return ManagerRequestKind.MAINTENANCE;
+    }
+    return ManagerRequestKind.PURCHASE;
   }
 
   async sendAssignmentDueReminder(

@@ -9,3 +9,10 @@ export {
   TemplateSectionDto,
 } from './section.dto';
 export { TemplateSchemaDto } from './template-schema.dto';
+export {
+  WorkflowComparisonDto,
+  WorkflowConditionItemDto,
+  WorkflowConditionsDto,
+  WorkflowRuleActionDto,
+  ConditionalRuleDto,
+} from './conditional-rules.dto';
