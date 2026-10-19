@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { In } from 'typeorm';
 import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
-import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
+import {
+  CreateTemplateDto,
+  UpdateTemplateDto,
+  DuplicateTemplateDto,
+  QueryTemplateDto,
+} from '../dto';
 import { AssignmentsService } from './assignments.service';
 import { WorkflowActionsService } from './workflow-actions.service';
 import { FrequencyService } from './frequency.service';
@@ -391,6 +396,66 @@ export class TemplatesService {
     }
   }
 
+  private buildDuplicateName(name: string): string {
+    const suffix = ' (Copy)';
+    const base = String(name || '').trim() || 'Template';
+    if (base.length + suffix.length <= 200) return `${base}${suffix}`;
+    return `${base.slice(0, Math.max(0, 200 - suffix.length))}${suffix}`;
+  }
+
+  private cloneTemplateSchema(
+    schema: Record<string, any> | null,
+    name: string,
+  ): Record<string, any> | null {
+    if (!schema || typeof schema !== 'object') return null;
+    const cloned = JSON.parse(JSON.stringify(schema)) as Record<string, any>;
+    cloned.formName = name;
+    return cloned;
+  }
+
+  /**
+   * Duplicate a template as a new draft (schema + name only).
+   * Does not copy versions or assignments — publish to go live.
+   */
+  async duplicate(req: any, id: number, dto: DuplicateTemplateDto = {}) {
+    try {
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const source = await templateRepo.findOne({ where: { id } });
+      if (!source) throw new NotFoundException(`Template with ID ${id} not found`);
+
+      const actorId = this.getActorId(req);
+      const name = (dto.name?.trim() || this.buildDuplicateName(source.name)).slice(0, 200);
+      if (name.length < 2) {
+        throw new BadRequestException('Duplicated template name must be at least 2 characters');
+      }
+
+      const schema = this.cloneTemplateSchema(
+        (source.schema || null) as Record<string, any> | null,
+        name,
+      );
+
+      const template = templateRepo.create({
+        name,
+        schema,
+        status: TemplateStatus.DRAFT,
+        isActive: false,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+
+      const saved = await templateRepo.save(template);
+      return {
+        success: true,
+        message: 'Template duplicated as draft successfully',
+        data: this.serializeTemplate(saved),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      console.error('Template duplicate failed:', error);
+      throw new InternalServerErrorException('Failed to duplicate template');
+    }
+  }
+
   async findAll(req: any, query: QueryTemplateDto) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
@@ -398,12 +463,15 @@ export class TemplatesService {
       const limit = Math.min(Math.max(1, query.limit ?? 15), 100);
       const skip = (page - 1) * limit;
 
-      const qb = templateRepo.createQueryBuilder('template');
+      const qb = templateRepo
+        .createQueryBuilder('template')
+        // Soft-deleted templates are never listed (including archive view).
+        .andWhere('template.deletedAt IS NULL');
 
       if (query.status) {
         qb.andWhere('template.status = :status', { status: query.status });
       } else {
-        // Default list hides archived so deleted forms stay in the archive view.
+        // Default list hides archived; use status=archived for the restoreable archive view.
         qb.andWhere('template.status != :archived', { archived: TemplateStatus.ARCHIVED });
       }
 
@@ -578,17 +646,39 @@ export class TemplatesService {
     return saved;
   }
 
+  /**
+   * Soft-delete a template (`deleted_at`). Cancels open assignments and hides the
+   * form everywhere. Soft-deleted templates are not restorable — use archive for
+   * a reversible take-offline.
+   */
+  private async softDeleteInternal(
+    req: any,
+    template: DataCollectionTemplate,
+    actorId: number | null,
+  ) {
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+
+    await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+
+    template.isActive = false;
+    template.updatedBy = actorId;
+    await templateRepo.save(template);
+    await templateRepo.softRemove(template);
+
+    return template;
+  }
+
   async remove(req: any, id: number) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
-      const saved = await this.archiveInternal(req, template, this.getActorId(req));
+      const deleted = await this.softDeleteInternal(req, template, this.getActorId(req));
       return {
         success: true,
-        message: 'Template deleted and moved to archive',
-        data: saved,
+        message: 'Template deleted successfully',
+        data: deleted,
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -613,15 +703,15 @@ export class TemplatesService {
       }
 
       const actorId = this.getActorId(req);
-      const archived: DataCollectionTemplate[] = [];
+      const deleted: DataCollectionTemplate[] = [];
       for (const template of templates) {
-        archived.push(await this.archiveInternal(req, template, actorId));
+        deleted.push(await this.softDeleteInternal(req, template, actorId));
       }
 
       return {
         success: true,
-        message: `${foundIds.length} template(s) deleted and moved to archive`,
-        data: { deletedIds: foundIds, count: foundIds.length, templates: archived },
+        message: `${foundIds.length} template(s) deleted successfully`,
+        data: { deletedIds: foundIds, count: foundIds.length, templates: deleted },
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -673,6 +763,51 @@ export class TemplatesService {
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Failed to archive template');
+    }
+  }
+
+  /**
+   * Move an active template back to draft (unpublish).
+   * Cancels open assignments and hides the form from the employee portal.
+   * Published versions are kept so publish/activate can bring it live again.
+   */
+  async moveToDraft(req: any, id: number) {
+    try {
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const template = await templateRepo.findOne({ where: { id } });
+      if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
+
+      if (template.status === TemplateStatus.ARCHIVED) {
+        throw new BadRequestException(
+          'Archived templates cannot be moved to draft; restore them first',
+        );
+      }
+
+      const actorId = this.getActorId(req);
+
+      if (template.status === TemplateStatus.DRAFT && !template.isActive) {
+        await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+        return {
+          success: true,
+          message: 'Template is already a draft',
+          data: template,
+        };
+      }
+
+      template.status = TemplateStatus.DRAFT;
+      template.isActive = false;
+      template.updatedBy = actorId;
+      const saved = await templateRepo.save(template);
+      await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+
+      return {
+        success: true,
+        message: 'Template moved to draft successfully',
+        data: saved,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new InternalServerErrorException('Failed to move template to draft');
     }
   }
 
@@ -755,7 +890,9 @@ export class TemplatesService {
         return { success: true, count: 0, data: [] };
       }
 
-      const qb = templateRepo.createQueryBuilder('template');
+      const qb = templateRepo
+        .createQueryBuilder('template')
+        .andWhere('template.deletedAt IS NULL');
 
       for (const [key, value] of Object.entries(rawFilters)) {
         if (key === 'name') {

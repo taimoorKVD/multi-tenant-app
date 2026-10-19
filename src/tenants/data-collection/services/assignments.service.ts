@@ -686,9 +686,11 @@ export class AssignmentsService {
   private applyAssignedFormsActiveTemplateFilter(qb: any): void {
     qb.andWhere('template.status = :assignedFormsTemplateStatus', {
       assignedFormsTemplateStatus: TemplateStatus.ACTIVE,
-    }).andWhere('template.is_active = :assignedFormsTemplateIsActive', {
-      assignedFormsTemplateIsActive: true,
-    });
+    })
+      .andWhere('template.is_active = :assignedFormsTemplateIsActive', {
+        assignedFormsTemplateIsActive: true,
+      })
+      .andWhere('template.deletedAt IS NULL');
   }
 
   /** Resolve `userId[]` + legacy `assigneeUserId` into a unique id list. */
