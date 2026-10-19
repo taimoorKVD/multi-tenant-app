@@ -14,7 +14,12 @@ import { TenantAccess } from '../../../common/decorators/tenant-access.decorator
 import { BulkDeleteDto } from '../../../common/dto';
 import { BulkDeleteSwagger } from '../../../common/swagger';
 import { TemplatesService } from '../services';
-import { CreateTemplateDto, UpdateTemplateDto, QueryTemplateDto } from '../dto';
+import {
+  CreateTemplateDto,
+  UpdateTemplateDto,
+  DuplicateTemplateDto,
+  QueryTemplateDto,
+} from '../dto';
 import { TenantDataCollectionTemplatesSwagger } from '../swagger/templates.swagger';
 
 @TenantDataCollectionTemplatesSwagger.Tags()
@@ -28,6 +33,17 @@ export class TemplatesController {
   @TenantDataCollectionTemplatesSwagger.Create()
   create(@Req() req: any, @Body() dto: CreateTemplateDto) {
     return this.templatesService.create(req, dto);
+  }
+
+  @Post(':id/duplicate')
+  @TenantAccess('create-dc-template')
+  @TenantDataCollectionTemplatesSwagger.Duplicate()
+  duplicate(
+    @Req() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DuplicateTemplateDto,
+  ) {
+    return this.templatesService.duplicate(req, id, dto);
   }
 
   @Get()
@@ -94,6 +110,13 @@ export class TemplatesController {
   @TenantDataCollectionTemplatesSwagger.Archive()
   archive(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.templatesService.archive(req, id);
+  }
+
+  @Post(':id/draft')
+  @TenantAccess('activate-dc-template')
+  @TenantDataCollectionTemplatesSwagger.MoveToDraft()
+  moveToDraft(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.templatesService.moveToDraft(req, id);
   }
 
   @Post(':id/restore')

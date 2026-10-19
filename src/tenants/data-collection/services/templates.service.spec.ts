@@ -88,6 +88,7 @@ describe('TemplatesService', () => {
         }
         return [{ hours: 0, minutes: 0 }];
       }),
+      enrichFrequencyForUi: jest.fn().mockImplementation((frequency: any) => frequency),
     };
     service = new TemplatesService(
       assignmentsService as any,
@@ -241,6 +242,57 @@ describe('TemplatesService', () => {
       expect(result.success).toBe(true);
       expect(result.message).toContain('published');
       expect(schema.frequency.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+
+  describe('duplicate', () => {
+    it('creates a draft copy with (Copy) name and cloned schema', async () => {
+      const req = createReq();
+      const source = {
+        id: 1,
+        name: 'Manager Report',
+        schema: { ...fullSchema, formName: 'Manager Report' },
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+      };
+      req.templateRepo.findOne.mockResolvedValue(source);
+      req.templateRepo.save.mockImplementation(async (e: any) => ({ id: 2, ...e }));
+
+      const result = await service.duplicate(req, 1, {});
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('draft');
+      expect(result.data.id).toBe(2);
+      expect(result.data.name).toBe('Manager Report (Copy)');
+      expect(result.data.status).toBe(TemplateStatus.DRAFT);
+      expect(result.data.isActive).toBe(false);
+      expect(result.data.schema?.formName).toBe('Manager Report (Copy)');
+      expect(result.data.schema?.assign).toEqual(fullSchema.assign);
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+    });
+
+    it('uses optional name override', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue({
+        id: 1,
+        name: 'Original',
+        schema: fullSchema,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+      });
+      req.templateRepo.save.mockImplementation(async (e: any) => ({ id: 3, ...e }));
+
+      const result = await service.duplicate(req, 1, { name: 'Custom Name' });
+
+      expect(result.data.name).toBe('Custom Name');
+      expect(result.data.schema?.formName).toBe('Custom Name');
+    });
+
+    it('throws NotFoundException when source is missing', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.duplicate(req, 99, {})).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -829,30 +881,91 @@ describe('TemplatesService', () => {
     });
   });
 
-  describe('remove', () => {
-    it('archives instead of soft-deleting and cancels open assignments', async () => {
+  describe('moveToDraft', () => {
+    it('sets status to DRAFT, deactivates, and cancels open assignments', async () => {
       const req = createReq();
       const template = { id: 1, status: TemplateStatus.ACTIVE, isActive: true, updatedBy: null };
       req.templateRepo.findOne.mockResolvedValue(template);
       req.templateRepo.save.mockResolvedValue({
         ...template,
+        status: TemplateStatus.DRAFT,
+        isActive: false,
+      });
+
+      const result = await service.moveToDraft(req, 1);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('draft');
+      expect(template.status).toBe(TemplateStatus.DRAFT);
+      expect(template.isActive).toBe(false);
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
+    });
+
+    it('is idempotent when already draft and inactive', async () => {
+      const req = createReq();
+      const template = { id: 1, status: TemplateStatus.DRAFT, isActive: false };
+      req.templateRepo.findOne.mockResolvedValue(template);
+
+      const result = await service.moveToDraft(req, 1);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('already');
+      expect(req.templateRepo.save).not.toHaveBeenCalled();
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
+    });
+
+    it('rejects archived templates', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue({
+        id: 1,
         status: TemplateStatus.ARCHIVED,
         isActive: false,
+      });
+
+      await expect(service.moveToDraft(req, 1)).rejects.toThrow(BadRequestException);
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when template is missing', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.moveToDraft(req, 99)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('remove', () => {
+    it('soft-deletes via deleted_at, deactivates, and cancels open assignments', async () => {
+      const req = createReq();
+      const template = { id: 1, status: TemplateStatus.ACTIVE, isActive: true, updatedBy: null };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      req.templateRepo.save.mockImplementation(async (e: any) => e);
+      req.templateRepo.softRemove.mockImplementation(async (e: any) => {
+        e.deletedAt = new Date();
+        return e;
       });
 
       const result = await service.remove(req, 1);
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('archive');
-      expect(req.templateRepo.softRemove).not.toHaveBeenCalled();
-      expect(template.status).toBe(TemplateStatus.ARCHIVED);
+      expect(result.message).toContain('deleted');
+      expect(result.message).not.toContain('archive');
       expect(template.isActive).toBe(false);
+      expect(req.templateRepo.softRemove).toHaveBeenCalledWith(template);
       expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
+    });
+
+    it('throws NotFoundException when template is missing', async () => {
+      const req = createReq();
+      req.templateRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.remove(req, 99)).rejects.toThrow(NotFoundException);
+      expect(req.templateRepo.softRemove).not.toHaveBeenCalled();
     });
   });
 
   describe('bulkRemove', () => {
-    it('archives all templates and cancels open assignments', async () => {
+    it('soft-deletes all templates and cancels open assignments', async () => {
       const req = createReq();
       const templates = [
         { id: 1, status: TemplateStatus.ACTIVE, isActive: true },
@@ -860,14 +973,17 @@ describe('TemplatesService', () => {
       ];
       req.templateRepo.findBy.mockResolvedValue(templates);
       req.templateRepo.save.mockImplementation(async (e: any) => e);
+      req.templateRepo.softRemove.mockImplementation(async (e: any) => {
+        e.deletedAt = new Date();
+        return e;
+      });
 
       const result = await service.bulkRemove(req, [1, 2]);
 
       expect(result.success).toBe(true);
       expect(result.data.deletedIds).toEqual([1, 2]);
-      expect(req.templateRepo.softRemove).not.toHaveBeenCalled();
+      expect(req.templateRepo.softRemove).toHaveBeenCalledTimes(2);
       expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledTimes(2);
-      expect(templates.every((t) => t.status === TemplateStatus.ARCHIVED)).toBe(true);
       expect(templates.every((t) => t.isActive === false)).toBe(true);
     });
   });
