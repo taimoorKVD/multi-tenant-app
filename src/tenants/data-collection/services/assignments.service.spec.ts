@@ -1849,6 +1849,7 @@ describe('AssignmentsService findAssignedForms (admin board)', () => {
     expect(listQb.andWhere).toHaveBeenCalledWith('template.is_active = :assignedFormsTemplateIsActive', {
       assignedFormsTemplateIsActive: true,
     });
+    expect(listQb.andWhere).toHaveBeenCalledWith('template.deletedAt IS NULL');
     expect(result.success).toBe(true);
     expect(result.stats).toEqual({
       level: 'occurrence',

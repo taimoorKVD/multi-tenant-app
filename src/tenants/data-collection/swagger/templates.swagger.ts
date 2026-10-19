@@ -1,6 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CreateTemplateDto, UpdateTemplateDto } from '../dto';
+import { CreateTemplateDto, UpdateTemplateDto, DuplicateTemplateDto } from '../dto';
 import { TemplateStatus } from '../entities/enums';
 import { CONDITIONAL_RULES_SWAGGER_EXAMPLE } from './conditional-rules.example';
 
@@ -159,12 +159,41 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiResponse({ status: 400, description: 'Validation failed.' }),
     ),
 
+  Duplicate: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Duplicate template',
+        description:
+          'Creates a new draft copy of the template (name + schema). Does not copy versions or assignments and does not publish — use publish to go live. Optional body.name overrides the default "{name} (Copy)".',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiBody({ type: DuplicateTemplateDto, required: false }),
+      ApiResponse({
+        status: 201,
+        description: 'Template duplicated as draft successfully.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Template duplicated as draft successfully',
+            data: {
+              id: 2,
+              name: 'Manager Report (Copy)',
+              status: 'draft',
+              isActive: false,
+              schema: { formName: 'Manager Report (Copy)', sections: [] },
+            },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
   FindAll: () =>
     applyDecorators(
       ApiOperation({
         summary: 'List data collection templates',
         description:
-          'Returns paginated templates. By default excludes archived. Pass status=archived to list deleted forms for restore.',
+          'Returns paginated templates. Soft-deleted templates are never returned. By default excludes archived. Pass status=archived to list archived forms for restore.',
       }),
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
@@ -351,10 +380,10 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiOperation({
         summary: 'Delete template',
         description:
-          'Moves the template to ARCHIVED (not hard-deleted), cancels open employee assignments, and hides it from the employee portal. Use restore to bring it back.',
+          'Soft-deletes the template (`deleted_at`), cancels open employee assignments, and hides it everywhere. Soft-deleted templates are not restorable — use archive for a reversible take-offline.',
       }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
-      ApiResponse({ status: 200, description: 'Template deleted and moved to archive.' }),
+      ApiResponse({ status: 200, description: 'Template deleted successfully.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
 
@@ -387,10 +416,23 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiOperation({
         summary: 'Archive template',
         description:
-          'Sets the template status to ARCHIVED, deactivates it, cancels open assignments, and hides it from the employee portal.',
+          'Sets the template status to ARCHIVED, deactivates it, cancels open assignments, and hides it from the employee portal. Restorable via restore. Use delete for a permanent soft-delete.',
       }),
       ApiParam({ name: 'id', type: Number, example: 1 }),
       ApiResponse({ status: 200, description: 'Template archived successfully.' }),
+      ApiResponse({ status: 404, description: 'Template not found.' }),
+    ),
+
+  MoveToDraft: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Move template to draft',
+        description:
+          'Unpublishes an active template: sets status to DRAFT, deactivates it, cancels open assignments, and hides it from the employee portal. Published versions are kept — use publish to go live again. Archived templates must be restored first.',
+      }),
+      ApiParam({ name: 'id', type: Number, example: 1 }),
+      ApiResponse({ status: 200, description: 'Template moved to draft successfully.' }),
+      ApiResponse({ status: 400, description: 'Archived templates cannot be moved to draft.' }),
       ApiResponse({ status: 404, description: 'Template not found.' }),
     ),
 
