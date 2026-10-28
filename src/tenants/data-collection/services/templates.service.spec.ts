@@ -140,6 +140,7 @@ describe('TemplatesService', () => {
       andWhere: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn().mockResolvedValue([data, total]),
       getMany: jest.fn().mockResolvedValue(data),
+      getCount: jest.fn().mockResolvedValue(total),
     };
     return qb;
   }
