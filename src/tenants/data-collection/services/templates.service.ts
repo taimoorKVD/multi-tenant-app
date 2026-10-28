@@ -509,7 +509,25 @@ export class TemplatesService {
       const lastPage = Math.ceil(total / limit) || 1;
       const data = rows.map((row) => this.serializeTemplate(row));
 
-      return { success: true, meta: { total, page, lastPage }, data };
+      const [activeCount, draftCount, archivedCount] = await Promise.all([
+        templateRepo
+          .createQueryBuilder('template')
+          .andWhere('template.deletedAt IS NULL')
+          .andWhere('template.status = :status', { status: TemplateStatus.ACTIVE })
+          .getCount(),
+        templateRepo
+          .createQueryBuilder('template')
+          .andWhere('template.deletedAt IS NULL')
+          .andWhere('template.status = :status', { status: TemplateStatus.DRAFT })
+          .getCount(),
+        templateRepo
+          .createQueryBuilder('template')
+          .andWhere('template.deletedAt IS NULL')
+          .andWhere('template.status = :status', { status: TemplateStatus.ARCHIVED })
+          .getCount(),
+      ]);
+
+      return { success: true, meta: { total, page, lastPage }, counts: { active: activeCount, drafts: draftCount, archived: archivedCount }, data };
     } catch (error) {
       console.error('Template findAll failed:', error);
       throw new InternalServerErrorException('Failed to retrieve templates');
@@ -816,10 +834,11 @@ export class TemplatesService {
 
       if (template.status === TemplateStatus.DRAFT && !template.isActive) {
         await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+        const refreshed = await templateRepo.findOne({ where: { id: template.id } });
         return {
           success: true,
           message: 'Template is already a draft',
-          data: template,
+          data: this.serializeTemplate(refreshed || template),
         };
       }
 
@@ -829,10 +848,11 @@ export class TemplatesService {
       const saved = await templateRepo.save(template);
       await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
 
+      const refreshed = await templateRepo.findOne({ where: { id: saved.id } });
       return {
         success: true,
         message: 'Template moved to draft successfully',
-        data: saved,
+        data: this.serializeTemplate(refreshed || saved),
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;

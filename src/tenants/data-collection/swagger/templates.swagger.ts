@@ -247,7 +247,18 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiQuery({ name: 'page', required: false, type: Number, example: 1 }),
       ApiQuery({ name: 'limit', required: false, type: Number, example: 15 }),
       ApiQuery({ name: 'status', required: false, enum: TemplateStatus, description: 'Filter by template status.' }),
-      ApiResponse({ status: 200, description: 'Templates fetched successfully.' }),
+      ApiResponse({
+        status: 200,
+        description: 'Templates fetched successfully.',
+        schema: {
+          example: {
+            success: true,
+            meta: { total: 10, page: 1, lastPage: 1 },
+            counts: { active: 5, drafts: 3, archived: 2 },
+            data: [],
+          },
+        },
+      } as any),
     ),
 
   FindOne: () =>
