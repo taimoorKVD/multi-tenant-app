@@ -106,6 +106,8 @@ describe('TemplatesService', () => {
       softRemove: jest.fn(),
       createQueryBuilder: jest.fn(),
     };
+    // Default for count queries
+    templateRepo.createQueryBuilder.mockImplementation(() => createQb([], 0));
     const versionRepo = {
       create: jest.fn().mockImplementation((e: any) => e),
       save: jest.fn().mockImplementation(async (e: any) => ({ id: 10, versionNumber: e.versionNumber ?? 1, ...e })),
@@ -329,7 +331,7 @@ describe('TemplatesService', () => {
     it('returns paginated templates', async () => {
       const req = createReq();
       const qb = createQb([{ id: 1 }, { id: 2 }], 2);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
+      req.templateRepo.createQueryBuilder.mockReturnValueOnce(qb).mockReturnValue(createQb([], 0));
 
       const result = await service.findAll(req, { page: 1, limit: 10 });
 
@@ -341,7 +343,7 @@ describe('TemplatesService', () => {
     it('defaults page=1, limit=15', async () => {
       const req = createReq();
       const qb = createQb([], 0);
-      req.templateRepo.createQueryBuilder.mockReturnValue(qb);
+      req.templateRepo.createQueryBuilder.mockReturnValueOnce(qb).mockReturnValue(createQb([], 0));
 
       await service.findAll(req, {});
 
