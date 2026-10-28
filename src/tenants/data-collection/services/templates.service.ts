@@ -396,6 +396,35 @@ export class TemplatesService {
     }
   }
 
+  async createDraft(req: any, dto: CreateTemplateDto) {
+    try {
+      const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+      const actorId = this.getActorId(req, dto.createdBy);
+
+      const schema = (dto.schema as Record<string, any>) ?? null;
+
+      const template = templateRepo.create({
+        name: dto.name,
+        schema,
+        status: TemplateStatus.DRAFT,
+        isActive: false,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+
+      const saved = await templateRepo.save(template);
+      return {
+        success: true,
+        message: 'Template created as draft successfully',
+        data: this.serializeTemplate(saved),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      console.error('Template draft creation failed:', error);
+      throw new InternalServerErrorException('Failed to create template draft');
+    }
+  }
+
   private buildDuplicateName(name: string): string {
     const suffix = ' (Copy)';
     const base = String(name || '').trim() || 'Template';

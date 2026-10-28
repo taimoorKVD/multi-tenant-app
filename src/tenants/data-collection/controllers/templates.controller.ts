@@ -35,6 +35,13 @@ export class TemplatesController {
     return this.templatesService.create(req, dto);
   }
 
+  @Post('draft')
+  @TenantAccess('create-dc-template')
+  @TenantDataCollectionTemplatesSwagger.CreateDraft()
+  createDraft(@Req() req: any, @Body() dto: CreateTemplateDto) {
+    return this.templatesService.createDraft(req, dto);
+  }
+
   @Post(':id/duplicate')
   @TenantAccess('create-dc-template')
   @TenantDataCollectionTemplatesSwagger.Duplicate()
