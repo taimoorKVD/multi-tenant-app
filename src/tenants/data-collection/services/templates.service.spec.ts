@@ -245,6 +245,35 @@ describe('TemplatesService', () => {
     });
   });
 
+  describe('createDraft', () => {
+    it('creates a template as draft without publishing', async () => {
+      const req = createReq();
+      const saved = { id: 1, name: 'Draft Template', schema: fullSchema, status: TemplateStatus.DRAFT, isActive: false };
+      req.templateRepo.save.mockResolvedValue(saved);
+
+      const result = await service.createDraft(req, { name: 'Draft Template', schema: fullSchema as any });
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('draft');
+      expect(result.data.status).toBe(TemplateStatus.DRAFT);
+      expect(result.data.isActive).toBe(false);
+      expect(assignmentsService.materializeFromTemplate).not.toHaveBeenCalled();
+      expect(req.versionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('creates draft with null schema if not provided', async () => {
+      const req = createReq();
+      const saved = { id: 2, name: 'Draft', schema: null, status: TemplateStatus.DRAFT, isActive: false };
+      req.templateRepo.save.mockResolvedValue(saved);
+
+      const result = await service.createDraft(req, { name: 'Draft' } as any);
+
+      expect(result.success).toBe(true);
+      expect(result.data.status).toBe(TemplateStatus.DRAFT);
+      expect(result.data.isActive).toBe(false);
+    });
+  });
+
   describe('duplicate', () => {
     it('creates a draft copy with (Copy) name and cloned schema', async () => {
       const req = createReq();
