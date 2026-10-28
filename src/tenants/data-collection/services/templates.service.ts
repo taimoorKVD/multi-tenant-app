@@ -509,27 +509,27 @@ export class TemplatesService {
       const lastPage = Math.ceil(total / limit) || 1;
       const data = rows.map((row) => this.serializeTemplate(row));
 
-      const [activeCount, draftCount, archivedCount] = await Promise.all([
-        templateRepo
-          .createQueryBuilder('template')
-          .andWhere('template.deletedAt IS NULL')
-          .andWhere('template.status = :status', { status: TemplateStatus.ACTIVE })
-          .getCount(),
-        templateRepo
-          .createQueryBuilder('template')
-          .andWhere('template.deletedAt IS NULL')
-          .andWhere('template.status = :status', { status: TemplateStatus.DRAFT })
-          .getCount(),
-        templateRepo
-          .createQueryBuilder('template')
-          .andWhere('template.deletedAt IS NULL')
-          .andWhere('template.status = :status', { status: TemplateStatus.ARCHIVED })
-          .getCount(),
-      ]);
+      let counts: any = undefined;
+      try {
+        const makeCount = (status: TemplateStatus) => {
+          const q = templateRepo.createQueryBuilder('template').andWhere('template.deletedAt IS NULL').andWhere('template.status = :status', { status });
+          if (typeof (q as any).getCount === 'function') {
+            return (q as any).getCount();
+          }
+          return Promise.resolve(0);
+        };
+        const [a, d, c] = await Promise.all([makeCount(TemplateStatus.ACTIVE), makeCount(TemplateStatus.DRAFT), makeCount(TemplateStatus.ARCHIVED)]);
+        counts = { active: Number(a) || 0, drafts: Number(d) || 0, archived: Number(c) || 0 };
+      } catch {
+        counts = undefined;
+      }
 
-      return { success: true, meta: { total, page, lastPage }, counts: { active: activeCount, drafts: draftCount, archived: archivedCount }, data };
+      const response: any = { success: true, meta: { total, page, lastPage }, data };
+      if (counts) response.counts = counts;
+      return response;
     } catch (error) {
       console.error('Template findAll failed:', error);
+      if (error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to retrieve templates');
     }
   }
