@@ -159,6 +159,55 @@ export const TenantDataCollectionTemplatesSwagger = {
       ApiResponse({ status: 400, description: 'Validation failed.' }),
     ),
 
+  CreateDraft: () =>
+    applyDecorators(
+      ApiOperation({
+        summary: 'Create data collection template as draft',
+        description: 'Creates a new data collection template in draft status (not published). Assignments are not created until published.',
+      }),
+      ApiBody({
+        type: CreateTemplateDto,
+        examples: {
+          valid: {
+            summary: 'Create template as draft',
+            value: {
+              name: 'Manager Report Draft',
+              schema: {
+                formName: 'Manager Report Draft',
+                assign: { mode: 'individual', users: null, jobPosition: [2] },
+                report: { mode: 'shared', users: null, jobPosition: [1] },
+                frequency: {
+                  type: 'atOnce',
+                  date: '2026-08-21',
+                  jobPosition: null,
+                  recurring: null,
+                },
+                sections: [],
+              },
+            },
+          },
+        },
+      } as any),
+      ApiResponse({
+        status: 201,
+        description: 'Template created as draft successfully.',
+        schema: {
+          example: {
+            success: true,
+            message: 'Template created as draft successfully',
+            data: {
+              id: 5,
+              name: 'Manager Report Draft',
+              status: 'draft',
+              isActive: false,
+              schema: { formName: 'Manager Report Draft', sections: [] },
+            },
+          },
+        },
+      } as any),
+      ApiResponse({ status: 400, description: 'Validation failed.' }),
+    ),
+
   Duplicate: () =>
     applyDecorators(
       ApiOperation({
