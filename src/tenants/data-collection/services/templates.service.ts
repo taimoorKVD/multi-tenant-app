@@ -578,8 +578,6 @@ export class TemplatesService {
       const scheduleChanged =
         dto.schema !== undefined &&
         this.scheduleAffectingSchemaChanged(previousSchema, dto.schema as Record<string, any>);
-
-      // Match create: assign/frequency edits re-publish unless explicitly opted out with publish:false.
       const shouldPublish =
         dto.publish === true || (dto.publish !== false && scheduleChanged);
 
@@ -588,45 +586,44 @@ export class TemplatesService {
       }
 
       const actorId = this.getActorId(req, dto.updatedBy);
-      const wasAlreadyDraft = template.status === TemplateStatus.DRAFT && !template.isActive;
-      let shouldSave = false;
+      if (dto.name !== undefined) template.name = dto.name;
+      if (dto.schema !== undefined) template.schema = dto.schema as Record<string, any>;
+      if (dto.isActive !== undefined) template.isActive = dto.isActive;
+      template.updatedBy = actorId;
 
-      if (dto.name !== undefined && dto.name !== template.name) {
-        template.name = dto.name;
-        shouldSave = true;
-      }
-      if (dto.schema !== undefined) {
-        template.schema = dto.schema;
-        shouldSave = true;
-      }
-      if (template.status !== TemplateStatus.DRAFT || template.isActive) {
-        template.status = TemplateStatus.DRAFT;
-        template.isActive = false;
-        shouldSave = true;
-      }
-      if (shouldSave) {
-        template.updatedBy = actorId;
-      }
+      const saved = await templateRepo.save(template);
 
-      let saved = template;
-      if (shouldSave) {
-        saved = await templateRepo.save(template);
-      }
-
-      if (dto.schema !== undefined) {
-        await templateRepo.update(id, {
-          name: template.name,
-          schema: dto.schema,
-          status: TemplateStatus.DRAFT,
-          isActive: false,
-          updatedBy: actorId,
+      if (shouldPublish) {
+        const versionRepo = req.tenantConnection.getRepository(TemplateVersion);
+        const previousActive = await versionRepo.findOne({
+          where: { templateId: id, isActive: true },
         });
-      }
-      await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+        const rematerializeAssignments =
+          !previousActive ||
+          this.scheduleAffectingSchemaChanged(
+            (previousActive.schemaSnapshot || null) as Record<string, any> | null,
+            (saved.schema || null) as Record<string, any> | null,
+          );
 
-      const refreshed = await templateRepo.findOne({ where: { id } });
-      saved = refreshed || saved;
-      return { success: true, message: 'Template updated successfully', data: this.serializeTemplate(saved) };
+        const published = await this.publishInternal(req, saved, actorId, {
+          rematerializeAssignments,
+        });
+        return {
+          success: true,
+          message: 'Template updated and published successfully',
+          data: published.template,
+          version: published.version,
+          assignmentsCreated: published.assignments.length,
+          emailNotify: published.emailNotify,
+        };
+      }
+
+      const refreshed = await templateRepo.findOne({ where: { id: saved.id } });
+      return {
+        success: true,
+        message: 'Template updated successfully',
+        data: this.serializeTemplate(refreshed || saved),
+      };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to update template');
@@ -652,7 +649,7 @@ export class TemplatesService {
       const rematerializeAssignments =
         !previousActive ||
         this.scheduleAffectingSchemaChanged(
-          previousActive.schemaSnapshot as Record<string, any> | null,
+          (previousActive.schemaSnapshot || null) as Record<string, any> | null,
           template.schema as Record<string, any> | null,
         );
 
