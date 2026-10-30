@@ -101,6 +101,7 @@ describe('TemplatesService', () => {
     const templateRepo = {
       create: jest.fn().mockImplementation((e: any) => e),
       save: jest.fn().mockImplementation(async (e: any) => ({ id: 1, ...e })),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
       findOne: jest.fn(),
       findBy: jest.fn(),
       softRemove: jest.fn(),
@@ -1109,5 +1110,78 @@ describe('TemplatesService', () => {
         InternalServerErrorException,
       );
     });
+  });
+
+  it('saves QR fields when updating an existing draft', async () => {
+    const req = createReq();
+    const template = {
+      id: 1,
+      name: 'Daily Kitchen Checklist',
+      status: TemplateStatus.DRAFT,
+      isActive: false,
+      schema: { sections: [] },
+    };
+    const schema = {
+      formName: 'Daily Kitchen Checklist',
+      sections: [{
+        id: 'sec_kitchen_ops',
+        name: 'Daily Kitchen Operations Checklist',
+        type: 'custom',
+        rows: [{
+          fields: [{
+            id: 'fld_qr_code',
+            name: 'qr_code',
+            type: 'qrCode',
+            label: 'Scan QR Code',
+            required: false,
+            width: '50%',
+          }],
+        }],
+      }],
+    };
+    req.templateRepo.findOne.mockResolvedValue(template);
+
+    const result = await service.moveToDraft(req, 1, { name: template.name, schema } as any);
+
+    expect(req.templateRepo.save).toHaveBeenCalledWith(expect.objectContaining({ schema }));
+    expect(template.schema).toEqual(schema);
+    expect(result.data.schema?.sections[0].rows[0].fields[0]).toEqual(schema.sections[0].rows[0].fields[0]);
+    expect(result.message).toContain('already');
+  });
+
+  it('saves newly dropped text fields when updating an existing draft', async () => {
+    const req = createReq();
+    const template = {
+      id: 10,
+      name: 'Daily Kitchen Checklist',
+      status: TemplateStatus.DRAFT,
+      isActive: false,
+      schema: { sections: [] },
+    };
+    const schema = {
+      formName: 'Daily Kitchen Checklist',
+      sections: [{
+        id: 'sec_kitchen_ops',
+        name: 'Operations',
+        type: 'custom',
+        rows: [{
+          fields: [{
+            id: 'fld_new_text',
+            name: 'new_text_field',
+            type: 'text',
+            label: 'New Text Field',
+            required: false,
+            width: '50%',
+          }],
+        }],
+      }],
+    };
+    req.templateRepo.findOne.mockResolvedValue(template);
+
+    const result = await service.moveToDraft(req, 10, { name: template.name, schema } as any);
+
+    expect(req.templateRepo.update).toHaveBeenCalledWith(10, expect.objectContaining({ schema }));
+    expect(template.schema).toEqual(schema);
+    expect(result.data.schema?.sections[0].rows[0].fields[0]).toEqual(schema.sections[0].rows[0].fields[0]);
   });
 });
