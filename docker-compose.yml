@@ -3,9 +3,10 @@ services:
     image: postgres:16-alpine
     container_name: eusocial-postgres
     restart: unless-stopped
+    env_file:
+      - /opt/eusocial/postgres.env
     environment:
       POSTGRES_USER: eusocial
-      POSTGRES_PASSWORD: eusocial_secure_2026
       POSTGRES_DB: eusocial_master
     volumes:
       - eusocial_postgres_data:/var/lib/postgresql/data

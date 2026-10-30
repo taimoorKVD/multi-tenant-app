@@ -588,43 +588,45 @@ export class TemplatesService {
       }
 
       const actorId = this.getActorId(req, dto.updatedBy);
-      if (dto.name !== undefined) template.name = dto.name;
-      if (dto.schema !== undefined) template.schema = dto.schema as Record<string, any>;
-      if (dto.isActive !== undefined) template.isActive = dto.isActive;
-      template.updatedBy = actorId;
+      const wasAlreadyDraft = template.status === TemplateStatus.DRAFT && !template.isActive;
+      let shouldSave = false;
 
-      // Never demote ACTIVE → DRAFT on update. Form/name edits stay live; assign/frequency
-      // changes still publish via shouldPublish below.
-
-      const saved = await templateRepo.save(template);
-
-      if (shouldPublish) {
-        // Rematerialize only when assign/frequency actually changed vs the live published version.
-        // First publish (no active version yet) always rematerializes.
-        const previousActive = await req.tenantConnection
-          .getRepository(TemplateVersion)
-          .findOne({ where: { templateId: id, isActive: true } });
-        const rematerializeAssignments =
-          !previousActive ||
-          this.scheduleAffectingSchemaChanged(
-            (previousActive.schemaSnapshot || null) as Record<string, any> | null,
-            (saved.schema || null) as Record<string, any> | null,
-          );
-
-        const published = await this.publishInternal(req, saved, actorId, {
-          rematerializeAssignments,
-        });
-        return {
-          success: true,
-          message: 'Template updated and published successfully',
-          data: published.template,
-          version: published.version,
-          assignmentsCreated: published.assignments.length,
-          emailNotify: published.emailNotify,
-        };
+      if (dto.name !== undefined && dto.name !== template.name) {
+        template.name = dto.name;
+        shouldSave = true;
+      }
+      if (dto.schema !== undefined) {
+        template.schema = dto.schema;
+        shouldSave = true;
+      }
+      if (template.status !== TemplateStatus.DRAFT || template.isActive) {
+        template.status = TemplateStatus.DRAFT;
+        template.isActive = false;
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        template.updatedBy = actorId;
       }
 
-      return { success: true, message: 'Template updated successfully', data: saved };
+      let saved = template;
+      if (shouldSave) {
+        saved = await templateRepo.save(template);
+      }
+
+      if (dto.schema !== undefined) {
+        await templateRepo.update(id, {
+          name: template.name,
+          schema: dto.schema,
+          status: TemplateStatus.DRAFT,
+          isActive: false,
+          updatedBy: actorId,
+        });
+      }
+      await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
+
+      const refreshed = await templateRepo.findOne({ where: { id } });
+      saved = refreshed || saved;
+      return { success: true, message: 'Template updated successfully', data: this.serializeTemplate(saved) };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to update template');
@@ -818,7 +820,7 @@ export class TemplatesService {
    * Cancels open assignments and hides the form from the employee portal.
    * Published versions are kept so publish/activate can bring it live again.
    */
-  async moveToDraft(req: any, id: number) {
+  async moveToDraft(req: any, id: number, dto: { name?: string; schema?: Record<string, any>; updatedBy?: number } = {}) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const template = await templateRepo.findOne({ where: { id } });
@@ -830,28 +832,50 @@ export class TemplatesService {
         );
       }
 
-      const actorId = this.getActorId(req);
+      const actorId = this.getActorId(req, dto.updatedBy);
+      const wasAlreadyDraft = template.status === TemplateStatus.DRAFT && !template.isActive;
+      let shouldSave = false;
 
-      if (template.status === TemplateStatus.DRAFT && !template.isActive) {
-        await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
-        const refreshed = await templateRepo.findOne({ where: { id: template.id } });
-        return {
-          success: true,
-          message: 'Template is already a draft',
-          data: this.serializeTemplate(refreshed || template),
-        };
+      if (dto.name !== undefined && dto.name !== template.name) {
+        template.name = dto.name;
+        shouldSave = true;
+      }
+      if (dto.schema !== undefined) {
+        template.schema = dto.schema;
+        shouldSave = true;
+      }
+      if (template.status !== TemplateStatus.DRAFT || template.isActive) {
+        template.status = TemplateStatus.DRAFT;
+        template.isActive = false;
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        template.updatedBy = actorId;
       }
 
-      template.status = TemplateStatus.DRAFT;
-      template.isActive = false;
-      template.updatedBy = actorId;
-      const saved = await templateRepo.save(template);
+      let saved = template;
+      if (shouldSave) {
+        saved = await templateRepo.save(template);
+      }
+
+      if (dto.schema !== undefined) {
+        await templateRepo.update(id, {
+          name: template.name,
+          schema: dto.schema,
+          status: TemplateStatus.DRAFT,
+          isActive: false,
+          updatedBy: actorId,
+        });
+      }
       await this.assignmentsService.cancelOpenAssignmentsForTemplate(req, template.id);
 
-      const refreshed = await templateRepo.findOne({ where: { id: saved.id } });
+      const refreshed = await templateRepo.findOne({ where: { id } });
+      saved = refreshed || saved;
       return {
         success: true,
-        message: 'Template moved to draft successfully',
+        message: wasAlreadyDraft
+          ? 'Template is already a draft'
+          : 'Template moved to draft successfully',
         data: this.serializeTemplate(refreshed || saved),
       };
     } catch (error) {
