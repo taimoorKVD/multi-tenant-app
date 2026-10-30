@@ -19,6 +19,7 @@ import {
   UpdateTemplateDto,
   DuplicateTemplateDto,
   QueryTemplateDto,
+  MoveToDraftDto,
 } from '../dto';
 import { TenantDataCollectionTemplatesSwagger } from '../swagger/templates.swagger';
 
@@ -122,8 +123,12 @@ export class TemplatesController {
   @Post(':id/draft')
   @TenantAccess('activate-dc-template')
   @TenantDataCollectionTemplatesSwagger.MoveToDraft()
-  moveToDraft(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.templatesService.moveToDraft(req, id);
+  moveToDraft(
+    @Req() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MoveToDraftDto = {},
+  ) {
+    return this.templatesService.moveToDraft(req, id, dto);
   }
 
   @Post(':id/restore')
