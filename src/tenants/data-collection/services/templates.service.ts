@@ -1,13 +1,11 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { In } from 'typeorm';
 import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
-import { DataCollectionAssignment } from '../entities/data-collection-assignment.entity';
 import {
   CreateTemplateDto,
   UpdateTemplateDto,
@@ -726,8 +724,6 @@ export class TemplatesService {
       const template = await templateRepo.findOne({ where: { id } });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
 
-      await this.ensureTemplateHasNoAssignments(req, [id]);
-
       const deleted = await this.softDeleteInternal(req, template, this.getActorId(req));
       return {
         success: true,
@@ -736,7 +732,6 @@ export class TemplatesService {
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      if (error instanceof ConflictException) throw error;
       throw new InternalServerErrorException('Failed to delete template');
     }
   }
@@ -756,8 +751,6 @@ export class TemplatesService {
       if (missingIds.length) {
         throw new NotFoundException(`Templates not found for IDs: ${missingIds.join(', ')}`);
       }
-
-      await this.ensureTemplateHasNoAssignments(req, foundIds);
 
       const actorId = this.getActorId(req);
       const deleted: DataCollectionTemplate[] = [];
@@ -989,25 +982,6 @@ export class TemplatesService {
       console.error('Template search failed:', error);
       throw new InternalServerErrorException('Failed to search templates');
     }
-  }
-
-  private async ensureTemplateHasNoAssignments(req: any, templateIds: number[]): Promise<void> {
-    if (!templateIds.length) return;
-    const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
-    const assignments = await assignmentRepo.find({
-      where: { templateId: In(templateIds) } as any,
-      select: ['templateId', 'assigneeUserId', 'jobPositionId'],
-    });
-    if (!assignments.length) return;
-
-    const templateNames = new Map<number, number>();
-    for (const assignment of assignments) {
-      templateNames.set(assignment.templateId, (templateNames.get(assignment.templateId) || 0) + 1);
-    }
-    const references = [...templateNames.entries()].map(([id, count]) => `${id} (${count} assignment(s))`).join(', ');
-    throw new ConflictException(
-      `Template(s) cannot be deleted because they are linked to users or job positions: ${references}.`,
-    );
   }
 
   private hasPublishableDraftSchema(currentSchema: Record<string, any> | null, dtoSchema?: Record<string, any>): boolean {

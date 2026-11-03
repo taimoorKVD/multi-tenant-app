@@ -4,6 +4,8 @@ import { TenantAbstractService } from '../../common/abstract';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
 import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { Vendor } from './entities';
+import { templateSchemaContainsReference } from '../../common/utils/template-reference.util';
+import { DataCollectionTemplate } from '../data-collection/entities';
 
 @Injectable()
 export class VendorsService extends TenantAbstractService<Vendor> {
@@ -423,8 +425,51 @@ export class VendorsService extends TenantAbstractService<Vendor> {
     );
   }
 
+  private async assertNoTemplateLinks(req: any, vendorIds: number[], isBulk: boolean): Promise<void> {
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate) as Repository<DataCollectionTemplate>;
+    const templates = await templateRepo.find({ select: ['id', 'schema'] });
+    if (templates.some((template) => templateSchemaContainsReference(template.schema, 'vendors', vendorIds))) {
+      throw new ConflictException(
+        isBulk
+          ? 'These vendors cannot be deleted because they are linked to the Form Templates. Please remove the vendors from templates first.'
+          : 'This vendor cannot be deleted because it is linked to the Form Template. Please remove this vendor from template first.',
+      );
+    }
+  }
+
+  private async assertVendorDeletionAllowed(req: any, vendorIds: number[], isBulk: boolean): Promise<void> {
+    const linkedToItems = (await this.findLinkedItemCounts(req, vendorIds)).size > 0;
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate) as Repository<DataCollectionTemplate>;
+    const templates = await templateRepo.find({ select: ['id', 'schema'] });
+    const linkedToTemplates = templates.some((template) =>
+      templateSchemaContainsReference(template.schema, 'vendors', vendorIds),
+    );
+
+    if (linkedToItems && linkedToTemplates) {
+      throw new ConflictException(
+        isBulk
+          ? 'These vendors cannot be deleted because they are linked to items and Form Templates. Please remove the vendors from items and templates first.'
+          : 'This vendor cannot be deleted because it is linked to items and the Form Template. Please remove this vendor from items and the template first.',
+      );
+    }
+    if (linkedToItems) {
+      throw new ConflictException(
+        isBulk
+          ? 'These vendors cannot be deleted because they are linked to items. Please remove the vendors from items first.'
+          : 'This vendor cannot be deleted because it is linked to items. Please remove this vendor from items first.',
+      );
+    }
+    if (linkedToTemplates) {
+      throw new ConflictException(
+        isBulk
+          ? 'These vendors cannot be deleted because they are linked to Form Templates. Please remove the vendors from templates first.'
+          : 'This vendor cannot be deleted because it is linked to the Form Template. Please remove this vendor from the template first.',
+      );
+    }
+  }
+
   async delete(req: any, id: number): Promise<any> {
-    await this.assertNoLinkedItems(req, [id]);
+    await this.assertVendorDeletionAllowed(req, [id], false);
     const context = await this.getContext(req);
     const result = await super.delete(req, id);
     await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);

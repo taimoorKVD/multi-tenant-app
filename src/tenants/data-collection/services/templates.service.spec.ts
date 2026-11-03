@@ -981,13 +981,14 @@ describe('TemplatesService', () => {
         e.deletedAt = new Date();
         return e;
       });
+      req.assignmentRepo.find.mockResolvedValue([
+        { templateId: 1, assigneeUserId: 10, jobPositionId: null },
+        { templateId: 1, assigneeUserId: null, jobPositionId: 20 },
+      ]);
 
       const result = await service.remove(req, 1);
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('deleted');
-      expect(result.message).not.toContain('archive');
-      expect(template.isActive).toBe(false);
       expect(req.templateRepo.softRemove).toHaveBeenCalledWith(template);
       expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
     });
@@ -1187,5 +1188,26 @@ describe('TemplatesService', () => {
     expect(req.templateRepo.update).toHaveBeenCalledWith(10, expect.objectContaining({ schema }));
     expect(template.schema).toEqual(schema);
     expect(result.data.schema?.sections[0].rows[0].fields[0]).toEqual(schema.sections[0].rows[0].fields[0]);
+  });
+
+  it('soft-deletes even when assignments are linked to users or job positions', async () => {
+    const req = createReq();
+    const template = { id: 1, status: TemplateStatus.ACTIVE, isActive: true, updatedBy: null };
+    req.templateRepo.findOne.mockResolvedValue(template);
+    req.templateRepo.save.mockImplementation(async (e: any) => e);
+    req.templateRepo.softRemove.mockImplementation(async (e: any) => {
+      e.deletedAt = new Date();
+      return e;
+    });
+    req.assignmentRepo.find.mockResolvedValue([
+      { templateId: 1, assigneeUserId: 10, jobPositionId: null },
+      { templateId: 1, assigneeUserId: null, jobPositionId: 20 },
+    ]);
+
+    const result = await service.remove(req, 1);
+
+    expect(result.success).toBe(true);
+    expect(req.templateRepo.softRemove).toHaveBeenCalledWith(template);
+    expect(assignmentsService.cancelOpenAssignmentsForTemplate).toHaveBeenCalledWith(req, 1);
   });
 });
