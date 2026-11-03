@@ -4,6 +4,8 @@ import { Location } from './entities';
 import { TenantAbstractService } from '../../common/abstract';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
 import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
+import { templateSchemaContainsReference } from '../../common/utils/template-reference.util';
+import { DataCollectionTemplate } from '../data-collection/entities';
 
 @Injectable()
 export class LocationsService extends TenantAbstractService<Location> {
@@ -429,30 +431,45 @@ export class LocationsService extends TenantAbstractService<Location> {
     const userContext = await this.dynamicFields.getSchemaContext(req, 'users', {
       fallbackSystemFieldKeys: new Set(['id', 'name', 'location']),
     });
-    if (!userContext.moduleId) return;
+    let linkedToUsers = false;
 
-    const locationFieldId =
-      userContext.fieldIdByCanonicalKey.get('location_id') ||
-      userContext.fieldIdByCanonicalKey.get('location') ||
-      userContext.fieldIdByAnyKey.get('location_id') ||
-      userContext.fieldIdByAnyKey.get('location') ||
-      null;
+    if (userContext.moduleId) {
+      const locationFieldId =
+        userContext.fieldIdByCanonicalKey.get('location_id') ||
+        userContext.fieldIdByCanonicalKey.get('location') ||
+        userContext.fieldIdByAnyKey.get('location_id') ||
+        userContext.fieldIdByAnyKey.get('location') || null;
+      const dynamicRepo = req.tenantConnection.getRepository(EntityDynamicData) as Repository<EntityDynamicData>;
+      const rows = await dynamicRepo.find({ where: { moduleId: userContext.moduleId } });
+      const ids = new Set(locationIds);
+      linkedToUsers = rows.some((row) => {
+        const data = row.data || {};
+        const values = [data.location_id, data.location, locationFieldId ? data[locationFieldId] : undefined]
+          .flatMap((value) => Array.isArray(value) ? value : [value]);
+        return values.some((value) => ids.has(this.normalizeLinkedId(value) as number));
+      });
+    }
 
-    const dynamicRepo = req.tenantConnection.getRepository(EntityDynamicData) as Repository<EntityDynamicData>;
-    const rows = await dynamicRepo.find({ where: { moduleId: userContext.moduleId } });
-    const ids = new Set(locationIds);
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate) as Repository<DataCollectionTemplate>;
+    const templates = await templateRepo.find({ select: ['id', 'schema'] });
+    const linkedToTemplates = templates.some((template) =>
+      templateSchemaContainsReference(template.schema, 'locations', locationIds),
+    );
 
-    for (const row of rows) {
-      const data = row.data || {};
-      const values = [data.location_id, data.location, locationFieldId ? data[locationFieldId] : undefined]
-        .flatMap((value) => Array.isArray(value) ? value : [value]);
-      if (values.some((value) => ids.has(this.normalizeLinkedId(value) as number))) {
-        throw new ConflictException(
-          locationIds.length === 1
-            ? 'This location cannot be deleted because it is linked to the user module. Please remove this location from users first.'
-            : 'These locations cannot be deleted because they are linked to the user module. Please remove the locations from users first.',
-        );
-      }
+    if (linkedToUsers && linkedToTemplates) {
+      throw new ConflictException(locationIds.length === 1
+        ? 'This location cannot be deleted because it is linked to users and the Form Template. Please remove this location from users and the template first.'
+        : 'These locations cannot be deleted because they are linked to users and Form Templates. Please remove the locations from users and templates first.');
+    }
+    if (linkedToUsers) {
+      throw new ConflictException(locationIds.length === 1
+        ? 'This location cannot be deleted because it is linked to the user module. Please remove this location from users first.'
+        : 'These locations cannot be deleted because they are linked to the user module. Please remove the locations from users first.');
+    }
+    if (linkedToTemplates) {
+      throw new ConflictException(locationIds.length === 1
+        ? 'This location cannot be deleted because it is linked to the Form Template. Please remove this location from the template first.'
+        : 'These locations cannot be deleted because they are linked to Form Templates. Please remove the locations from templates first.');
     }
   }
 }

@@ -8,6 +8,7 @@ import {groupPermissionsByModule} from '../../common/utils/permission-module';
 import {PermissionSessionSyncService} from '../auth/permission-session-sync.service';
 import {User} from '../users/entities';
 import {DataCollectionAssignment, DataCollectionTemplate} from '../data-collection/entities';
+import {templateSchemaContainsReference} from '../../common/utils/template-reference.util';
 
 @Injectable()
 export class JobPositionsService extends TenantAbstractService<JobPosition> {
@@ -276,21 +277,61 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
 
         const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
         const templates = await templateRepo.find();
-        const ids = new Set(jobPositionIds);
-        for (const template of templates) {
-            const schema = (template.schema || {}) as Record<string, any>;
-            for (const section of [schema.assign, schema.report]) {
-                const raw = section?.jobPosition ?? section?.jobPositions;
-                const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-                if (values.some((value) => ids.has(Number(typeof value === 'object' ? value.id : value)))) {
-                    templateIds.add(template.id);
-                }
-            }
+        const templateLinked = templates.some((template) =>
+            templateSchemaContainsReference(template.schema, 'jobpositions', jobPositionIds),
+        );
+        if (templateLinked) {
+            throw new ConflictException(
+                jobPositionIds.length === 1
+                    ? 'This job position cannot be deleted because it is linked to the Form Template. Please remove this job position from template first.'
+                    : 'These job positions cannot be deleted because they are linked to the Form Templates. Please remove the job positions from templates first.',
+            );
         }
 
         if (templateIds.size) {
             throw new ConflictException(
                 `This job position cannot be deleted because it is linked to data collection template(s): ${[...templateIds].join(', ')}.`,
+            );
+        }
+    }
+
+    private async assertDeletionLinks(req: any, jobPositionIds: number[], isBulk: boolean): Promise<void> {
+        const linkedUserIds = new Set<number>();
+        for (const id of jobPositionIds) {
+            const userIds = await this.findUserIdsByJobPosition(req, id);
+            userIds.forEach((userId) => linkedUserIds.add(userId));
+        }
+
+        const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+        const assignments = await assignmentRepo.find({
+            where: {jobPositionId: In(jobPositionIds)} as any,
+            select: ['templateId', 'jobPositionId'],
+        });
+        const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+        const templates = await templateRepo.find();
+        const linkedToTemplate =
+            assignments.length > 0 ||
+            templates.some((template) => templateSchemaContainsReference(template.schema, 'jobpositions', jobPositionIds));
+
+        if (linkedUserIds.size && linkedToTemplate) {
+            throw new ConflictException(
+                isBulk
+                    ? 'These job positions cannot be deleted because they are linked to users and Form Templates. Please remove the job positions from users and templates first.'
+                    : 'This job position cannot be deleted because it is linked to the user module and the Form Template. Please remove this job position from users and the template first.',
+            );
+        }
+        if (linkedUserIds.size) {
+            throw new ConflictException(
+                isBulk
+                    ? 'These job positions cannot be deleted because they are linked to the user module. Please remove the job positions from users first.'
+                    : 'This job position cannot be deleted because it is linked to the user module. Please remove this job position from users first.',
+            );
+        }
+        if (linkedToTemplate) {
+            throw new ConflictException(
+                isBulk
+                    ? 'These job positions cannot be deleted because they are linked to Form Templates. Please remove the job positions from templates first.'
+                    : 'This job position cannot be deleted because it is linked to the Form Template. Please remove this job position from the template first.',
             );
         }
     }
