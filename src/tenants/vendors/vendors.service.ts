@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { DataSource, In, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { Vendor } from './entities';
 
 @Injectable()
@@ -370,7 +371,60 @@ export class VendorsService extends TenantAbstractService<Vendor> {
     }
   }
 
+  private async findLinkedItemCounts(req: any, vendorIds: number[]): Promise<Map<number, number>> {
+    const counts = new Map<number, number>();
+    if (!vendorIds.length) return counts;
+
+    const itemContext = await this.dynamicFields.getSchemaContext(req, 'items', {
+      fallbackSystemFieldKeys: new Set(['id', 'item_name', 'vendor_id']),
+    });
+    const vendorFieldId = itemContext.fieldIdByCanonicalKey.get('vendor_id') ||
+      itemContext.fieldIdByAnyKey.get('vendor_id') || null;
+
+    if (!itemContext.moduleId) return counts;
+    const dynamicRepo = req.tenantConnection.getRepository(EntityDynamicData) as Repository<EntityDynamicData>;
+    const rows = await dynamicRepo.find({ where: { moduleId: itemContext.moduleId } });
+
+    const normalizeId = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string' && value.trim() !== '') {
+        const id = Number(value);
+        return Number.isFinite(id) ? id : null;
+      }
+      if (value && typeof value === 'object') {
+        return normalizeId((value as any).id);
+      }
+      return null;
+    };
+
+    for (const row of rows) {
+      const data = row.data || {};
+      const candidates = [data.vendor_id, vendorFieldId ? data[vendorFieldId] : undefined];
+      for (const candidate of candidates) {
+        const rawValues = Array.isArray(candidate) ? candidate : [candidate];
+        for (const value of rawValues) {
+          const vendorId = normalizeId(value);
+          if (vendorId !== null && vendorIds.includes(vendorId)) {
+            counts.set(vendorId, (counts.get(vendorId) || 0) + 1);
+          }
+        }
+      }
+    }
+    return counts;
+  }
+
+  private async assertNoLinkedItems(req: any, vendorIds: number[]): Promise<void> {
+    const linked = await this.findLinkedItemCounts(req, vendorIds);
+    if (!linked.size) return;
+    throw new ConflictException(
+      vendorIds.length === 1
+        ? 'This vendor cannot be deleted because it is linked to items. Please remove this vendor from items first.'
+        : 'These vendors cannot be deleted because they are linked to items. Please remove the vendors from items first.',
+    );
+  }
+
   async delete(req: any, id: number): Promise<any> {
+    await this.assertNoLinkedItems(req, [id]);
     const context = await this.getContext(req);
     const result = await super.delete(req, id);
     await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
@@ -378,6 +432,8 @@ export class VendorsService extends TenantAbstractService<Vendor> {
   }
 
   async bulkDelete(req: any, ids: number[]): Promise<any> {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    await this.assertNoLinkedItems(req, uniqueIds);
     const context = await this.getContext(req);
     const result = await super.bulkDelete(req, ids);
     for (const id of result.data.deletedIds as number[]) {
