@@ -1,6 +1,6 @@
 import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
-import { DataCollectionTemplate, TemplateVersion, TemplateStatus } from '../entities';
+import { DataCollectionTemplate, DataCollectionAssignment, TemplateVersion, TemplateStatus } from '../entities';
 
 describe('TemplatesService', () => {
   let service: TemplatesService;
@@ -114,14 +114,18 @@ describe('TemplatesService', () => {
       save: jest.fn().mockImplementation(async (e: any) => ({ id: 10, versionNumber: e.versionNumber ?? 1, ...e })),
       findOne: jest.fn(),
     };
+    const assignmentRepo = {
+      find: jest.fn().mockResolvedValue([]),
+    };
 
     const getRepository = jest.fn().mockImplementation((entity: any) => {
       if (entity === DataCollectionTemplate) return templateRepo;
       if (entity === TemplateVersion) return versionRepo;
+      if (entity === DataCollectionAssignment) return assignmentRepo;
       throw new Error(`Unexpected repo: ${entity?.name}`);
     });
 
-    return { templateRepo, versionRepo, getRepository };
+    return { templateRepo, versionRepo, assignmentRepo, getRepository };
   }
 
   function createReq(user?: any) {

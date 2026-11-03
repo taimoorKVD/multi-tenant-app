@@ -582,7 +582,10 @@ export class TemplatesService {
         this.scheduleAffectingSchemaChanged(previousSchema, dto.schema as Record<string, any>);
       const shouldPublish =
         dto.publish === true ||
-        (dto.publish !== false && (template.status === TemplateStatus.DRAFT || scheduleChanged));
+        (dto.publish !== false &&
+          (scheduleChanged ||
+            (template.status === TemplateStatus.DRAFT &&
+              this.hasPublishableDraftSchema(template.schema, dto.schema))));
 
       if (template.status === TemplateStatus.ARCHIVED && shouldPublish) {
         throw new BadRequestException('Archived templates cannot be published; restore or create a new draft');
@@ -1004,6 +1007,16 @@ export class TemplatesService {
     const references = [...templateNames.entries()].map(([id, count]) => `${id} (${count} assignment(s))`).join(', ');
     throw new ConflictException(
       `Template(s) cannot be deleted because they are linked to users or job positions: ${references}.`,
+    );
+  }
+
+  private hasPublishableDraftSchema(currentSchema: Record<string, any> | null, dtoSchema?: Record<string, any>): boolean {
+    const schema = dtoSchema ?? currentSchema;
+    if (!schema || typeof schema !== 'object' || !schema.assign || !schema.frequency) return false;
+
+    const assign = parseExclusiveAssignReportTargets(schema.assign);
+    return (assign.hasUsers || assign.hasJobPositions) && !(
+      assign.hasUsers && assign.hasJobPositions
     );
   }
 }
