@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Not, Repository } from 'typeorm';
@@ -26,6 +27,7 @@ import { PermissionSessionSyncService } from '../auth/permission-session-sync.se
 import { Tenant } from '../../master/tenants/entities';
 import { TenantsService } from '../../master/tenants/tenants.service';
 import { isValidIanaTimeZone } from '../../common/utils/timezone.util';
+import { DataCollectionAssignment, DataCollectionTemplate } from '../data-collection/entities';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -879,6 +881,8 @@ export class UsersService extends TenantAbstractService<User> {
         throw new BadRequestException('System users cannot be deleted.');
       }
 
+      await this.assertUsersNotReferencedByTemplates(req, [id]);
+
       await repo.remove(user);
 
       const context = await this.getUsersSchemaContext(req);
@@ -889,7 +893,7 @@ export class UsersService extends TenantAbstractService<User> {
         message: 'User deleted successfully',
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof ConflictException) {
         throw error;
       }
       throw new InternalServerErrorException('Failed to delete user');
@@ -919,6 +923,8 @@ export class UsersService extends TenantAbstractService<User> {
         );
       }
 
+      await this.assertUsersNotReferencedByTemplates(req, foundIds, true);
+
       await repo.remove(users);
 
       const context = await this.getUsersSchemaContext(req);
@@ -933,7 +939,7 @@ export class UsersService extends TenantAbstractService<User> {
         data: { deletedIds: foundIds, count: foundIds.length },
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof ConflictException) {
         throw error;
       }
       throw new InternalServerErrorException('Failed to bulk delete users');
@@ -1120,5 +1126,51 @@ export class UsersService extends TenantAbstractService<User> {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to update profile');
     }
+  }
+
+  private async assertUsersNotLinkedToTemplates(req: any, userIds: number[], isBulk: boolean): Promise<void> {
+    if (!userIds.length) return;
+
+    const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+    const assignments = await assignmentRepo.find({
+      where: { assigneeUserId: In(userIds) } as any,
+      select: ['templateId', 'assigneeUserId'],
+    });
+
+    if (assignments.length) {
+      throw new ConflictException(this.getTemplateLinkDeleteMessage(isBulk));
+    }
+  }
+
+  private getTemplateLinkDeleteMessage(isBulk: boolean): string {
+    return isBulk
+      ? 'These users cannot be deleted because they are linked to the Form Templates. Please remove the users from templates first.'
+      : 'This user cannot be deleted because it is linked to the Form Template. Please remove this user from template first.';
+  }
+
+  private assertTemplateSchemasDoNotContainUsers(
+    templates: DataCollectionTemplate[],
+    userIds: number[],
+    isBulk: boolean,
+  ): void {
+    const ids = new Set(userIds);
+    for (const template of templates) {
+      const schema = (template.schema || {}) as Record<string, any>;
+      const linked = [schema.assign, schema.report].some((section) => {
+        const raw = section?.users;
+        const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+        return values.some((value) => ids.has(Number(typeof value === 'object' ? value.id : value)));
+      });
+      if (linked) {
+        throw new ConflictException(this.getTemplateLinkDeleteMessage(isBulk));
+      }
+    }
+  }
+
+  private async assertUsersNotReferencedByTemplates(req: any, userIds: number[], isBulk = false): Promise<void> {
+    await this.assertUsersNotLinkedToTemplates(req, userIds, isBulk);
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+    const templates = await templateRepo.find();
+    this.assertTemplateSchemasDoNotContainUsers(templates, userIds, isBulk);
   }
 }

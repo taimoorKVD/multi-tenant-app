@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { DataSource, In, Repository } from 'typeorm';
 import { TenantAbstractService } from '../../common/abstract';
 import { Item } from './entities';
 import { ReportingCategory } from '../reporting-categories/entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+import { DataCollectionTemplate } from '../data-collection/entities';
 
 const REPORTING_CATEGORY_PAYLOAD_KEYS = [
   'reporting_group',
@@ -466,6 +467,7 @@ export class ItemsService extends TenantAbstractService<Item> {
   }
 
   async delete(req: any, id: number): Promise<any> {
+    await this.assertNotLinkedToTemplates(req, [id], false);
     const context = await this.getContext(req);
     const result = await super.delete(req, id);
     await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
@@ -473,6 +475,8 @@ export class ItemsService extends TenantAbstractService<Item> {
   }
 
   async bulkDelete(req: any, ids: number[]): Promise<any> {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    await this.assertNotLinkedToTemplates(req, uniqueIds, true);
     const context = await this.getContext(req);
     const result = await super.bulkDelete(req, ids);
     for (const id of result.data.deletedIds as number[]) {
@@ -485,5 +489,56 @@ export class ItemsService extends TenantAbstractService<Item> {
     if (value === undefined || value === null || value === '') return null;
     const num = Number(value);
     return Number.isFinite(num) ? num : null;
+  }
+
+  private normalizeTemplateId(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (value && typeof value === 'object') {
+      return this.normalizeTemplateId((value as any).id);
+    }
+    return null;
+  }
+
+  private templateSchemaContainsItem(value: unknown, itemIds: Set<number>, visited = new Set<object>()): boolean {
+    if (value === null || value === undefined) return false;
+    if (Array.isArray(value)) {
+      return value.some((child) => this.templateSchemaContainsItem(child, itemIds, visited));
+    }
+    if (typeof value !== 'object') return false;
+    if (visited.has(value as object)) return false;
+    visited.add(value as object);
+
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.replace(/[_-]/g, '').toLowerCase();
+      if (['item', 'items', 'itemid', 'itemids', 'catalogitems'].includes(normalizedKey)) {
+        const candidates = Array.isArray(child) ? child : [child];
+        if (candidates.some((candidate) => {
+          const id = this.normalizeTemplateId(candidate);
+          return id !== null && itemIds.has(id);
+        })) {
+          return true;
+        }
+      }
+      if (this.templateSchemaContainsItem(child, itemIds, visited)) return true;
+    }
+    return false;
+  }
+
+  private async assertNotLinkedToTemplates(req: any, itemIds: number[], isBulk: boolean): Promise<void> {
+    if (!itemIds.length) return;
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate) as Repository<DataCollectionTemplate>;
+    const templates = await templateRepo.find({ select: ['id', 'schema'] });
+    const ids = new Set(itemIds);
+    if (templates.some((template) => this.templateSchemaContainsItem(template.schema, ids))) {
+      throw new ConflictException(
+        isBulk
+          ? 'These items cannot be deleted because they are linked to the Form Templates. Please remove the items from templates first.'
+          : 'This item cannot be deleted because it is linked to the Form Template. Please remove this item from template first.',
+      );
+    }
   }
 }

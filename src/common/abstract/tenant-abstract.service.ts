@@ -39,6 +39,10 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
 
         throw new ConflictException('A record with the same unique value already exists.');
       }
+
+      if (driverError?.code === '23503') {
+        throw new ConflictException('This record cannot be deleted because it is linked to other records.');
+      }
     }
 
     throw new InternalServerErrorException(fallbackMessage);
@@ -212,7 +216,7 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
       console.error('❌ Delete failed:', error);
       throw error instanceof NotFoundException
         ? error
-        : new InternalServerErrorException('Failed to delete record');
+        : this.handlePersistenceError(error, 'Failed to delete record');
     }
   }
 
@@ -247,11 +251,12 @@ export abstract class TenantAbstractService<T extends ObjectLiteral> {
       console.error('❌ Bulk delete failed:', error);
       if (
         error instanceof NotFoundException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof ConflictException
       ) {
         throw error;
       }
-      throw new InternalServerErrorException('Failed to bulk delete records');
+      throw this.handlePersistenceError(error, 'Failed to bulk delete records');
     }
   }
 }

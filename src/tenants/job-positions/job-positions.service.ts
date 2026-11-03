@@ -1,4 +1,4 @@
-import {BadRequestException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
+import {BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {DataSource, In} from 'typeorm';
 import {JobPosition} from './entities';
 import {TenantAbstractService} from '../../common/abstract';
@@ -7,6 +7,7 @@ import {CreateJobPositionDto, UpdateJobPositionDto} from './dto';
 import {groupPermissionsByModule} from '../../common/utils/permission-module';
 import {PermissionSessionSyncService} from '../auth/permission-session-sync.service';
 import {User} from '../users/entities';
+import {DataCollectionAssignment, DataCollectionTemplate} from '../data-collection/entities';
 
 @Injectable()
 export class JobPositionsService extends TenantAbstractService<JobPosition> {
@@ -233,6 +234,64 @@ export class JobPositionsService extends TenantAbstractService<JobPosition> {
         } catch (error) {
             console.error('Tenant job position search failed:', error);
             throw new InternalServerErrorException('Failed to search job positions');
+        }
+    }
+
+    async delete(req: any, id: number): Promise<any> {
+        const userIds = await this.findUserIdsByJobPosition(req, id);
+        if (userIds.length) {
+            throw new ConflictException(
+                'This job position cannot be deleted because it is linked to the user module. Please remove the job position from users first.',
+            );
+        }
+        await this.assertNotLinkedToTemplates(req, [id]);
+        return super.delete(req, id);
+    }
+
+    async bulkDelete(req: any, ids: number[]): Promise<any> {
+        const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+        const linked: Array<{ id: number; userCount: number }> = [];
+        for (const id of uniqueIds) {
+            const userIds = await this.findUserIdsByJobPosition(req, id);
+            if (userIds.length) linked.push({id, userCount: userIds.length});
+        }
+        if (linked.length) {
+            const references = linked.map((item) => `${item.id} (${item.userCount} user(s))`).join(', ');
+            throw new ConflictException(
+                'These job positions cannot be deleted because they are linked to the user module. Please remove the job positions from users first.',
+            );
+        }
+        await this.assertNotLinkedToTemplates(req, uniqueIds);
+        return super.bulkDelete(req, ids);
+    }
+
+    private async assertNotLinkedToTemplates(req: any, jobPositionIds: number[]): Promise<void> {
+        if (!jobPositionIds.length) return;
+        const assignmentRepo = req.tenantConnection.getRepository(DataCollectionAssignment);
+        const assignments = await assignmentRepo.find({
+            where: {jobPositionId: In(jobPositionIds)} as any,
+            select: ['templateId', 'jobPositionId'],
+        });
+        const templateIds = new Set(assignments.map((row) => row.templateId));
+
+        const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+        const templates = await templateRepo.find();
+        const ids = new Set(jobPositionIds);
+        for (const template of templates) {
+            const schema = (template.schema || {}) as Record<string, any>;
+            for (const section of [schema.assign, schema.report]) {
+                const raw = section?.jobPosition ?? section?.jobPositions;
+                const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+                if (values.some((value) => ids.has(Number(typeof value === 'object' ? value.id : value)))) {
+                    templateIds.add(template.id);
+                }
+            }
+        }
+
+        if (templateIds.size) {
+            throw new ConflictException(
+                `This job position cannot be deleted because it is linked to data collection template(s): ${[...templateIds].join(', ')}.`,
+            );
         }
     }
 }
