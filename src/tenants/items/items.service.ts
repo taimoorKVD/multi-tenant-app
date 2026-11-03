@@ -5,6 +5,7 @@ import { Item } from './entities';
 import { ReportingCategory } from '../reporting-categories/entities';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
 import { DataCollectionTemplate } from '../data-collection/entities';
+import { templateSchemaContainsReference } from '../../common/utils/template-reference.util';
 
 const REPORTING_CATEGORY_PAYLOAD_KEYS = [
   'reporting_group',
@@ -514,14 +515,29 @@ export class ItemsService extends TenantAbstractService<Item> {
 
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
       const normalizedKey = key.replace(/[_-]/g, '').toLowerCase();
+      if (
+        normalizedKey === 'optionsource' &&
+        typeof child === 'object' &&
+        child !== null &&
+        String((child as any).endpoint || '').toLowerCase() === 'items'
+      ) {
+        const field = value as Record<string, unknown>;
+        for (const selectedKey of ['value', 'selectedValue', 'defaultValue']) {
+          const selected = field[selectedKey];
+          const candidates = Array.isArray(selected) ? selected : [selected];
+          if (candidates.some((candidate) => {
+            const id = this.normalizeTemplateId(candidate);
+            return id !== null && itemIds.has(id);
+          })) return true;
+        }
+      }
+
       if (['item', 'items', 'itemid', 'itemids', 'catalogitems'].includes(normalizedKey)) {
         const candidates = Array.isArray(child) ? child : [child];
         if (candidates.some((candidate) => {
           const id = this.normalizeTemplateId(candidate);
           return id !== null && itemIds.has(id);
-        })) {
-          return true;
-        }
+        })) return true;
       }
       if (this.templateSchemaContainsItem(child, itemIds, visited)) return true;
     }
@@ -533,7 +549,7 @@ export class ItemsService extends TenantAbstractService<Item> {
     const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate) as Repository<DataCollectionTemplate>;
     const templates = await templateRepo.find({ select: ['id', 'schema'] });
     const ids = new Set(itemIds);
-    if (templates.some((template) => this.templateSchemaContainsItem(template.schema, ids))) {
+    if (templates.some((template) => templateSchemaContainsReference(template.schema, 'items', itemIds))) {
       throw new ConflictException(
         isBulk
           ? 'These items cannot be deleted because they are linked to the Form Templates. Please remove the items from templates first.'

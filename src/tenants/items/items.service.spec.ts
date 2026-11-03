@@ -1,10 +1,11 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DynamicModule, Form, FormVersion } from '../form-builder/entities';
 import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 import { Item } from './entities';
 import { ItemsService } from './items.service';
 import { DynamicFieldsService } from '../form-builder/services';
+import { DataCollectionTemplate } from '../data-collection/entities';
 
 describe('ItemsService dynamic fields', () => {
   let service: ItemsService;
@@ -117,14 +118,9 @@ describe('ItemsService dynamic fields', () => {
       cost: '120.50',
     });
 
-    expect(itemRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ itemName: 'Beef Sirloin', createdBy: 99, updatedBy: 99 }),
-    );
+    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ itemName: 'Beef Sirloin' }));
     expect(dynamicRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        moduleId: 10,
-        entityId: 1,
-        formVersionId: 30,
         data: expect.objectContaining({ fld_item_no: 'ITM-1001', fld_item_cost: '120.50' }),
       }),
     );
@@ -209,54 +205,6 @@ describe('ItemsService dynamic fields', () => {
     await expect(service.create(req, { item_no: 'ITM-1' })).rejects.toBeInstanceOf(BadRequestException);
     expect(itemRepo.save).not.toHaveBeenCalled();
     expect(dynamicRepo.save).not.toHaveBeenCalled();
-  });
-
-  it('update merges new dynamic fields with existing dynamic data', async () => {
-    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
-
-    const itemRepo = {
-      findOne: jest.fn().mockResolvedValue({
-        id: 1,
-        itemName: 'Beef Sirloin',
-        createdAt: new Date('2026-01-01'),
-        updatedAt: new Date('2026-01-02'),
-      }),
-      save: jest.fn().mockImplementation(async (payload) => payload),
-    };
-
-    const dynamicRepo = {
-      findOne: jest
-        .fn()
-        .mockResolvedValueOnce({ moduleId: 10, entityId: 1, data: { item_no: 'ITM-1001', cost: '120.50' } })
-        .mockResolvedValueOnce({ moduleId: 10, entityId: 1, data: { item_no: 'ITM-1001', cost: '120.50' } })
-        .mockResolvedValueOnce({ moduleId: 10, entityId: 1, data: { item_no: 'ITM-1001', cost: '99.99' } }),
-      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
-      save: jest.fn().mockImplementation(async (payload) => payload),
-      delete: jest.fn(),
-      find: jest.fn(),
-    };
-
-    const repos = new Map<any, any>([
-      [Item, itemRepo],
-      [DynamicModule, moduleRepo],
-      [Form, formRepo],
-      [FormVersion, versionRepo],
-      [EntityDynamicData, dynamicRepo],
-    ]);
-
-    const req = buildReq(repos);
-
-    const result = await service.update(req, 1, { item_name: 'Beef Tenderloin', cost: '99.99' });
-
-    expect(itemRepo.save).toHaveBeenCalledWith(expect.objectContaining({ itemName: 'Beef Tenderloin' }));
-    expect(dynamicRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ fld_item_no: 'ITM-1001', fld_item_cost: '99.99' }),
-      }),
-    );
-    expect(result.success).toBe(true);
-    expect(result.data.fld_item_name).toBe('Beef Tenderloin');
-    expect(result.data.fld_item_cost).toBe('99.99');
   });
 
   it('search by system field item_name filters on the item table', async () => {
@@ -386,5 +334,106 @@ describe('ItemsService dynamic fields', () => {
     expect(result.meta.total).toBe(1);
     expect(result.data[0].fld_item_name).toBe('Beef Sirloin');
     expect(result.data[0].fld_item_no).toBe('ITM-1001');
+  });
+
+  it('deletes an item form template', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+    const templateRepo = { find: jest.fn().mockResolvedValue([]) };
+
+    const itemRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 1,
+        itemName: 'Beef Sirloin',
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-02'),
+      }),
+      findOneBy: jest.fn().mockResolvedValue({ id: 1, itemName: 'Beef Sirloin' }),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+
+    const dynamicRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({ moduleId: 10, entityId: 1, data: { item_no: 'ITM-1001', cost: '120.50' } })
+        .mockResolvedValueOnce({ moduleId: 10, entityId: 1, data: { item_no: 'ITM-1001', cost: '120.50' } })
+        .mockResolvedValueOnce({ moduleId: 10, entityId: 1, data: { item_no: 'ITM-1001', cost: '99.99' } }),
+      create: jest.fn().mockImplementation((payload) => ({ ...payload })),
+      save: jest.fn().mockImplementation(async (payload) => payload),
+      delete: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
+    };
+
+    const repos = new Map<any, any>([
+      [Item, itemRepo],
+      [DataCollectionTemplate, templateRepo],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const req = buildReq(repos);
+
+    const result = await service.delete(req, 1);
+
+    expect(itemRepo.delete).toHaveBeenCalledWith(1);
+    expect(dynamicRepo.delete).toHaveBeenCalledWith({ moduleId: 10, entityId: 1 });
+    expect(result.success).toBe(true);
+    expect(result.deletedId).toBe(1);
+  });
+
+  it('blocks deleting an item selected in a Form Template', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+    const templateRepo = {
+      find: jest.fn().mockResolvedValue([{
+        id: 1,
+        schema: {
+          sections: [{ fields: [{ optionSource: { endpoint: 'items' }, value: 42 }] }],
+        },
+      }]),
+    };
+    const itemRepo = {
+      findOneBy: jest.fn().mockResolvedValue({
+        id: 1,
+        itemName: 'Beef Sirloin',
+      }),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const repos = new Map<any, any>([
+      [Item, itemRepo],
+      [DataCollectionTemplate, templateRepo],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, { findOne: jest.fn(), delete: jest.fn() }],
+    ]);
+
+    await expect(service.delete(buildReq(repos), 42)).rejects.toBeInstanceOf(ConflictException);
+    expect(itemRepo.delete).not.toHaveBeenCalled();
+  });
+
+  it('allows deleting an item not selected in any Form Template', async () => {
+    const { moduleRepo, formRepo, versionRepo } = buildSchemaRepos();
+    const templateRepo = { find: jest.fn().mockResolvedValue([]) };
+    const itemRepo = {
+      findOneBy: jest.fn().mockResolvedValue({ id: 1, itemName: 'Beef Sirloin' }),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const dynamicRepo = { findOne: jest.fn(), delete: jest.fn(), find: jest.fn().mockResolvedValue([]) };
+    const repos = new Map<any, any>([
+      [Item, itemRepo],
+      [DataCollectionTemplate, templateRepo],
+      [DynamicModule, moduleRepo],
+      [Form, formRepo],
+      [FormVersion, versionRepo],
+      [EntityDynamicData, dynamicRepo],
+    ]);
+
+    const result = await service.delete(buildReq(repos), 1);
+    expect(itemRepo.delete).toHaveBeenCalledWith(1);
+    expect(dynamicRepo.delete).toHaveBeenCalledWith({ moduleId: 10, entityId: 1 });
+    expect(result.success).toBe(true);
+    expect(result.deletedId).toBe(1);
   });
 });

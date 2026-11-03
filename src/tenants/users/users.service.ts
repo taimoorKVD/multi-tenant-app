@@ -28,6 +28,7 @@ import { Tenant } from '../../master/tenants/entities';
 import { TenantsService } from '../../master/tenants/tenants.service';
 import { isValidIanaTimeZone } from '../../common/utils/timezone.util';
 import { DataCollectionAssignment, DataCollectionTemplate } from '../data-collection/entities';
+import { templateSchemaContainsReference } from '../../common/utils/template-reference.util';
 
 @Injectable()
 export class UsersService extends TenantAbstractService<User> {
@@ -1153,6 +1154,12 @@ export class UsersService extends TenantAbstractService<User> {
     userIds: number[],
     isBulk: boolean,
   ): void {
+    if (
+      templates.some((template) => templateSchemaContainsReference(template.schema, 'users', userIds))
+    ) {
+      throw new ConflictException(this.getTemplateLinkDeleteMessage(isBulk));
+    }
+
     const ids = new Set(userIds);
     for (const template of templates) {
       const schema = (template.schema || {}) as Record<string, any>;
