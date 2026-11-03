@@ -581,7 +581,8 @@ export class TemplatesService {
         dto.schema !== undefined &&
         this.scheduleAffectingSchemaChanged(previousSchema, dto.schema as Record<string, any>);
       const shouldPublish =
-        dto.publish === true || (dto.publish !== false && scheduleChanged);
+        dto.publish === true ||
+        (dto.publish !== false && (template.status === TemplateStatus.DRAFT || scheduleChanged));
 
       if (template.status === TemplateStatus.ARCHIVED && shouldPublish) {
         throw new BadRequestException('Archived templates cannot be published; restore or create a new draft');
