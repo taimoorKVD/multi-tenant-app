@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { DataSource, In, Repository } from 'typeorm';
 import { Location } from './entities';
 import { TenantAbstractService } from '../../common/abstract';
 import { DynamicFieldsService, DynamicSchemaContext } from '../form-builder/services';
+import { EntityDynamicData } from '../form-builder/entities/entity-dynamic-data.entity';
 
 @Injectable()
 export class LocationsService extends TenantAbstractService<Location> {
@@ -147,6 +148,18 @@ export class LocationsService extends TenantAbstractService<Location> {
         updated_at: location.updatedAt,
       },
     );
+  }
+
+  private normalizeLinkedId(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const id = Number(value);
+      return Number.isFinite(id) ? id : null;
+    }
+    if (value && typeof value === 'object') {
+      return this.normalizeLinkedId((value as any).id);
+    }
+    return null;
   }
 
   async create(req: any, body: Record<string, any>): Promise<any> {
@@ -392,6 +405,7 @@ export class LocationsService extends TenantAbstractService<Location> {
   }
 
   async delete(req: any, id: number): Promise<any> {
+    await this.assertNoUsersLinked(req, [id]);
     const context = await this.getContext(req);
     const result = await super.delete(req, id);
     await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
@@ -399,11 +413,46 @@ export class LocationsService extends TenantAbstractService<Location> {
   }
 
   async bulkDelete(req: any, ids: number[]): Promise<any> {
+    const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)))];
+    await this.assertNoUsersLinked(req, uniqueIds);
     const context = await this.getContext(req);
     const result = await super.bulkDelete(req, ids);
     for (const id of result.data.deletedIds as number[]) {
       await this.dynamicFields.deleteDynamicRow(req, context.moduleId, id);
     }
     return result;
+  }
+
+  private async assertNoUsersLinked(req: any, locationIds: number[]): Promise<void> {
+    if (!locationIds.length) return;
+
+    const userContext = await this.dynamicFields.getSchemaContext(req, 'users', {
+      fallbackSystemFieldKeys: new Set(['id', 'name', 'location']),
+    });
+    if (!userContext.moduleId) return;
+
+    const locationFieldId =
+      userContext.fieldIdByCanonicalKey.get('location_id') ||
+      userContext.fieldIdByCanonicalKey.get('location') ||
+      userContext.fieldIdByAnyKey.get('location_id') ||
+      userContext.fieldIdByAnyKey.get('location') ||
+      null;
+
+    const dynamicRepo = req.tenantConnection.getRepository(EntityDynamicData) as Repository<EntityDynamicData>;
+    const rows = await dynamicRepo.find({ where: { moduleId: userContext.moduleId } });
+    const ids = new Set(locationIds);
+
+    for (const row of rows) {
+      const data = row.data || {};
+      const values = [data.location_id, data.location, locationFieldId ? data[locationFieldId] : undefined]
+        .flatMap((value) => Array.isArray(value) ? value : [value]);
+      if (values.some((value) => ids.has(this.normalizeLinkedId(value) as number))) {
+        throw new ConflictException(
+          locationIds.length === 1
+            ? 'This location cannot be deleted because it is linked to the user module. Please remove this location from users first.'
+            : 'These locations cannot be deleted because they are linked to the user module. Please remove the locations from users first.',
+        );
+      }
+    }
   }
 }
