@@ -815,19 +815,23 @@ export class TenantAuthService {
         plan: entitlements.plan,
         allowedModules: entitlements.allowedModules,
         modules: entitlements.modules,
-        ...tokens,
+        timezone: req.tenant?.timezone ?? null,
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
           email_verified: emailVerified,
+          timezone: req.tenant?.timezone ?? null,
           account_type: accountType,
           job_position: jobPosition,
-          role: {
-            ...user.role,
-            permissions: groupPermissionsByModule(resolvedPermissions),
-          },
+          role: user.role
+            ? {
+                ...user.role,
+                permissions: groupPermissionsByModule(resolvedPermissions),
+              }
+            : null,
         },
+        ...tokens,
       };
     } catch (error) {
       if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
@@ -1019,21 +1023,27 @@ export class TenantAuthService {
       plan: entitlements.plan,
       allowedModules: entitlements.allowedModules,
       modules: entitlements.modules,
-      ...tokens,
+      timezone: req.tenant?.timezone ?? null,
       user: {
         id: user.id,
-        email: user.email,
         name: user.name,
+        email: user.email,
         email_verified: emailVerified,
+        timezone: req.tenant?.timezone ?? null,
         account_type: accountType,
         job_position: jobPosition,
         role: user.role
           ? {
-              ...user.role,
+              id: user.role.id,
+              name: user.role.name,
               permissions: groupPermissionsByModule(resolvedPermissions),
             }
           : null,
+        is_system: user.isSystem,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
+      ...tokens,
     };
   }
 
@@ -1152,11 +1162,13 @@ export class TenantAuthService {
       plan: entitlements.plan,
       allowedModules: entitlements.allowedModules,
       modules: entitlements.modules,
+      timezone: req.tenant?.timezone ?? null,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         email_verified: emailVerified,
+        timezone: req.tenant?.timezone ?? null,
         account_type: accountType,
         job_position: jobPosition,
         role: user.role
