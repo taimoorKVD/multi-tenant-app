@@ -47,6 +47,7 @@ export const TenantAuthLoginDocs = () =>
                     tenant_slug: 'kingdomvision',
                     tenant: 'tenant_kingdomvision',
                     plan: { id: 1, name: 'Basic', slug: 'basic' },
+                    timezone: 'Asia/Karachi',
                     allowedModules: [
                         'dashboard',
                         'users',
@@ -67,6 +68,7 @@ export const TenantAuthLoginDocs = () =>
                         email: 'admin@kingdomvision.com',
                         name: 'Administrator',
                         account_type: 'tenant_admin',
+                        timezone: 'Asia/Karachi',
                         job_position: {
                             id: 2,
                             name: 'Store Manager',
@@ -147,6 +149,7 @@ export const TenantAuthGetUserDocs = () =>
                     tenant_slug: 'kingdomvision',
                     tenant: 'tenant_kingdomvision',
                     plan: { id: 1, name: 'Basic', slug: 'basic' },
+                    timezone: 'Asia/Karachi',
                     allowedModules: [
                         'dashboard',
                         'users',
@@ -166,6 +169,7 @@ export const TenantAuthGetUserDocs = () =>
                         email: 'admin@kingdomvision.com',
                         email_verified: true,
                         account_type: 'tenant_admin',
+                        timezone: 'Asia/Karachi',
                         job_position: {
                             id: 2,
                             name: 'Store Manager',
@@ -374,6 +378,7 @@ export const TenantAuthRefreshTokenDocs = () =>
                     tenant_slug: 'kingdomvision',
                     tenant: 'tenant_kingdomvision',
                     plan: { id: 1, name: 'Basic', slug: 'basic' },
+                    timezone: 'Asia/Karachi',
                     allowedModules: [
                         'dashboard',
                         'users',
@@ -393,6 +398,7 @@ export const TenantAuthRefreshTokenDocs = () =>
                         name: 'Admin',
                         email_verified: true,
                         account_type: 'tenant_admin',
+                        timezone: 'Asia/Karachi',
                         job_position: { id: 2, name: 'Manager' },
                         role: { id: 1, name: 'Admin', permissions: [] },
                     },
@@ -433,6 +439,7 @@ export const TenantAuthResyncSessionDocs = () =>
                         name: 'Employee',
                         email_verified: true,
                         account_type: 'tenant_user',
+                        timezone: 'Asia/Karachi',
                         job_position: { id: 3, name: 'Staff' },
                         role: { id: 2, name: 'Employee', permissions: [] },
                     },
