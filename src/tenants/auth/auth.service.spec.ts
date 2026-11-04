@@ -89,6 +89,7 @@ describe('TenantAuthService', () => {
 
     return {
       tenantId,
+      tenant: { timezone: 'Asia/Karachi' },
       tenantConnection: {
         options: { database: `tenant_${tenantId}` },
         getRepository: jest.fn().mockImplementation((entity: any) => {
@@ -142,8 +143,10 @@ describe('TenantAuthService', () => {
     expect(result.user_type).toBe('tenant');
     expect(result.account_type).toBe('tenant_admin');
     expect(result.tenant_slug).toBe('test');
+    expect(result.timezone).toBe('Asia/Karachi');
+    expect(result.user.timezone).toBe('Asia/Karachi');
     expect(result.user.account_type).toBe('tenant_admin');
-    expect(result.user.role.permissions).toEqual([
+    expect(result.user.role?.permissions).toEqual([
       {
         module: { name: 'User' },
         permissions: [
@@ -195,7 +198,7 @@ describe('TenantAuthService', () => {
     });
 
     expect(result.account_type).toBe('tenant_user');
-    expect(result.user.role.permissions).toEqual([
+    expect(result.user.role?.permissions).toEqual([
       {
         module: { name: 'Task' },
         permissions: [
@@ -253,7 +256,10 @@ describe('TenantAuthService', () => {
     });
 
     expect(result.account_type).toBe('tenant_admin');
-    expect(result.user.role.permissions).toEqual([
+    expect(result.tenant_slug).toBe('test');
+    expect(result.timezone).toBe('Asia/Karachi');
+    expect(result.user.timezone).toBe('Asia/Karachi');
+    expect(result.user.role?.permissions).toEqual([
       {
         module: { name: 'User' },
         permissions: [{ id: 32, name: 'View' }],
@@ -352,7 +358,8 @@ describe('TenantAuthService', () => {
     expect(result.user_type).toBe('tenant');
     expect(result.account_type).toBe('tenant_admin');
     expect(result.tenant_slug).toBe('kingdomvision');
-    expect(result.tenant).toBe('tenant_kingdomvision');
+    expect(result.timezone).toBe('Asia/Karachi');
+    expect(result.user.timezone).toBe('Asia/Karachi');
     expect(result.user.email).toBe('admin@test.com');
     expect(result.user.account_type).toBe('tenant_admin');
     expect(result.user.email_verified).toBe(true);
