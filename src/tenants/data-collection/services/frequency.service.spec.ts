@@ -6,6 +6,186 @@ describe('FrequencyService', () => {
 
   const isoDates = (dates: Date[]) => dates.map((d) => d.toISOString().slice(0, 10));
 
+  describe('isScheduleElapsed', () => {
+    describe('atOnce — inactive the calendar day after the scheduled date', () => {
+      const atOnce1621 = {
+        type: 'atOnce',
+        date: '2026-11-16',
+        time: '17:21', // 5:21 PM
+      };
+
+      it('stays active on 16-Nov even after 5:21 PM', () => {
+        expect(
+          service.isScheduleElapsed(atOnce1621, new Date('2026-11-16T17:21:00.000Z'), 'UTC'),
+        ).toBe(false);
+        expect(
+          service.isScheduleElapsed(atOnce1621, new Date('2026-11-16T23:59:59.000Z'), 'UTC'),
+        ).toBe(false);
+      });
+
+      it('becomes inactive from 17-Nov 00:00 (not at 5:21 PM on the 17th)', () => {
+        expect(
+          service.isScheduleElapsed(atOnce1621, new Date('2026-11-17T00:00:00.000Z'), 'UTC'),
+        ).toBe(true);
+        expect(
+          service.isScheduleElapsed(atOnce1621, new Date('2026-11-17T12:00:00.000Z'), 'UTC'),
+        ).toBe(true);
+      });
+
+      it('stays active before the scheduled day', () => {
+        expect(
+          service.isScheduleElapsed(atOnce1621, new Date('2026-11-15T23:59:00.000Z'), 'UTC'),
+        ).toBe(false);
+      });
+
+      it('respects Asia/Karachi day boundary for the same 16-Nov 5:21 PM form', () => {
+        // 16-Nov 23:30 PKT = 16-Nov 18:30 UTC → still active
+        expect(
+          service.isScheduleElapsed(
+            atOnce1621,
+            new Date('2026-11-16T18:30:00.000Z'),
+            'Asia/Karachi',
+          ),
+        ).toBe(false);
+        // 17-Nov 00:00 PKT = 16-Nov 19:00 UTC → inactive
+        expect(
+          service.isScheduleElapsed(
+            atOnce1621,
+            new Date('2026-11-16T19:00:00.000Z'),
+            'Asia/Karachi',
+          ),
+        ).toBe(true);
+      });
+
+      it('accepts AM/PM time string the same as 24h', () => {
+        expect(
+          service.isScheduleElapsed(
+            { type: 'atOnce', date: '2026-11-16', time: '5:21 PM' },
+            new Date('2026-11-16T23:00:00.000Z'),
+            'UTC',
+          ),
+        ).toBe(false);
+        expect(
+          service.isScheduleElapsed(
+            { type: 'atOnce', date: '2026-11-16', time: '5:21 PM' },
+            new Date('2026-11-17T00:00:00.000Z'),
+            'UTC',
+          ),
+        ).toBe(true);
+      });
+    });
+
+    describe('recurring — same next-day rule on last occurrence', () => {
+      it('endDate window: active on last day after last time slot, inactive next day', () => {
+        const frequency = {
+          type: 'recurring',
+          startDate: '2026-11-14',
+          endDate: '2026-11-16',
+          times: ['09:00', '17:21'],
+          every: 1,
+          interval: 'day',
+          repeatCount: 10,
+        };
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-16T20:00:00.000Z'), 'UTC'),
+        ).toBe(false);
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-17T00:00:00.000Z'), 'UTC'),
+        ).toBe(true);
+      });
+
+      it('finite repeatCount ≥ 2: last occurrence day stays active, next day inactive', () => {
+        const frequency = {
+          type: 'recurring',
+          startDate: '2026-11-14',
+          times: ['17:21'],
+          every: 1,
+          interval: 'day',
+          repeatCount: 3, // 14, 15, 16 Nov
+        };
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-16T23:00:00.000Z'), 'UTC'),
+        ).toBe(false);
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-17T00:00:00.000Z'), 'UTC'),
+        ).toBe(true);
+      });
+
+      it('nested recurring payload with endDate follows the same day boundary', () => {
+        const frequency = {
+          type: 'recurring',
+          startDate: '2026-11-10',
+          endDate: '2026-11-16',
+          recurring: {
+            every: 2,
+            interval: 'day',
+            repeatCount: 10,
+            times: ['17:21'],
+          },
+        };
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-16T23:59:00.000Z'), 'UTC'),
+        ).toBe(false);
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-17T00:00:00.000Z'), 'UTC'),
+        ).toBe(true);
+      });
+
+      it('weekly recurring with endDate: inactive the day after last matching weekday', () => {
+        // Mon 2026-11-16 is the endDate; weekly Mondays → last day 16 Nov
+        const frequency = {
+          type: 'recurring',
+          startDate: '2026-11-02',
+          endDate: '2026-11-16',
+          times: ['17:21'],
+          every: 1,
+          interval: 'week',
+          daysOfWeek: ['monday'],
+          repeatCount: 10,
+        };
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-16T23:00:00.000Z'), 'UTC'),
+        ).toBe(false);
+        expect(
+          service.isScheduleElapsed(frequency, new Date('2026-11-17T00:00:00.000Z'), 'UTC'),
+        ).toBe(true);
+      });
+
+      it('open-ended recurring (repeatCount 1 / no endDate) never elapses', () => {
+        expect(
+          service.isScheduleElapsed(
+            {
+              type: 'recurring',
+              startDate: '2020-01-01',
+              endDate: null,
+              times: ['09:00'],
+              every: 1,
+              interval: 'day',
+              repeatCount: 1,
+            },
+            new Date('2026-11-17T12:00:00.000Z'),
+            'UTC',
+          ),
+        ).toBe(false);
+      });
+
+      it('open-ended Ends Never never elapses', () => {
+        expect(
+          service.isScheduleElapsed(
+            {
+              type: 'recurring',
+              startDate: '2020-01-01',
+              recurring: { interval: 1, unit: 'day', repeat: true },
+              times: ['09:00'],
+            },
+            new Date('2026-11-17T12:00:00.000Z'),
+            'UTC',
+          ),
+        ).toBe(false);
+      });
+    });
+  });
+
   it('expands frontend atOnce payload to a single date', () => {
     const dates = service.expandOccurrences({
       type: 'atOnce',

@@ -351,7 +351,9 @@ export class TemplatesService {
       );
     }
 
-    return { template: saved, version, assignments, emailNotify };
+    // Elapsed schedule day (day after last occurrence) → inactive after publish.
+    const maybeInactive = await this.deactivateIfScheduleElapsed(req, saved, actorId);
+    return { template: maybeInactive, version, assignments, emailNotify };
   }
 
   async create(req: any, dto: CreateTemplateDto) {
@@ -487,6 +489,9 @@ export class TemplatesService {
 
   async findAll(req: any, query: QueryTemplateDto) {
     try {
+      // Flip elapsed at-once / recurring templates to inactive before listing.
+      await this.deactivateExpiredTemplates(req);
+
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
       const page = Math.max(1, query.page ?? 1);
       const limit = Math.min(Math.max(1, query.limit ?? 15), 100);
@@ -518,8 +523,18 @@ export class TemplatesService {
           }
           return Promise.resolve(0);
         };
-        const [a, d, c] = await Promise.all([makeCount(TemplateStatus.ACTIVE), makeCount(TemplateStatus.DRAFT), makeCount(TemplateStatus.ARCHIVED)]);
-        counts = { active: Number(a) || 0, drafts: Number(d) || 0, archived: Number(c) || 0 };
+        const [a, d, i, c] = await Promise.all([
+          makeCount(TemplateStatus.ACTIVE),
+          makeCount(TemplateStatus.DRAFT),
+          makeCount(TemplateStatus.INACTIVE),
+          makeCount(TemplateStatus.ARCHIVED),
+        ]);
+        counts = {
+          active: Number(a) || 0,
+          drafts: Number(d) || 0,
+          inactive: Number(i) || 0,
+          archived: Number(c) || 0,
+        };
       } catch {
         counts = undefined;
       }
@@ -537,10 +552,11 @@ export class TemplatesService {
   async findOne(req: any, id: number) {
     try {
       const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
-      const template = await templateRepo.findOne({
+      let template = await templateRepo.findOne({
         where: { id },
       });
       if (!template) throw new NotFoundException(`Template with ID ${id} not found`);
+      template = await this.deactivateIfScheduleElapsed(req, template, null);
       return { success: true, data: this.serializeTemplate(template) };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -676,6 +692,69 @@ export class TemplatesService {
     }
   }
 
+  private resolveRequestTimeZone(req: any): string | null {
+    return req?.tenant?.timezone ?? null;
+  }
+
+  /**
+   * When the last schedule calendar day is over (next day after at-once date or
+   * last recurring occurrence), move the template to inactive only.
+   * Assignment statuses are left unchanged (history / employee task rows stay as-is).
+   */
+  private async deactivateIfScheduleElapsed(
+    req: any,
+    template: DataCollectionTemplate,
+    actorId: number | null = null,
+  ): Promise<DataCollectionTemplate> {
+    if (
+      !template ||
+      template.deletedAt ||
+      template.status !== TemplateStatus.ACTIVE ||
+      !template.isActive
+    ) {
+      return template;
+    }
+
+    const frequency = template.schema?.frequency;
+    if (
+      !this.frequencyService.isScheduleElapsed(
+        frequency as any,
+        new Date(),
+        this.resolveRequestTimeZone(req),
+      )
+    ) {
+      return template;
+    }
+
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+    template.status = TemplateStatus.INACTIVE;
+    template.isActive = false;
+    template.updatedBy = actorId;
+    return templateRepo.save(template);
+  }
+
+  /**
+   * Scan active templates and move any whose schedule date+time has elapsed to inactive.
+   * Safe to call from list/cron — idempotent.
+   */
+  async deactivateExpiredTemplates(req: any): Promise<number> {
+    const templateRepo = req.tenantConnection.getRepository(DataCollectionTemplate);
+    const active = await templateRepo.find({
+      where: { status: TemplateStatus.ACTIVE, isActive: true },
+    });
+
+    let deactivated = 0;
+    for (const template of active) {
+      if (template.deletedAt) continue;
+      const before = template.status;
+      const updated = await this.deactivateIfScheduleElapsed(req, template, null);
+      if (updated.status === TemplateStatus.INACTIVE && before === TemplateStatus.ACTIVE) {
+        deactivated += 1;
+      }
+    }
+    return deactivated;
+  }
+
   private async archiveInternal(
     req: any,
     template: DataCollectionTemplate,
@@ -790,9 +869,25 @@ export class TemplatesService {
         throw new BadRequestException('No published version found. Use publish instead of activate.');
       }
 
+      const actorId = this.getActorId(req);
+      const frequency =
+        (template.schema?.frequency as Record<string, any> | undefined) ||
+        (activeVersion.schemaSnapshot?.frequency as Record<string, any> | undefined);
+      if (
+        this.frequencyService.isScheduleElapsed(
+          frequency as any,
+          new Date(),
+          this.resolveRequestTimeZone(req),
+        )
+      ) {
+        throw new BadRequestException(
+          'Cannot activate: the template schedule day has ended. Update Frequency and publish again.',
+        );
+      }
+
       template.status = TemplateStatus.ACTIVE;
       template.isActive = true;
-      template.updatedBy = this.getActorId(req);
+      template.updatedBy = actorId;
 
       const saved = await templateRepo.save(template);
       return { success: true, message: 'Template activated successfully', data: saved };
@@ -832,6 +927,7 @@ export class TemplatesService {
           'Archived templates cannot be moved to draft; restore them first',
         );
       }
+      // Inactive (schedule elapsed) can be moved back to draft for re-editing.
 
       const actorId = this.getActorId(req, dto.updatedBy);
       const wasAlreadyDraft = template.status === TemplateStatus.DRAFT && !template.isActive;

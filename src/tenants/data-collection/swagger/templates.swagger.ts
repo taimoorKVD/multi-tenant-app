@@ -254,7 +254,7 @@ export const TenantDataCollectionTemplatesSwagger = {
           example: {
             success: true,
             meta: { total: 10, page: 1, lastPage: 1 },
-            counts: { active: 5, drafts: 3, archived: 2 },
+            counts: { active: 5, drafts: 3, inactive: 1, archived: 2 },
             data: [],
           },
         },

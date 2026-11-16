@@ -412,6 +412,66 @@ export class FrequencyService {
   }
 
   /**
+   * True when the template should leave Active status.
+   *
+   * Rule (same spirit as assignment overdue): stay active through the **calendar day**
+   * of the last occurrence; become inactive starting the **next** calendar day.
+   * Clock time does not flip status mid-day — e.g. atOnce 16-Nov 5:06 PM stays active
+   * all of 16-Nov and goes inactive on 17-Nov.
+   *
+   * - atOnce: last (only) occurrence date
+   * - recurring with `endDate` or finite repeat (≥2): last expanded occurrence date
+   * - open-ended recurring (no endDate / Ends Never / repeatCount 1): never elapsed
+   */
+  isScheduleElapsed(
+    frequency: FrequencyInput | null | undefined,
+    now: Date = new Date(),
+    timeZoneOverride?: string | null,
+  ): boolean {
+    if (!frequency || typeof frequency !== 'object') return false;
+
+    const timeZone = this.getFrequencyTimeZone(timeZoneOverride);
+    const type = String(frequency.type || FrequencyType.AT_ONCE).toLowerCase();
+    const isAtOnce =
+      type === FrequencyType.AT_ONCE.toLowerCase() ||
+      type === FrequencyType.ONE_TIME ||
+      type === 'one-time' ||
+      type === 'atonce' ||
+      type === 'at_once';
+
+    if (!isAtOnce) {
+      const hasEndDate =
+        frequency.endDate != null && String(frequency.endDate).trim() !== '';
+      if (!hasEndDate) {
+        const raw = this.resolveScheduleRaw(frequency);
+        if (!raw || this.isOpenEndedSchedule(raw)) return false;
+      }
+    }
+
+    const occurrences = this.expandOccurrences(frequency, undefined, timeZoneOverride);
+    if (!occurrences.length) return false;
+
+    const last = occurrences[occurrences.length - 1];
+    const lastDay = this.formatZonedDateOnly(last, timeZone);
+    const today = this.formatZonedDateOnly(now, timeZone);
+    // Inactive only once the last occurrence's calendar day is fully over.
+    return today > lastDay;
+  }
+
+  /** YYYY-MM-DD in the given IANA zone (for day-boundary comparisons). */
+  private formatZonedDateOnly(date: Date, timeZone: string): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const num = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value || '00';
+    return `${num('year')}-${num('month')}-${num('day')}`;
+  }
+
+  /**
    * Resolve schedule object from nested `recurring`/`schedule` or flat UI root fields.
    */
   resolveScheduleRaw(frequency: FrequencyInput): FrequencyScheduleRaw | null {

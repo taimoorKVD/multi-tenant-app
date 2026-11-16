@@ -23,7 +23,8 @@ export class DataCollectionTemplate {
   @Column({ type: 'jsonb', name: 'schema', nullable: true })
   schema!: Record<string, any> | null;
 
-  @Column({ type: 'enum', enum: TemplateStatus, default: TemplateStatus.DRAFT })
+  /** Stored as varchar so new statuses (e.g. inactive) do not require PG enum ALTER. */
+  @Column({ type: 'varchar', length: 32, default: TemplateStatus.DRAFT })
   status!: TemplateStatus;
 
   @Column({ type: 'boolean', name: 'is_active', default: true })
