@@ -13,11 +13,13 @@ import {
   // DataCollectionTemplate,
   // TemplateStatus,
 } from '../entities';
+import { TemplatesService } from './templates.service';
 // import { WorkflowActionsService } from './workflow-actions.service';
 
 /**
  * Assignment due reminders temporarily disabled (were sending too many emails).
  * Nest hourly cron and reminder email sending are commented out.
+ * Overdue marking + expired-template deactivation still run.
  */
 @Injectable()
 export class AssignmentReminderService {
@@ -28,6 +30,7 @@ export class AssignmentReminderService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly tenantsService: TenantsService,
+    private readonly templatesService: TemplatesService,
     // private readonly workflowActions: WorkflowActionsService,
   ) {}
 
@@ -44,10 +47,17 @@ export class AssignmentReminderService {
     tenantsProcessed: number;
     remindersSent: number;
     overdueMarked: number;
+    templatesDeactivated: number;
     errors: string[];
   }> {
     if (this.running) {
-      return { tenantsProcessed: 0, remindersSent: 0, overdueMarked: 0, errors: ['Already running'] };
+      return {
+        tenantsProcessed: 0,
+        remindersSent: 0,
+        overdueMarked: 0,
+        templatesDeactivated: 0,
+        errors: ['Already running'],
+      };
     }
 
     this.running = true;
@@ -55,6 +65,7 @@ export class AssignmentReminderService {
     let tenantsProcessed = 0;
     let remindersSent = 0;
     let overdueMarked = 0;
+    let templatesDeactivated = 0;
 
     try {
       const tenants = await this.tenantRepo.find();
@@ -64,6 +75,7 @@ export class AssignmentReminderService {
           tenantsProcessed += 1;
           remindersSent += result.remindersSent;
           overdueMarked += result.overdueMarked;
+          templatesDeactivated += result.templatesDeactivated;
         } catch (error) {
           const message = `Tenant ${tenant.subdomain}: ${(error as Error).message}`;
           this.logger.error(message);
@@ -75,20 +87,23 @@ export class AssignmentReminderService {
     }
 
     this.logger.log(
-      `DC reminders complete: tenants=${tenantsProcessed}, sent=${remindersSent}, overdue=${overdueMarked}, errors=${errors.length}`,
+      `DC reminders complete: tenants=${tenantsProcessed}, sent=${remindersSent}, overdue=${overdueMarked}, templatesDeactivated=${templatesDeactivated}, errors=${errors.length}`,
     );
 
-    return { tenantsProcessed, remindersSent, overdueMarked, errors };
+    return { tenantsProcessed, remindersSent, overdueMarked, templatesDeactivated, errors };
   }
 
-  async runForTenant(tenant: Tenant): Promise<{ remindersSent: number; overdueMarked: number }> {
+  async runForTenant(tenant: Tenant): Promise<{
+    remindersSent: number;
+    overdueMarked: number;
+    templatesDeactivated: number;
+  }> {
     const connection = await this.tenantsService.getTenantConnection(tenant.subdomain);
-    // Re-enable with Assignment Due Reminder emails:
-    // const req = {
-    //   tenantId: tenant.subdomain,
-    //   tenantConnection: connection,
-    //   tenant,
-    // };
+    const req = {
+      tenantId: tenant.subdomain,
+      tenantConnection: connection,
+      tenant,
+    };
 
     const assignmentRepo = connection.getRepository(DataCollectionAssignment);
     // const templateRepo = connection.getRepository(DataCollectionTemplate);
@@ -179,10 +194,12 @@ export class AssignmentReminderService {
     // }
 
     const remindersSent = 0;
+    const templatesDeactivated = await this.templatesService.deactivateExpiredTemplates(req);
 
     return {
       remindersSent,
       overdueMarked: overdueResult.affected ?? 0,
+      templatesDeactivated,
     };
   }
 }
