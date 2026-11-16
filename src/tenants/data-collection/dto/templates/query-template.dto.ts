@@ -22,7 +22,7 @@ export class QueryTemplateDto {
   @ApiPropertyOptional({
     enum: TemplateStatus,
     description:
-      'Filter by status. Omit to list non-archived templates. Use `archived` to list deleted/archived forms for restore.',
+      'Filter by status (`draft` | `active` | `inactive` | `archived`). Omit to list non-archived templates. Use `archived` to list deleted/archived forms for restore. `inactive` is set automatically the calendar day after the last schedule occurrence.',
   })
   @IsOptional()
   @IsEnum(TemplateStatus)

@@ -1,6 +1,8 @@
 export enum TemplateStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
+  /** Schedule date+time has fully elapsed (at-once or bounded recurring). */
+  INACTIVE = 'inactive',
   ARCHIVED = 'archived',
 }
 

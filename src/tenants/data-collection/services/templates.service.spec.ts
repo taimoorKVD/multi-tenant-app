@@ -10,6 +10,13 @@ describe('TemplatesService', () => {
     cancelOpenAssignmentsForTemplate: jest.Mock;
     retargetOpenAssignmentsToVersion: jest.Mock;
   };
+  let frequencyService: {
+    normalizeSchedule: jest.Mock;
+    resolveScheduleRaw: jest.Mock;
+    resolveOccurrenceTimes: jest.Mock;
+    enrichFrequencyForUi: jest.Mock;
+    isScheduleElapsed: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -22,7 +29,7 @@ describe('TemplatesService', () => {
     const workflowActions = {
       notifyAssigneesOnPublish: jest.fn().mockResolvedValue({ sent: 0, failed: 0, skipped: 0 }),
     };
-    const frequencyService = {
+    frequencyService = {
       normalizeSchedule: jest.fn().mockImplementation((raw: any) => {
         // Mirror FrequencyService enough for unit tests (UI + canonical shapes).
         const unit =
@@ -89,6 +96,7 @@ describe('TemplatesService', () => {
         return [{ hours: 0, minutes: 0 }];
       }),
       enrichFrequencyForUi: jest.fn().mockImplementation((frequency: any) => frequency),
+      isScheduleElapsed: jest.fn().mockReturnValue(false),
     };
     service = new TemplatesService(
       assignmentsService as any,
@@ -103,6 +111,7 @@ describe('TemplatesService', () => {
       save: jest.fn().mockImplementation(async (e: any) => ({ id: 1, ...e })),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
       findBy: jest.fn(),
       softRemove: jest.fn(),
       createQueryBuilder: jest.fn(),
@@ -374,6 +383,151 @@ describe('TemplatesService', () => {
       req.templateRepo.findOne.mockResolvedValue(null);
 
       await expect(service.findOne(req, 999)).rejects.toThrow(NotFoundException);
+    });
+
+    it('moves elapsed active template to inactive', async () => {
+      const req = createReq();
+      const template = {
+        id: 1,
+        name: 'Past form',
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: {
+          frequency: { type: 'atOnce', date: '2026-11-16', time: '17:21' },
+        },
+        updatedBy: null,
+      };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      frequencyService.isScheduleElapsed.mockReturnValue(true);
+      req.templateRepo.save.mockImplementation(async (e: any) => e);
+
+      const result = await service.findOne(req, 1);
+
+      expect(result.data.status).toBe(TemplateStatus.INACTIVE);
+      expect(result.data.isActive).toBe(false);
+      // Schedule expiry only flips template status — do not cancel employee assignments.
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).not.toHaveBeenCalled();
+    });
+
+    it('keeps atOnce template active on the scheduled day (after clock time)', async () => {
+      const req = createReq();
+      const template = {
+        id: 1,
+        name: 'Today form',
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: {
+          frequency: { type: 'atOnce', date: '2026-11-16', time: '17:21' },
+        },
+        updatedBy: null,
+      };
+      req.templateRepo.findOne.mockResolvedValue(template);
+      // Same calendar day → not elapsed yet
+      frequencyService.isScheduleElapsed.mockReturnValue(false);
+
+      const result = await service.findOne(req, 1);
+
+      expect(result.data.status).toBe(TemplateStatus.ACTIVE);
+      expect(result.data.isActive).toBe(true);
+      expect(assignmentsService.cancelOpenAssignmentsForTemplate).not.toHaveBeenCalled();
+      expect(req.templateRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deactivateExpiredTemplates', () => {
+    it('deactivates elapsed atOnce and recurring active templates', async () => {
+      const req = createReq();
+      const atOnce = {
+        id: 1,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: { frequency: { type: 'atOnce', date: '2026-11-16', time: '17:21' } },
+        updatedBy: null,
+      };
+      const recurring = {
+        id: 2,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: {
+          frequency: {
+            type: 'recurring',
+            startDate: '2026-11-14',
+            endDate: '2026-11-16',
+            times: ['17:21'],
+            every: 1,
+            interval: 'day',
+            repeatCount: 5,
+          },
+        },
+        updatedBy: null,
+      };
+      const sameDayStillActive = {
+        id: 3,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: { frequency: { type: 'atOnce', date: '2026-11-17', time: '17:21' } },
+        updatedBy: null,
+      };
+      const openEnded = {
+        id: 4,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: {
+          frequency: {
+            type: 'recurring',
+            startDate: '2026-11-01',
+            endDate: null,
+            times: ['09:00'],
+            every: 1,
+            interval: 'day',
+            repeatCount: 1,
+          },
+        },
+        updatedBy: null,
+      };
+      req.templateRepo.find.mockResolvedValue([atOnce, recurring, sameDayStillActive, openEnded]);
+      // Simulate next-day rule: elapsed only when last schedule day is 2026-11-16
+      frequencyService.isScheduleElapsed.mockImplementation((frequency: any) => {
+        const lastDay = String(
+          frequency?.endDate || frequency?.date || frequency?.startDate || '',
+        ).slice(0, 10);
+        return lastDay === '2026-11-16';
+      });
+      req.templateRepo.save.mockImplementation(async (e: any) => e);
+
+      const deactivated = await service.deactivateExpiredTemplates(req);
+
+      expect(deactivated).toBe(2);
+      expect(atOnce.status).toBe(TemplateStatus.INACTIVE);
+      expect(recurring.status).toBe(TemplateStatus.INACTIVE);
+      expect(sameDayStillActive.status).toBe(TemplateStatus.ACTIVE);
+      expect(openEnded.status).toBe(TemplateStatus.ACTIVE);
+    });
+
+    it('does not deactivate when schedule day has not ended yet', async () => {
+      const req = createReq();
+      const template = {
+        id: 1,
+        status: TemplateStatus.ACTIVE,
+        isActive: true,
+        deletedAt: null,
+        schema: { frequency: { type: 'atOnce', date: '2026-11-16', time: '17:21' } },
+        updatedBy: null,
+      };
+      req.templateRepo.find.mockResolvedValue([template]);
+      frequencyService.isScheduleElapsed.mockReturnValue(false);
+
+      const deactivated = await service.deactivateExpiredTemplates(req);
+
+      expect(deactivated).toBe(0);
+      expect(template.status).toBe(TemplateStatus.ACTIVE);
+      expect(req.templateRepo.save).not.toHaveBeenCalled();
     });
   });
 
